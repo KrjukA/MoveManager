@@ -62,13 +62,23 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 330
 .rec .rs{font:10px var(--mono);color:var(--faint)}
 .rec.cur .rn{color:var(--accent)}
 .recbtn.on{border-color:var(--bad);color:var(--bad)}
-.ghead{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 2px 2px;color:var(--dim);font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
-.ghead:first-child{padding-top:0}
+.gsec{grid-column:1/-1;border:1px solid transparent;border-radius:10px;padding:4px 6px 10px;margin:0 -6px}
+.gsec.over{border-color:var(--accent);background:rgba(255,122,43,.06)}
+.ggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:8px;min-height:44px}
+.ggrid:empty::after{content:"Перетащите сюда проект";color:var(--faint);font-size:11px;align-self:center;padding-left:2px;grid-column:1/-1}
+.ghead .gb{margin-left:auto;display:flex;gap:2px;opacity:0}
+.gsec:hover .gb,.ghead:focus-within .gb{opacity:1}
+.ghead .gb button{padding:1px 7px;font-size:11px;border:none;background:none;color:var(--dim);text-transform:none;letter-spacing:0;font-weight:400}
+.ghead .gb button:hover{color:var(--text)}
+.ghead{display:flex;align-items:center;gap:8px;padding:8px 2px 2px;color:var(--dim);font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
 .ghead .gc{color:var(--faint);font-weight:400}
 .ghead.over{color:var(--accent);border-color:var(--accent)}
 .ghead .ga{margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint)}
 .panbtn{font:10px var(--mono)!important;padding:1px 6px!important;color:var(--dim);min-width:34px}
 .panbtn.on{color:var(--accent);border-color:var(--accent)}
+.tile.multi{outline:2px dashed var(--accent);outline-offset:1px}
+.bpm.t-ok{color:var(--ok)} .bpm.t-far{color:var(--faint)}
+#meter{width:100%;height:26px;display:block;margin:6px 0;border-radius:4px;background:#0c0d0e}
 .keyrow{display:flex;gap:6px}
 .tabs{display:flex;gap:2px;margin:16px 0 8px;border-bottom:1px solid var(--line)}
 .tab{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:4px 10px 6px;font:600 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
@@ -76,7 +86,14 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 330
 .keyrow select:first-child{width:80px;flex:none}
 .pan[hidden]{display:none}
 .pan{display:flex;align-items:center;gap:6px;margin-top:3px}
-.pan input{flex:1;accent-color:var(--accent);height:14px;min-width:0}
+.pan input{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;margin:6px 0;cursor:pointer;
+  background:linear-gradient(to right,var(--line2) 0 var(--lo,50%),var(--accent) var(--lo,50%) var(--hi,50%),var(--line2) var(--hi,50%) 100%)}
+.pan input::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--text);border:2px solid var(--bg)}
+.pan input::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--text);border:2px solid var(--bg)}
+.pan input:focus{outline:none}
+.pan input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--accent)}
+.pan{position:relative}
+.pan::before{content:"";position:absolute;left:calc((100% - 36px)/2);top:3px;width:1px;height:10px;background:var(--faint);pointer-events:none}
 .pan span{font:10px var(--mono);color:var(--dim);width:30px;text-align:right}
 .pan span.on{color:var(--accent)}
 .trk .n{cursor:grab}
@@ -157,7 +174,7 @@ footer .status.err{color:var(--bad)}
 </head>
 <body>
 <header>
-  <div class="logo"><b>MOVE</b> MANAGER</div>
+  <div class="logo"><b>MOVE</b> MANAGER</div><span id="build" style="font:10px var(--mono);color:var(--faint)" title="Номер сборки программы"></span>
   <div class="conn"><span class="dot" id="dot"></span><span id="connText">подключение…</span></div>
   <div class="spacer"></div>
   <label title="Формат, в котором Move экспортирует звук проекта при переносе на компьютер">Аудио
@@ -202,7 +219,7 @@ footer .status.err{color:var(--bad)}
 "use strict";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:""};
+const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, rec:null, multi:[], key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:""};
 try{ const g = JSON.parse(localStorage.getItem("mm-groups")||"{}"); S.groups = g.groups||[]; S.collapsed = g.collapsed||{}; S.inputId = localStorage.getItem("mm-input")||""; }catch(e){}
 S.inputChosen = !!S.inputId;
 function saveGroups(){ try{ localStorage.setItem("mm-groups", JSON.stringify({groups:S.groups, collapsed:S.collapsed})); }catch(e){} }
@@ -218,6 +235,7 @@ function keyPayload(it){ if(!S.key || !it.info) return null; const k = {};
 const PAD_COLORS = {1:"255,25,23",2:"255,142,12",3:"255,98,41",4:"255,186,115",5:"215,74,9",6:"231,231,127",7:"255,233,94",8:"192,255,112",9:"135,255,109",10:"93,219,32",11:"161,206,47",12:"106,237,196",13:"0,206,197",14:"0,212,198",15:"29,247,243",16:"113,167,231",17:"34,133,240",18:"125,87,229",19:"34,171,240",20:"150,139,233",21:"178,139,233",22:"223,139,233",23:"199,90,214",24:"247,35,141",25:"227,95,200"};
 const padMode = () => S.ssh.ok;
 const visPos = slot => (3-Math.floor(slot/8))*8 + slot%8;   // пэд 1 — левый нижний, как на устройстве
+const panFill = v => { const p = 50 + Math.round(v*50); return `--lo:${Math.min(50,p)}%;--hi:${Math.max(50,p)}%`; };
 const panLabel = v => { const n = Math.round(v*50); return n===0 ? "C" : Math.abs(n)+(n<0?"L":"R"); };
 
 /* ───────── музыка: тональности и колесо Камелота ───────── */
@@ -304,7 +322,7 @@ async function loadConfig(){
   try{
     const c = await api("GET","/api/config");
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
-    S.uiStamp = c.uiStamp; $("#fmt").value = c.audioFormat;
+    S.uiStamp = c.uiStamp; $("#fmt").value = c.audioFormat; $("#build").textContent = c.build ? "сборка "+c.build : "";
     if(c.stale) status("Программа обновилась на диске. Перезапустите её в Терминале: Ctrl+C, затем снова python3 app.py", true);
   }catch(e){}
 }
@@ -319,13 +337,17 @@ async function loadRecs(name){
 /* ───────── выбор ───────── */
 const items = side => side==="move" ? S.move.sets : S.lib.items;
 const selItem = () => S.sel ? items(S.sel.side).find(x => x.id===S.sel.id) : null;
-function select(side,id){ S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; render(); }
+function select(side,id){ S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
+const tempoDiff = (a,b) => (a && b) ? Math.abs(a-b)/a : null;
 
 /* ───────── отрисовка ───────── */
 function tileHTML(side, it, pad){
   const info = it.info, cam = camelot(info), sel = selItem(), selCam = sel ? camelot(sel.info) : null;
   const isSel = S.sel && S.sel.side===side && S.sel.id===it.id;
-  const cls = ["tile"]; if(isSel) cls.push("sel");
+  const cls = ["tile"]; if(isSel) cls.push("sel"); if(side==="lib" && S.multi.includes(it.id)) cls.push("multi");
+  const td = sel && !isSel ? tempoDiff(sel.info?.tempo, info?.tempo) : null;
+  const tcls = td==null ? "" : td<=0.06 ? " t-ok" : td>0.12 ? " t-far" : "";
+  const ttitle = td==null ? "" : ` title="Разница темпа с выбранным проектом: ${(td*100).toFixed(1)}%${td<=0.06?" — подходит":""}"`;
   if(selCam && !isSel){
     const c = compat(selCam, cam);
     if(c) cls.push("c-"+c); else cls.push("dim");
@@ -337,13 +359,13 @@ function tileHTML(side, it, pad){
   const pc = pad && PAD_COLORS[it.color] ? ` style="--pc:rgb(${PAD_COLORS[it.color]})"` : "";
   return `<div class="${cls.join(" ")}" draggable="true" data-side="${side}" data-id="${esc(it.id)}"${side==="lib"?` data-group="${esc(it.group||"")}"`:""}${pad?` data-slot="${it.slot}" title="Пэд ${it.slot+1}: ${esc(it.name)} — ${esc(keyName(info))}"`:""}${pc} tabindex="0">
     <div class="top">${cam ? `<span class="keyb" style="background:${camColor(cam)}" title="${cam.approx?"Приблизительно: по набору нот лада":"Код Камелота"}">${cam.code}${cam.approx?"≈":""}</span>` : `<span class="keyb none">—</span>`}
-      <span class="bpm">${info?.tempo ? Math.round(info.tempo*10)/10+(pad?"":" bpm") : ""}</span></div>
+      <span class="bpm${tcls}"${ttitle}>${info?.tempo ? Math.round(info.tempo*10)/10+(pad?"":" bpm") : ""}</span></div>
     <div class="name">${esc(it.name)}</div>
     <div class="scale"${pad&&info?" hidden":""}>${info ? esc(keyName(info)) : (it.failed ? "не удалось прочитать" : `<span class="shim">читаю проект…</span>`)}</div>
     <div class="roles">${roles}</div>
     ${side==="lib" && it.audio ? `<button class="play" data-play="${esc(it.id)}" aria-label="Слушать">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚" : "▶"}</button>` : ""}
     ${onOther ? `<span class="tag" title="Есть копия на компьютере">⤓</span>` : ""}
-    ${job ? `<div class="job"><div>${esc(job.stage||"…")}</div><div class="bar ${job.progress==null?"ind":""}"><i style="${job.progress!=null?`width:${Math.round(job.progress*100)}%`:""}"></i></div></div>` : ""}
+    ${job ? `<div class="job"><div>${esc(job.stage||"…")}</div><div class="bar ${job.progress==null?"ind":""}"><i style="${job.progress!=null?`width:${Math.round(job.progress*100)}%`:""}"></i></div>${job.cancellable && job.id ? `<button data-jobcancel="${esc(job.id)}" style="padding:2px 8px;font-size:11px" title="Не ждать экспорт: проект останется без звука">Без звука</button>` : ""}</div>` : ""}
   </div>`;
 }
 function renderPane(side){
@@ -359,7 +381,8 @@ function renderPane(side){
     if(loose.length) html += `<div class="rowlabel">Без пэда</div>` + loose.map(it => tileHTML("move", it)).join("");
   } else if(side==="lib" && list.length && libGroups().length){
     const sect = (g, label) => { const its = list.filter(x => (x.group||"")===g), col = !!S.collapsed[g];
-      return `<div class="ghead" data-group="${esc(g)}" data-ghead="1" title="Щелчок — свернуть, двойной щелчок — переименовать"><span>${col?"▸":"▾"} ${esc(label)}</span><span class="gc">${its.length}</span>${g && !its.length?`<span class="ga">пусто — перетащите сюда проект</span>`:""}</div>` + (col ? "" : its.map(it => tileHTML("lib", it)).join("")); };
+      const btns = g ? `<span class="gb"><button data-gren="${esc(g)}" title="Переименовать группу">Переименовать</button><button data-gdis="${esc(g)}" title="Группа исчезнет, её проекты перейдут в «Без группы»">Удалить группу</button></span>` : "";
+      return `<div class="gsec" data-group="${esc(g)}"><div class="ghead" data-ghead="1" data-g="${esc(g)}" title="Щелчок — свернуть или развернуть"><span>${col?"▸":"▾"} ${esc(label)}</span><span class="gc">${its.length}</span>${btns}</div>${col ? "" : `<div class="ggrid">${its.map(it => tileHTML("lib", it)).join("")}</div>`}</div>`; };
     html = libGroups().map(g => sect(g, g)).join("") + sect("", "Без группы");
   } else {
     html = list.map(it => tileHTML(side,it)).join("");
@@ -409,17 +432,28 @@ function wheelSVG(selCam){
 const fmtSize = b => b>1048576 ? (b/1048576).toFixed(1)+" МБ" : Math.max(1,Math.round(b/1024))+" КБ";
 function soundHTML(side, it){
   if(side!=="lib") return "";
-  const rec = S.recording && S.recording.id===it.id;
+  const R = S.rec && S.rec.id===it.id ? S.rec : null;
   const onMove = S.move.state==="ok" && S.move.sets.some(x => x.id===it.sourceId || x.name===it.name);
-  const inputs = S.inputs.length ? `<select id="inputSel" aria-label="Аудиовход для записи" style="margin-bottom:6px"><option value="">Вход по умолчанию</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Вход")}</option>`).join("")}</select>` : "";
+  const inputs = `<select id="inputSel" aria-label="Аудиовход для записи" ${R && R.state==="rec"?"disabled":""}><option value="">Вход по умолчанию</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Вход")}</option>`).join("")}</select>`;
+  const panel = R ? `${inputs}
+      <canvas id="meter" width="600" height="52" aria-label="Уровень входящего сигнала"></canvas>
+      <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="monChk" ${R.monitor?"checked":""}> слышать вход (мониторинг) — лучше в наушниках</label>
+      <div class="acts" style="margin:0 0 6px">${R.state==="rec" ? `<button id="recStop" class="recbtn on">■ Остановить и сохранить</button>` : `<button id="recStart" class="primary">● Начать запись</button>`}<button id="recCancel" class="ghost">Отмена</button></div>` : "";
   return `<h3>Звучание</h3>
     <div class="hint">${it.audio ? "Звук проекта: "+esc(it.audioSource||it.audio) : "У проекта пока нет звука."}</div>
     ${it.audioError ? `<div class="hint" style="color:var(--bad)">Последний экспорт не удался: ${esc(it.audioError)}</div>` : ""}
-    <div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move экспортирует звук проекта заново":"Проект должен быть на Move"}">Экспорт с Move</button><button id="actRec" class="recbtn ${rec?"on":""}">${rec?"■ Остановить запись":"● Записать со входа"}</button><button id="actAudio">Файл…</button></div>
-    ${inputs}`;
+    ${R ? panel : `<div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move экспортирует звук проекта заново":"Проект должен быть на Move"}">Экспорт с Move</button><button id="actRec">● Записать со входа</button><button id="actAudio">Файл…</button></div>`}`;
+}
+function multiHTML(){
+  const its = S.multi.map(id => S.lib.items.find(x=>x.id===id)).filter(Boolean);
+  return `<div class="where">на компьютере</div><h3>Выбрано проектов: ${its.length}</h3>
+    ${its.map((x,i)=>`<div class="rec"><span class="rs">${i+1}</span><span class="rn">${esc(x.name)}</span><span class="rs">${esc(keyName(x.info))} · ${x.info?.tempo?Math.round(x.info.tempo):"—"}</span></div>`).join("")}
+    <div class="acts"><button class="primary" id="multiPush">← На Move (${its.length})</button><button class="ghost" id="multiClear">Снять выделение</button></div>
+    <div class="hint">Проекты загрузятся по очереди в этом порядке и займут свободные пэды, начиная с первого. Добавлять и убирать проекты из набора — щелчок с зажатой клавишей Cmd.</div>`;
 }
 function renderInspector(){
   const el = $("#insp"), it = selItem();
+  if(S.multi.length>1){ el.dataset.key = "multi"; el.innerHTML = multiHTML(); return; }
   if(document.activeElement && el.contains(document.activeElement) && ["TEXTAREA","INPUT"].includes(document.activeElement.tagName) && !["checkbox","range"].includes(document.activeElement.type) && it && el.dataset.key===S.sel.side+":"+S.sel.id) return;
   if(!it){ el.dataset.key=""; el.innerHTML = `<h3>Проект</h3><div class="hint">Выберите проект слева или справа. Перетаскивание внутри окна меняет порядок, между окнами — переносит проект.</div>`; return; }
   el.dataset.key = S.sel.side+":"+S.sel.id;
@@ -439,12 +473,12 @@ function renderInspector(){
   const panRows = order.map((ti,pos) => { const t = tracks[ti], pv = panOf(t);
     return `<div class="trk"><span class="n" style="cursor:default;width:12px">${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
       <div class="b"><div class="t">${esc(t.preset||t.name)}</div>
-        <div class="pan"><input type="range" min="-50" max="50" step="1" value="${Math.round(pv*50)}" data-pan="${t.index}" aria-label="Панорама дорожки ${pos+1}" title="Двойной щелчок — в центр"><span class="${Math.round(pv*50)?"on":""}">${panLabel(pv)}</span></div></div></div>`; }).join("");
+        <div class="pan"><input type="range" min="-50" max="50" step="1" value="${Math.round(pv*50)}" data-pan="${t.index}" style="${panFill(pv)}" aria-label="Панорама дорожки ${pos+1}" title="Двойной щелчок — в центр"><span class="${Math.round(pv*50)?"on":""}">${panLabel(pv)}</span></div></div></div>`; }).join("");
   // подсказки по Камелоту
   let sugg = "";
   if(cam){
     const up = (cam.num%12)+1, down = ((cam.num+10)%12)+1, other = cam.letter==="A"?"B":"A";
-    sugg = `<div class="hint">Сочетаются: ${cam.code}, ${down+cam.letter}, ${up+cam.letter}, ${cam.num+other}${cam.approx?". Код приблизительный: лад сведён к мажору/минору с тем же набором нот.":""}</div>`;
+    sugg = (info?.tempo ? `<div class="hint">По темпу подходят проекты от ${(info.tempo*0.94).toFixed(1)} до ${(info.tempo*1.06).toFixed(1)} bpm (±6%): их темп на плитках зелёный, далёкие по темпу — серые.</div>` : "") + `<div class="hint">Сочетаются: ${cam.code}, ${down+cam.letter}, ${up+cam.letter}, ${cam.num+other}${cam.approx?". Код приблизительный: лад сведён к мажору/минору с тем же набором нот.":""}</div>`;
   }
   el.innerHTML = `
     <div class="where">${side==="move"?"на Move"+(it.slot!=null?` · пэд ${it.slot+1}`:""):"на компьютере"}</div>
@@ -521,18 +555,52 @@ async function setGroup(id, group){
   catch(e){ fail(e); }
 }
 async function renameGroup(old){
-  const n = (prompt("Новое название группы (пусто — расформировать):", old) ?? old).trim(); if(n===old) return;
+  const n = (prompt("Новое название группы:", old) ?? "").trim(); if(!n || n===old) return;
   try{
     for(const x of S.lib.items.filter(x=>x.group===old)) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:n});
-    S.groups = S.groups.filter(g=>g!==old); if(n && !S.groups.includes(n)) S.groups.push(n); saveGroups(); await loadLib();
-  }catch(e){ fail(e); }
+    S.groups = S.groups.filter(g=>g!==old); if(!S.groups.includes(n)) S.groups.push(n);
+    if(S.collapsed[old]){ S.collapsed[n] = true; } delete S.collapsed[old]; saveGroups(); await loadLib(); status(`Группа переименована в «${n}»`);
+  }catch(e){ fail(e); await loadLib(); }
 }
-async function push(id, slot){
-  const it = S.lib.items.find(x=>x.id===id); if(!it) return;
-  if(S.move.sets.some(x=>x.name===it.name) && !confirm(`На Move уже есть проект «${it.name}». Загрузить ещё один с тем же названием?`)) return;
+async function disbandGroup(g){
+  const its = S.lib.items.filter(x=>x.group===g);
+  if(its.length && !confirm(`Удалить группу «${g}»? Её проекты (${its.length}) не удаляются — они перейдут в «Без группы».`)) return;
+  try{
+    for(const x of its) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:""});
+    S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Группа «${g}» удалена, проекты перенесены в «Без группы»`);
+  }catch(e){ fail(e); await loadLib(); }
+}
+async function deleteGroup(g){
+  const its = S.lib.items.filter(x=>x.group===g);
+  if(its.length && !confirm(`Удалить группу «${g}» вместе с проектами (${its.length})? Проекты переедут в подпапку «_Удалённые».`)) return;
+  try{
+    for(const x of its){ stopIfPlaying(x.id); await api("DELETE", `/api/library/${encodeURIComponent(x.id)}`); if(S.sel && S.sel.side==="lib" && S.sel.id===x.id) S.sel = null; }
+    S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Группа «${g}» удалена`);
+  }catch(e){ fail(e); await loadLib(); }
+}
+async function push(id, slot, replaceId, quiet){
+  const it = S.lib.items.find(x=>x.id===id); if(!it) return false;
+  if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !confirm(`На Move уже есть проект «${it.name}». Загрузить ещё один с тем же названием?`)) return false;
   status(`Загружаю «${it.name}» на Move…`);
-  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null})); await loadMove(); status(`«${it.name}» загружен на Move`); }
-  catch(e){ fail(e); }
+  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`«${it.name}» загружен на Move`); return true; }
+  catch(e){ fail(e); await loadMove(); return false; }
+}
+function dropOnMove(id, cell, slot){
+  if(!cell || slot==null) return push(id, null);
+  if(cell.classList.contains("slot")) return push(id, slot);
+  const old = S.move.sets.find(x=>x.id===cell.dataset.id), it = S.lib.items.find(x=>x.id===id); if(!old || !it) return push(id, null);
+  if(!confirm(`Пэд ${slot+1} занят проектом «${old.name}». Уверены, что хотите удалить его с Move и поставить на его место «${it.name}»? Удаление с устройства нельзя отменить.`)) return;
+  return push(id, slot, old.id);
+}
+async function pushMany(){
+  const ids = S.multi.filter(id => S.lib.items.some(x=>x.id===id)); if(!ids.length) return;
+  const taken = new Set(S.move.sets.map(x=>x.slot).filter(x=>x!=null));
+  const free = padMode() ? [...Array(32).keys()].filter(i=>!taken.has(i)) : [];
+  if(padMode() && free.length < ids.length && !confirm(`На Move свободно пэдов: ${free.length}, а проектов выбрано ${ids.length}. Загрузить только первые ${free.length}?`)) return;
+  const todo = padMode() ? ids.slice(0, free.length) : ids;
+  let ok = 0;
+  for(let i=0;i<todo.length;i++){ if(await push(todo[i], padMode()?free[i]:null, null, true)) ok++; else break; }
+  S.multi = []; render(); status(`Загружено на Move проектов: ${ok} из ${todo.length}`, ok<todo.length);
 }
 async function applyOrder(){
   const it = selItem(); if(!it) return;
@@ -612,8 +680,8 @@ async function uploadAudio(id, blob, ext){
 async function loadInputs(){
   try{ S.inputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind==="audioinput" && d.deviceId && d.deviceId!=="default"); }catch(e){ S.inputs = []; }
 }
-async function toggleRecord(id){
-  if(S.recording){ S.recording.rec.stop(); return; }
+async function recOpen(id){
+  await recClose();
   try{
     const audioC = {echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:2};
     if(S.inputId) audioC.deviceId = {exact:S.inputId};
@@ -621,23 +689,58 @@ async function toggleRecord(id){
     try{ stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
     catch(e){ if(!S.inputId) throw e; S.inputId = ""; delete audioC.deviceId; stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
     await loadInputs();
-    if(!S.inputChosen){
-      // первый раз: только показываем список входов и ничего не пишем, чтобы не записать микрофон по ошибке
-      stream.getTracks().forEach(t=>t.stop()); S.inputChosen = true; renderInspector();
-      status("Выберите аудиовход в списке под кнопками и нажмите «Записать со входа» ещё раз"); return;
-    }
-    const mime = ["audio/webm;codecs=opus","audio/mp4","audio/webm"].find(m => MediaRecorder.isTypeSupported(m)) || "";
-    const rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:256000} : undefined), chunks = [], t0 = Date.now();
-    rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
-    rec.onstop = async () => {
-      clearInterval(S.recording.timer); stream.getTracks().forEach(t=>t.stop()); S.recording = null; renderInspector();
-      try{ await uploadAudio(id, new Blob(chunks, {type:rec.mimeType}), /mp4/.test(rec.mimeType)?"m4a":"webm"); status("Запись сохранена как звук проекта"); }
-      catch(e){ fail(e); }
-    };
-    const label = stream.getAudioTracks()[0]?.label || "вход по умолчанию";
-    S.recording = {id, rec, timer: setInterval(() => status(`● Идёт запись (${fmtT((Date.now()-t0)/1000)}) — ${label}`), 500)};
-    rec.start(1000); renderInspector();
+    const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), split = ctx.createChannelSplitter(2);
+    src.connect(split);
+    const an = [0,1].map(ch => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, ch); return a; });
+    const mon = ctx.createGain();
+    S.rec = {id, stream, ctx, src, an, mon, state:"armed", monitor:false, hold:[0,0], holdAt:[0,0], clip:[0,0], buf:new Float32Array(2048),
+             mono: (stream.getAudioTracks()[0]?.getSettings().channelCount||2) < 2, label: stream.getAudioTracks()[0]?.label || "вход по умолчанию"};
+    renderInspector(); requestAnimationFrame(meterLoop);
+    status(`Вход: ${S.rec.label}. Проверьте уровень и нажмите «Начать запись»`);
   }catch(e){ status("Нет доступа к аудиовходу: "+e.message, true); }
+}
+async function recClose(){
+  const R = S.rec; if(!R) return; S.rec = null;
+  clearInterval(R.timer); try{ R.stream.getTracks().forEach(t=>t.stop()); await R.ctx.close(); }catch(e){}
+  renderInspector();
+}
+function recStart(){
+  const R = S.rec; if(!R || R.state!=="armed") return;
+  const mime = ["audio/webm;codecs=opus","audio/mp4","audio/webm"].find(m => MediaRecorder.isTypeSupported(m)) || "";
+  const rec = new MediaRecorder(R.stream, mime ? {mimeType:mime, audioBitsPerSecond:256000} : undefined), chunks = [], t0 = Date.now(), id = R.id;
+  rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    const save = R.save; await recClose();
+    if(!save){ status("Запись отменена"); return; }
+    try{ await uploadAudio(id, new Blob(chunks, {type:rec.mimeType}), /mp4/.test(rec.mimeType)?"m4a":"webm"); status("Запись сохранена как звук проекта"); }
+    catch(e){ fail(e); }
+  };
+  R.recorder = rec; R.state = "rec"; R.timer = setInterval(() => status(`● Идёт запись (${fmtT((Date.now()-t0)/1000)}) — ${R.label}`), 500);
+  rec.start(1000); renderInspector();
+}
+function recStop(save){ const R = S.rec; if(!R) return; if(R.state==="rec"){ R.save = save; R.recorder.stop(); } else recClose(); }
+function setMonitor(on){ const R = S.rec; if(!R) return; R.monitor = on; try{ if(on){ R.src.connect(R.mon); R.mon.connect(R.ctx.destination); } else { R.src.disconnect(R.mon); R.mon.disconnect(); } }catch(e){} }
+function meterLoop(){
+  const R = S.rec; if(!R) return;
+  const cv = $("#meter");
+  if(cv){
+    const g = cv.getContext("2d"), W = cv.width, H = cv.height, now = performance.now(), rowH = H/2 - 3;
+    g.clearRect(0,0,W,H);
+    for(let ch=0; ch<2; ch++){
+      R.an[R.mono?0:ch].getFloatTimeDomainData(R.buf);
+      let pk = 0; for(let i=0;i<R.buf.length;i++){ const v = Math.abs(R.buf[i]); if(v>pk) pk = v; }
+      const db = pk>0 ? 20*Math.log10(pk) : -100, x = Math.max(0, Math.min(1, (db+60)/60));       // шкала −60…0 дБ
+      if(x >= R.hold[ch] || now-R.holdAt[ch] > 1200){ R.hold[ch] = x; R.holdAt[ch] = now; }
+      if(pk >= 0.99) R.clip[ch] = now;
+      const y = ch*(H/2) + 2;
+      g.fillStyle = "#23262b"; g.fillRect(0,y,W,rowH);
+      g.fillStyle = x>0.9 ? "#ff5d5d" : x>0.75 ? "#d9c545" : "#5fd38d"; g.fillRect(0,y,W*x,rowH);
+      g.fillStyle = "#e8e6e1"; g.fillRect(Math.max(0,W*R.hold[ch]-2),y,2,rowH);
+      if(now-R.clip[ch] < 1500){ g.fillStyle = "#ff5d5d"; g.fillRect(W-10,y,10,rowH); }
+    }
+    g.fillStyle = "rgba(255,255,255,.18)"; for(const d of [-48,-36,-24,-12,-6]) g.fillRect(W*(d+60)/60,0,1,H);
+  }
+  requestAnimationFrame(meterLoop);
 }
 for(const ev of ["play","pause","ended"]) audio.addEventListener(ev, () => { if(ev==="ended") S.playing = null; render(); });
 
@@ -646,25 +749,38 @@ let drag = null, ghTimer = null;
 for(const g of [$("#moveGrid"), $("#libGrid")]){
   g.addEventListener("click", e => {
     if(e.target.id==="sshSetup") return setupSsh();
+    if(e.target.dataset.jobcancel){ e.target.disabled = true; api("POST", `/api/jobs/${e.target.dataset.jobcancel}/cancel`).catch(fail); return; }
+    const tb = e.target;
+    if(tb.dataset.gren) return renameGroup(tb.dataset.gren);
+    if(tb.dataset.gdis) return disbandGroup(tb.dataset.gdis);
+    if(tb.dataset.gdel) return deleteGroup(tb.dataset.gdel);
     const gh = e.target.closest("[data-ghead]");
-    if(gh){ const g = gh.dataset.group; clearTimeout(ghTimer); if(e.detail>1){ if(g) renameGroup(g); } else { ghTimer = setTimeout(() => { S.collapsed[g] = !S.collapsed[g]; saveGroups(); render(); }, 220); } return; }
+    if(gh){ const g = gh.dataset.g; S.collapsed[g] = !S.collapsed[g]; saveGroups(); render(); return; }
     if(e.target.id==="retry"){ S.move.state==="auth" ? showAuth() : (S.move.state="loading", render(), loadMove()); return; }
     const p = e.target.closest("[data-play]"); if(p){ e.stopPropagation(); play(p.dataset.play); return; }
-    const t = e.target.closest(".tile"); if(t) select(t.dataset.side, t.dataset.id);
+    const t = e.target.closest(".tile"); if(!t) return;
+    if(t.dataset.side==="lib" && (e.metaKey || e.ctrlKey)){
+      if(!S.multi.length && S.sel && S.sel.side==="lib" && S.sel.id!==t.dataset.id) S.multi.push(S.sel.id);
+      const k = S.multi.indexOf(t.dataset.id); if(k>=0) S.multi.splice(k,1); else S.multi.push(t.dataset.id);
+      if(S.multi.length===1){ const only = S.multi[0]; S.multi = []; return select("lib", only); }
+      return render();
+    }
+    S.multi = []; select(t.dataset.side, t.dataset.id);
   });
   g.addEventListener("keydown", e => { const t = e.target.closest(".tile"); if(t && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); select(t.dataset.side,t.dataset.id); } });
   g.addEventListener("dragstart", e => { const t = e.target.closest(".tile"); if(!t) return; drag = {side:t.dataset.side, id:t.dataset.id}; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.id); });
   g.addEventListener("dragover", e => { if(!drag) return; e.preventDefault();
     document.querySelectorAll(".tile.over").forEach(x=>x.classList.remove("over"));
-    document.querySelectorAll(".slot.over, .ghead.over").forEach(x=>x.classList.remove("over"));
-    const sl = e.target.closest(".slot, .ghead"); if(sl){ sl.classList.add("over"); return; }
+    document.querySelectorAll(".slot.over, .gsec.over").forEach(x=>x.classList.remove("over"));
+    const sl = e.target.closest(".slot"); if(sl){ sl.classList.add("over"); return; }
+    const gs = e.target.closest(".gsec"); if(gs && (drag.side!=="lib" || (S.lib.items.find(x=>x.id===drag.id)?.group||"")!==gs.dataset.group)){ gs.classList.add("over"); return; }
     if(drag.side===g.dataset.side){ const t = e.target.closest(".tile"); if(t && t.dataset.id!==drag.id) t.classList.add("over"); }
     else g.classList.add("drop"); });
   g.addEventListener("dragleave", e => { if(!g.contains(e.relatedTarget)) g.classList.remove("drop"); });
   g.addEventListener("drop", e => { if(!drag) return; e.preventDefault(); g.classList.remove("drop");
     const side = g.dataset.side, d = drag; drag = null;
     const cell = e.target.closest("[data-slot]"), slot = cell && cell.dataset.slot!=="null" ? +cell.dataset.slot : null;
-    if(d.side!==side){ d.side==="move" ? pull(d.id, e.target.closest("[data-group]")?.dataset.group) : push(d.id, cell && cell.classList.contains("slot") ? slot : null); return; }
+    if(d.side!==side){ d.side==="move" ? pull(d.id, e.target.closest("[data-group]")?.dataset.group) : dropOnMove(d.id, cell, slot); return; }
     if(side==="move" && padMode()){ if(slot!=null) moveSlot(d.id, slot); return; }
     if(side==="lib"){ const gEl = e.target.closest("[data-group]"), me = S.lib.items.find(x=>x.id===d.id);
       if(gEl && me && (me.group||"")!==gEl.dataset.group){ setGroup(d.id, gEl.dataset.group); return; } }
@@ -696,6 +812,8 @@ $("#newGroup").onclick = () => { const n = (prompt("Название новой 
 const insp = $("#insp"); let trkDrag = null, saveTimer = null;
 function moveTrack(from,to){ const it = selItem(); if(!it) return; const o = S.order || it.info.tracks.map((_,i)=>i); const [m] = o.splice(from,1); o.splice(to,0,m); S.order = o; renderInspector(); }
 insp.addEventListener("click", async e => {
+  if(e.target.id==="multiPush") return pushMany();
+  if(e.target.id==="multiClear"){ S.multi = []; return render(); }
   const it = selItem(); if(!it) return; const {side,id} = S.sel, t = e.target;
   if(t.dataset.up!==undefined) return moveTrack(+t.dataset.up, +t.dataset.up-1);
   if(t.dataset.down!==undefined) return moveTrack(+t.dataset.down, +t.dataset.down+1);
@@ -706,7 +824,10 @@ insp.addEventListener("click", async e => {
   if(t.id==="applyOrder") return applyOrder();
   if(t.id==="resetOrder"){ S.order = null; S.pans = {}; S.key = null; return renderInspector(); }
   if(t.id==="actAudio"){ $("#audioFile").value = ""; return $("#audioFile").click(); }
-  if(t.id==="actRec") return toggleRecord(id);
+  if(t.id==="actRec") return recOpen(id);
+  if(t.id==="recStart") return recStart();
+  if(t.id==="recStop") return recStop(true);
+  if(t.id==="recCancel") return recStop(false);
   if(t.id==="actRender") return renderLib(id);
   if(t.dataset.tab){ S.tab = t.dataset.tab; return renderInspector(); }
   if(t.dataset.recplay) return playSrc("rec:"+t.dataset.recplay, `/api/move/recordings/${encodeURIComponent(t.dataset.recplay)}/audio`, t.dataset.recplay.replace(/\.wav$/i,""));
@@ -727,7 +848,8 @@ insp.addEventListener("click", async e => {
 });
 insp.addEventListener("change", async e => {
   if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
-  if(e.target.id==="inputSel"){ S.inputId = e.target.value; S.inputChosen = true; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} return; }
+  if(e.target.id==="monChk") return setMonitor(e.target.checked);
+  if(e.target.id==="inputSel"){ S.inputId = e.target.value; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} if(S.rec && S.rec.state==="armed") recOpen(S.rec.id); return; }
   if(e.target.id==="groupIn"){ const it = selItem(); if(it && S.sel.side==="lib" && e.target.value.trim()!==(it.group||"")){ e.target.blur(); setGroup(it.id, e.target.value.trim()); } return; }
   if(e.target.id==="keyRoot" || e.target.id==="keyScale"){ const it = selItem(); if(!it) return;
     S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat($("#keyTempo").value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return; }
@@ -746,7 +868,7 @@ insp.addEventListener("dblclick", e => { if(e.target.dataset.pan!==undefined){ e
 insp.addEventListener("input", e => {
   if(e.target.dataset.pan!==undefined){
     const it = selItem(); if(!it) return; const ti = +e.target.dataset.pan, v = +e.target.value/50;
-    S.pans[ti] = v; const lab = e.target.nextElementSibling; lab.textContent = panLabel(v); lab.classList.toggle("on", !!Math.round(v*50));
+    S.pans[ti] = v; e.target.style.cssText = panFill(v); const lab = e.target.nextElementSibling; lab.textContent = panLabel(v); lab.classList.toggle("on", !!Math.round(v*50));
     const ch = isChanged(it);
     $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return;
   }

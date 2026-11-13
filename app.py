@@ -30,6 +30,8 @@ STATIC_DIR = APP_DIR / "static"
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
+BUILD = "16"          # номер сборки: виден в шапке программы и в журнале экспорта
+RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
 
@@ -78,6 +80,19 @@ def write_json(path, obj):
 
 
 # ───────────────────────── ошибки ─────────────────────────
+
+def render_log(msg):
+    """Журнал экспорта звука: что именно отвечает Move на каждом шаге (cache/render.log)."""
+    try:
+        CACHE_DIR.mkdir(exist_ok=True)
+        path = CACHE_DIR / "render.log"
+        if path.exists() and path.stat().st_size > 200_000:
+            path.write_text("", "utf-8")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+    except OSError:
+        pass
+
 
 class AuthRequired(Exception):
     pass
@@ -383,83 +398,115 @@ class Move:
         if r.status_code >= 400:
             raise AppError(f"Не удалось удалить ({r.status_code})")
 
-    def render(self, oid, fmt, dest, progress=None, idle_timeout=120):
-        """Рендер сета в аудио самим Move — тот же запрос, что и «Export as Audio» в штатном менеджере."""
+    def render(self, oid, fmt, dest, progress=None, cancelled=None):
+        """Экспорт звука сета самим Move — тот же запрос, что и «Export as Audio» в штатном менеджере.
+
+        Некоторые сеты Move не экспортирует вовсе: принимает запрос и молчит (так же ведёт себя
+        штатный менеджер). Поэтому ожидание ограничено и его можно прервать, а зависшее задание
+        снимается, чтобы не задерживать следующие. Экспорты идут строго по одному."""
+        cancelled = cancelled or (lambda: False)
+        while not RENDER_LOCK.acquire(timeout=1):
+            if cancelled():
+                raise AppError("Экспорт звука пропущен")
+        try:
+            return self._render(oid, fmt, dest, progress, cancelled)
+        finally:
+            RENDER_LOCK.release()
+
+    def _render(self, oid, fmt, dest, progress, cancelled):
+        start_timeout = float(os.environ.get("MOVE_RENDER_START_TIMEOUT", "45"))
+        silence_timeout = float(os.environ.get("MOVE_RENDER_SILENCE_TIMEOUT", "600"))
         r = self.req("POST", f"/api/v1/render/{oid}", params={"format": fmt}, timeout=60)
         if r.status_code >= 400:
-            raise AppError(f"Move не начал рендер ({r.status_code}): {r.text[:200]}")
+            raise AppError(f"Move не начал экспорт ({r.status_code}): {r.text[:200]}")
         info = r.json()
         rid, href = info.get("id"), info.get("href")
-        ok = False
-        state = {"got": False, "killed": False}
-        try:
-            try:
-                # долгий таймаут чтения: финальная стадия (кодирование файла) может молчать минутами;
-                # отдельный сторож обрывает ожидание, только если Move вообще не начал рендер
-                ev = self.s.get(self.base + "/api/v1/render", stream=True, timeout=(10, 1800),
-                                headers={"Accept": "text/event-stream"})
+        render_log(f"--- экспорт (сборка {BUILD}): сет {oid}, формат {fmt}; ответ на запрос: {r.status_code} {r.text[:200]}")
+        if not href:
+            raise AppError("Move не вернул ссылку на аудио")
+        t0 = time.time()
+        st = {"got": False, "finished": False, "failed": None, "last": t0, "logged": None}
+        stop = threading.Event()
 
-                def watchdog():
-                    if not state["got"]:
-                        state["killed"] = True
-                        ev.close()
-                timer = threading.Timer(idle_timeout, watchdog)
-                timer.daemon = True
-                timer.start()
-                for raw in ev.iter_lines():
-                    line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
-                    if not line.startswith("data:"):
-                        continue
-                    try:
-                        d = json.loads(line[5:].strip())
-                    except ValueError:
-                        continue
-                    if d.get("id") != rid:
-                        continue
-                    state["got"] = True
-                    st = d.get("status")
-                    if progress and st == "finalizing":
-                        progress(None)
-                    elif progress and isinstance(d.get("progress"), (int, float)):
-                        progress(min(1.0, float(d["progress"])))
-                    if st == "finished":
-                        ok = True
+        def reader():
+            # события нужны только для прогресса; короткий таймаут чтения — чтобы поток не зависал
+            while not stop.is_set():
+                try:
+                    ev = self.s.get(self.base + "/api/v1/render", stream=True, timeout=(10, 20),
+                                    headers={"Accept": "text/event-stream"})
+                    for raw in ev.iter_lines(chunk_size=1):
+                        if stop.is_set():
+                            break
+                        line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+                        if not line.startswith("data:"):
+                            continue
+                        try:
+                            d = json.loads(line[5:].strip())
+                        except ValueError:
+                            continue
+                        if d.get("id") != rid:
+                            continue
+                        st["got"], st["last"] = True, time.time()
+                        status = d.get("status")
+                        if status != st["logged"]:
+                            render_log(f"событие: {line[:300]}")
+                            st["logged"] = status
+                        if progress and status == "finalizing":
+                            progress(None)
+                        elif progress and isinstance(d.get("progress"), (int, float)):
+                            progress(min(1.0, float(d["progress"])))
+                        if status == "finished":
+                            st["finished"] = True
+                        elif status in ("failed", "aborted"):
+                            st["failed"] = status
+                    ev.close()
+                except (requests.exceptions.RequestException, AttributeError, OSError):
+                    pass
+                stop.wait(0.5)
+
+        threading.Thread(target=reader, daemon=True).start()
+        resp, misses, next_probe = None, 0, t0 + 5
+        try:
+            while resp is None:
+                now = time.time()
+                if cancelled():
+                    render_log("экспорт пропущен пользователем")
+                    raise AppError("Экспорт звука пропущен")
+                if st["failed"]:
+                    raise AppError("Move сообщил, что экспорт не удался")
+                if not st["got"] and now - t0 > start_timeout:
+                    render_log(f"за {int(start_timeout)} с Move не начал экспорт — задание снято")
+                    raise AppError(f"Move не экспортирует этот проект: за {int(start_timeout)} с экспорт не начался. "
+                                   "Так же он ведёт себя в штатном менеджере")
+                if st["got"] and not st["finished"] and now - st["last"] > silence_timeout:
+                    render_log("Move перестал присылать события — задание снято")
+                    raise AppError("Move начал экспорт, но перестал отвечать")
+                if st["finished"] or (st["got"] and now >= next_probe):
+                    next_probe = now + 5
+                    a = self.req("GET", href, stream=True, timeout=(10, 600))
+                    if a.status_code == 200:
+                        render_log(f"скачивание {href}: 200 {a.headers.get('content-type')} {a.headers.get('content-length')}")
+                        resp = a
                         break
-                    if st in ("failed", "aborted"):
-                        raise AppError("Move сообщил, что рендер не удался")
-                timer.cancel()
-                ev.close()
-            except (requests.exceptions.RequestException, AttributeError, OSError) as e:
-                if state["killed"]:
-                    raise AppError(
-                        f"Move принял запрос на экспорт, но за {idle_timeout} с так и не начал его. "
-                        "Так же зависает «Export as Audio» в штатном менеджере: перезагрузите Move и попробуйте снова")
-                raise AppError(f"Связь с Move прервалась во время экспорта: {e}")
-            if not ok:
-                if state["killed"]:
-                    raise AppError(
-                        f"Move принял запрос на экспорт, но за {idle_timeout} с так и не начал его. "
-                        "Перезагрузите Move и попробуйте снова")
-                raise AppError("Move закрыл поток событий, не закончив экспорт")
+                    body = a.text[:120]
+                    a.close()
+                    if st["finished"]:
+                        misses += 1
+                        render_log(f"скачивание {href}, попытка {misses}: {a.status_code} {body}")
+                        if misses >= 8:
+                            raise AppError(f"Экспорт закончился, но Move не отдал файл ({a.status_code})")
+                time.sleep(1)
+            with open(dest, "wb") as f:
+                for chunk in resp.iter_content(1 << 16):
+                    f.write(chunk)
+            return dest
         finally:
-            if not ok and rid is not None:
+            stop.set()
+            if resp is None and rid is not None:
                 try:
                     self.s.delete(f"{self.base}/api/v1/render/{rid}", timeout=5)
                 except requests.exceptions.RequestException:
                     pass
-        a = None
-        for _ in range(10):          # файл иногда появляется через пару секунд после «finished»
-            a = self.req("GET", href, stream=True, timeout=(10, 600))
-            if a.status_code == 200:
-                break
-            a.close()
-            time.sleep(1.5)
-        if a.status_code != 200:
-            raise AppError(f"Экспорт закончился, но Move не отдал файл ({a.status_code})")
-        with open(dest, "wb") as f:
-            for chunk in a.iter_content(1 << 16):
-                f.write(chunk)
-        return dest
 
 
 MOVE = Move()
@@ -717,13 +764,17 @@ JOBS = {}
 
 def start_job(title, fn):
     jid = uuid.uuid4().hex[:10]
-    job = {"id": jid, "title": title, "status": "running", "stage": "", "progress": None, "error": None}
+    job = {"id": jid, "title": title, "status": "running", "stage": "", "progress": None, "error": None,
+           "cancel": False, "cancellable": False}
     JOBS[jid] = job
 
-    def set_stage(stage, progress=None, saved=False):
+    def set_stage(stage, progress=None, saved=False, cancellable=None):
         job["stage"], job["progress"] = stage, progress
         if saved:
             job["saved"] = True
+        if cancellable is not None:
+            job["cancellable"] = cancellable
+    set_stage.cancelled = lambda: bool(job["cancel"])
 
     def run():
         try:
@@ -756,8 +807,8 @@ def render_into(oid, d, stage):
     def prog(p):
         stage("Move собирает файл" if p is None else label, p)
     try:
-        stage(label, 0)
-        MOVE.render(oid, fmt, tmp_a, prog)
+        stage("Жду очереди на экспорт" if RENDER_LOCK.locked() else label, None, cancellable=True)
+        MOVE.render(oid, fmt, tmp_a, prog, getattr(stage, "cancelled", None))
         clear_audio(d)
         shutil.move(str(tmp_a), d / f"{d.name}.{fmt}")
         update_meta(d, audioSource="экспорт Move", audioError=None)
@@ -767,6 +818,7 @@ def render_into(oid, d, stage):
         update_meta(d, audioError=msg)
         return msg
     finally:
+        stage(label, None, cancellable=False)
         tmp_a.unlink(missing_ok=True)
 
 
@@ -824,24 +876,38 @@ def job_render_library(folder):
     return fn
 
 
-def job_push(folder, slot=None):
+def job_push(folder, slot=None, replace_id=None):
+    """Загружает проект на Move. replace_id — сет на устройстве, который нужно заменить новым."""
     def fn(stage):
         d = lib_dir(folder)
         bundle = find_file(d, {".ablbundle"})
         if not bundle:
             raise AppError("В папке проекта нет .ablbundle")
+        if replace_id and not UUID_RE.fullmatch(replace_id):
+            raise AppError("Некорректный идентификатор")
         before = {o["objectId"] for o in MOVE.list_sets()}
+        if replace_id and replace_id not in before:
+            raise AppError("Заменяемого проекта уже нет на Move")
         stage("Загружаю на Move")
         MOVE.upload(bundle, f"{d.name}.ablbundle")
+        created = [o["objectId"] for o in MOVE.list_sets() if o["objectId"] not in before]
+        if replace_id:
+            # старый проект удаляем только после того, как новый однозначно найден на устройстве
+            if len(created) != 1:
+                raise AppError("Новый проект загружен, но я не смог однозначно его найти — старый оставлен на месте")
+            stage("Убираю прежний проект с пэда")
+            MOVE.delete(replace_id)
+            with LOCK:
+                CFG.setdefault("move_meta", {}).pop(replace_id, None)
+                INFO_CACHE.pop(replace_id, None)
+                save_config()
         placed = None
-        if slot is not None and ssh_enabled():
-            created = [o["objectId"] for o in MOVE.list_sets() if o["objectId"] not in before]
-            slots = ssh_slots()
-            taken = {v["slot"] for k, v in slots.items() if k not in created}
-            if len(created) == 1 and int(slot) not in taken:
+        if slot is not None and ssh_enabled() and len(created) == 1:
+            taken = {v["slot"] for k, v in ssh_slots().items() if k not in created}
+            if int(slot) not in taken:
                 ssh_set_slots([(created[0], slot)])
                 placed = int(slot)
-        return {"name": d.name, "slot": placed}
+        return {"name": d.name, "slot": placed, "replaced": bool(replace_id)}
     return fn
 
 
@@ -1111,6 +1177,7 @@ class Handler(BaseHTTPRequestHandler):
         if seg == ["config"] and m == "GET":
             return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),
+                                   "build": BUILD,
                                    "uiStamp": int((STATIC_DIR / "index.html").stat().st_mtime),
                                    "stale": (APP_DIR / "app.py").stat().st_mtime > STARTED})
         if seg == ["config"] and m == "POST":
@@ -1154,6 +1221,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
 
         # ── задачи
+        if len(seg) == 3 and seg[0] == "jobs" and seg[2] == "cancel" and m == "POST":
+            job = JOBS.get(seg[1])
+            if job:
+                job["cancel"] = True
+            return self.send_json({"ok": True})
         if len(seg) == 2 and seg[0] == "jobs" and m == "GET":
             job = JOBS.get(seg[1])
             return self.send_json(job or {"status": "error", "error": "Задача не найдена"})
@@ -1278,7 +1350,7 @@ class Handler(BaseHTTPRequestHandler):
             if act == "audio-from-move" and m == "POST":
                 return self.send_json(start_job("rec", job_attach_recording(folder, str(self.body().get("name", "")))))
             if act == "push" and m == "POST":
-                return self.send_json(start_job("push", job_push(folder, self.body().get("slot"))))
+                return self.send_json(start_job("push", job_push(folder, (b := self.body()).get("slot"), b.get("replace"))))
             if act == "edit" and m == "POST":
                 b = self.body()
                 edit_library(folder, [int(x) for x in b.get("order") or []] or None, b.get("pans") or {}, b.get("key") or None)
@@ -1309,7 +1381,7 @@ def main():
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     srv.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}"
-    print(f"Move Manager запущен: {url}\nОстановить — Ctrl+C")
+    print(f"Move Manager (сборка {BUILD}) запущен: {url}\nОстановить — Ctrl+C")
     if not os.environ.get("MOVE_MANAGER_NO_BROWSER"):
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
