@@ -1,0 +1,8 @@
+move_ssh_key
+move_ssh_key.pub
+known_hosts
+config.json
+cache/
+backups/
+.DS_Store
+__pycache__/

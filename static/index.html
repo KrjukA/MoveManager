@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Move Manager</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --bg:#131416; --panel:#1b1d20; --panel2:#22252a; --line:#2e3238; --line2:#3a3f47;
+  --text:#e8e6e1; --dim:#8b9099; --faint:#5c626b; --accent:#ff7a2b; --ok:#5fd38d; --bad:#ff5d5d;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--dim)}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1a0d04;font-weight:600}
+button.danger:hover{border-color:var(--bad);color:var(--bad)}
+button.ghost{background:none;border-color:transparent;color:var(--dim)}
+button.ghost:hover{color:var(--text);border-color:var(--line2)}
+input[type=text],textarea,select{background:#111214;border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:1px solid var(--accent);outline-offset:0}
+textarea{resize:vertical;min-height:54px}
+
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);flex:none}
+.logo{font:700 13px var(--mono);letter-spacing:.18em}
+.logo b{color:var(--accent)}
+.conn{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+.spacer{flex:1}
+header label{color:var(--dim);font-size:12px;display:flex;align-items:center;gap:6px}
+header select{width:auto;padding:4px 6px}
+
+main{flex:1;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 330px;min-height:0}
+.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.pane-head{display:flex;align-items:center;gap:8px;padding:10px 14px;flex:none}
+.pane-head h2{margin:0;font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.pane-head .count{color:var(--faint);font:11px var(--mono)}
+.pane-head .path{color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.grid{flex:1;overflow:auto;padding:4px 14px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start}
+.grid.drop{background:rgba(255,122,43,.06);outline:1px dashed var(--accent);outline-offset:-6px}
+.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;grid-auto-rows:minmax(92px,auto)}
+.pads .tile{min-height:92px;padding:6px 6px 5px;gap:3px;border-top:3px solid var(--pc,var(--line))}
+.pads .tile .name{font-size:11px;line-height:1.25;-webkit-line-clamp:3}
+.pads .tile .bpm{font-size:10px}
+.pads .keyb{font-size:10px;padding:1px 4px}
+.pads .role{font-size:0;height:5px;padding:0}
+.pads .tile .tag{display:none}
+.slot{border:1px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--faint);font:11px var(--mono)}
+.slot.over{border-color:var(--accent);background:rgba(255,122,43,.08)}
+.rowlabel{grid-column:1/-1;color:var(--faint);font-size:11px;padding-top:6px}
+.banner{margin:0 14px 10px;padding:9px 12px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);color:var(--dim);font-size:12px;display:flex;gap:10px;align-items:center}
+.banner.err{border-color:var(--bad)}
+.banner div{flex:1}
+.rec{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+.rec button{padding:2px 7px;font-size:11px}
+.rec .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.rec .rs{font:10px var(--mono);color:var(--faint)}
+.rec.cur .rn{color:var(--accent)}
+.recbtn.on{border-color:var(--bad);color:var(--bad)}
+.ghead{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 2px 2px;color:var(--dim);font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+.ghead:first-child{padding-top:0}
+.ghead .gc{color:var(--faint);font-weight:400}
+.ghead.over{color:var(--accent);border-color:var(--accent)}
+.ghead .ga{margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint)}
+.panbtn{font:10px var(--mono)!important;padding:1px 6px!important;color:var(--dim);min-width:34px}
+.panbtn.on{color:var(--accent);border-color:var(--accent)}
+.keyrow{display:flex;gap:6px}
+.tabs{display:flex;gap:2px;margin:16px 0 8px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:4px 10px 6px;font:600 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.tab.on{color:var(--text);border-bottom-color:var(--accent)}
+.keyrow select:first-child{width:80px;flex:none}
+.pan[hidden]{display:none}
+.pan{display:flex;align-items:center;gap:6px;margin-top:3px}
+.pan input{flex:1;accent-color:var(--accent);height:14px;min-width:0}
+.pan span{font:10px var(--mono);color:var(--dim);width:30px;text-align:right}
+.pan span.on{color:var(--accent)}
+.trk .n{cursor:grab}
+.empty{grid-column:1/-1;color:var(--dim);padding:28px 8px;text-align:center}
+.empty button{margin-top:10px}
+
+.tile{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px 8px;cursor:pointer;min-height:104px;display:flex;flex-direction:column;gap:5px;user-select:none;transition:opacity .15s,border-color .15s}
+.tile:hover{border-color:var(--line2)}
+.tile.sel{border-color:var(--accent);background:#33261b;box-shadow:0 0 0 2px var(--accent),0 6px 18px rgba(255,122,43,.22);z-index:1}
+.tile.dim{opacity:.42}
+.tile.c-same{box-shadow:inset 0 -3px 0 var(--ok)} .tile.c-adj{box-shadow:inset 0 -3px 0 #d9c545} .tile.c-rel{box-shadow:inset 0 -3px 0 #57a8e8}
+.tile.over{box-shadow:-3px 0 0 var(--accent)}
+.tile .top{display:flex;align-items:center;gap:6px}
+.keyb{font:700 11px var(--mono);padding:2px 6px;border-radius:5px;color:#111}
+.keyb.none{background:var(--panel2);color:var(--faint)}
+.tile .bpm{font:11px var(--mono);color:var(--dim);margin-left:auto}
+.tile .name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.tile .scale{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.roles{display:flex;gap:3px;margin-top:auto}
+.role{flex:1;font:600 9px var(--mono);text-align:center;padding:2px 0;border-radius:3px;color:#111;overflow:hidden;white-space:nowrap}
+.tile .tag{position:absolute;right:8px;bottom:26px;font-size:10px;color:var(--faint)}
+.tile .play{position:absolute;right:8px;top:30px;width:26px;height:26px;border-radius:50%;padding:0;display:none;align-items:center;justify-content:center;background:var(--accent);border:none;color:#1a0d04;font-size:11px}
+.tile.sel .play,.tile.playing .play,.tile:hover .play{display:flex}
+.tile .job{position:absolute;inset:0;border-radius:10px;background:rgba(19,20,22,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--dim);padding:10px;text-align:center}
+.bar{width:80%;height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:30%}
+.bar.ind i{animation:ind 1.1s infinite linear}
+@keyframes ind{from{margin-left:-30%}to{margin-left:100%}}
+@media (prefers-reduced-motion:reduce){.bar.ind i{animation:none;width:100%;opacity:.5}}
+.shim{color:var(--faint);font-size:11px}
+
+aside{display:flex;flex-direction:column;min-height:0;overflow:auto;padding:14px}
+aside>*{flex:none}
+aside h3{margin:16px 0 6px;font:600 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+aside h3:first-child{margin-top:0}
+.where{font:10px var(--mono);letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:6px}
+.namein{font-size:15px!important;font-weight:600}
+.facts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.fact{font:11px var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--dim)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.trk{display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;margin-bottom:5px}
+.trk.over{border-color:var(--accent)}
+.trk .n{font:700 11px var(--mono);color:var(--faint);width:26px;white-space:nowrap}
+.trk{cursor:default}
+.trk .r{font:700 9px var(--mono);padding:2px 5px;border-radius:3px;color:#111;min-width:38px;text-align:center}
+.trk .b{min-width:0;flex:1}
+.trk .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trk .p{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trk .mv{display:flex;flex-direction:column}
+.trk .mv button{padding:0 4px;font-size:9px;line-height:11px;border:none;background:none;color:var(--dim)}
+.trk .mv button:hover{color:var(--text)}
+.hint{color:var(--faint);font-size:11px;margin:4px 0}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:4px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.sugg{font-size:12px;margin-top:6px}
+.sugg a{color:var(--text);cursor:pointer;text-decoration:underline dotted}
+.chk{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:12px;margin-top:6px}
+.chk input{width:auto}
+
+footer{flex:none;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:44px}
+footer .pl{width:30px;height:30px;border-radius:50%;padding:0}
+footer .ttl{min-width:120px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+footer input[type=range]{flex:1;accent-color:var(--accent)}
+footer .tm{font:11px var(--mono);color:var(--dim);min-width:84px;text-align:right}
+footer .status{color:var(--dim);font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+footer .status.err{color:var(--bad)}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:10}
+.modal.on{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:22px;width:340px}
+.modal h4{margin:0 0 6px;font-size:15px}
+.modal p{color:var(--dim);margin:0 0 12px}
+.modal input{font:600 22px var(--mono)!important;letter-spacing:.3em;text-align:center}
+.modal .err{color:var(--bad);min-height:18px;margin-top:6px;font-size:12px}
+.modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+@media (max-width:1100px){main{grid-template-columns:1fr 1fr}aside{grid-column:1/-1;border-top:1px solid var(--line);max-height:42vh}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><b>MOVE</b> MANAGER</div>
+  <div class="conn"><span class="dot" id="dot"></span><span id="connText">подключение…</span></div>
+  <div class="spacer"></div>
+  <label title="Формат, в котором Move экспортирует звук проекта при переносе на компьютер">Аудио
+    <select id="fmt"><option value="wav">WAV</option><option value="mp3">MP3</option></select></label>
+  <label class="chk" style="margin:0" title="Move экспортирует звук проекта; если экспорт не пройдёт, возьму самую длинную запись этого сета из Recordings"><input type="checkbox" id="withAudio" checked> переносить с аудио</label>
+  <button id="refresh">Обновить</button>
+</header>
+
+<main>
+  <section class="pane">
+    <div class="pane-head"><h2>Move</h2><span class="count" id="moveCount"></span><div class="spacer"></div>
+</div>
+    <div id="moveBanner"></div>
+    <div class="grid" id="moveGrid" data-side="move"></div>
+  </section>
+  <section class="pane">
+    <div class="pane-head"><h2>Компьютер</h2><span class="count" id="libCount"></span><span class="path" id="libPath"></span><div class="spacer"></div>
+      <button class="ghost" id="importBtn" title="Добавить проекты .ablbundle, которые уже лежат на компьютере">Добавить…</button>
+      <button class="ghost" id="newGroup" title="Создать группу проектов">+ Группа</button>
+      <button id="chooseFolder">Папка…</button></div>
+    <div class="grid" id="libGrid" data-side="lib"></div>
+  </section>
+  <aside id="insp"></aside>
+</main>
+
+<footer>
+  <div class="status" id="status"></div>
+  <audio id="audio" preload="none"></audio>
+  <input type="file" id="bundleFile" accept=".ablbundle,.zip" multiple hidden>
+  <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" hidden>
+</footer>
+
+<div class="modal" id="auth"><div class="box">
+  <h4>Код подтверждения</h4>
+  <p>Move показывает код на экране. Введите его, чтобы подключиться.</p>
+  <input type="text" id="code" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Код с экрана Move">
+  <div class="err" id="authErr"></div>
+  <div class="row"><button id="authCancel">Позже</button><button class="primary" id="authOk">Подключить</button></div>
+</div></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:""};
+try{ const g = JSON.parse(localStorage.getItem("mm-groups")||"{}"); S.groups = g.groups||[]; S.collapsed = g.collapsed||{}; S.inputId = localStorage.getItem("mm-input")||""; }catch(e){}
+S.inputChosen = !!S.inputId;
+function saveGroups(){ try{ localStorage.setItem("mm-groups", JSON.stringify({groups:S.groups, collapsed:S.collapsed})); }catch(e){} }
+const BASE_SCALES = ["Major","Minor","Dorian","Phrygian","Mixolydian","Major Pentatonic","Minor Pentatonic"];
+const knownScales = () => [...new Set([...BASE_SCALES, ...[...S.move.sets, ...S.lib.items].map(x=>x.info?.scale).filter(Boolean)])];
+const libGroups = () => [...new Set([...S.lib.items.map(x=>x.group).filter(Boolean), ...S.groups])].sort((a,b)=>a.localeCompare(b,"ru"));
+function isChanged(it){ const tr = it.info?.tracks||[], o = S.order || tr.map((_,i)=>i);
+  return o.some((x,i)=>x!==i) || tr.some(t => Math.abs(((t.index in S.pans)?S.pans[t.index]:(t.pan||0))-(t.pan||0))>0.001) || !!keyPayload(it); }
+function keyPayload(it){ if(!S.key || !it.info) return null; const k = {};
+  if(S.key.rootNote!==it.info.rootNote || S.key.scale!==it.info.scale){ k.rootNote = S.key.rootNote; k.scale = S.key.scale; }
+  if(isFinite(S.key.tempo) && Math.abs(S.key.tempo-(it.info.tempo||0))>0.004) k.tempo = S.key.tempo;
+  return Object.keys(k).length ? k : null; }
+const PAD_COLORS = {1:"255,25,23",2:"255,142,12",3:"255,98,41",4:"255,186,115",5:"215,74,9",6:"231,231,127",7:"255,233,94",8:"192,255,112",9:"135,255,109",10:"93,219,32",11:"161,206,47",12:"106,237,196",13:"0,206,197",14:"0,212,198",15:"29,247,243",16:"113,167,231",17:"34,133,240",18:"125,87,229",19:"34,171,240",20:"150,139,233",21:"178,139,233",22:"223,139,233",23:"199,90,214",24:"247,35,141",25:"227,95,200"};
+const padMode = () => S.ssh.ok;
+const visPos = slot => (3-Math.floor(slot/8))*8 + slot%8;   // пэд 1 — левый нижний, как на устройстве
+const panLabel = v => { const n = Math.round(v*50); return n===0 ? "C" : Math.abs(n)+(n<0?"L":"R"); };
+
+/* ───────── музыка: тональности и колесо Камелота ───────── */
+const NOTES = ["C","C♯","D","E♭","E","F","F♯","G","A♭","A","B♭","B"];
+// сдвиг от тоники лада до тоники параллельного мажора + буква (A — минорный характер, B — мажорный)
+const MODES = {"Major":[0,"B",0],"Minor":[3,"A",0],"Dorian":[10,"A",1],"Phrygian":[8,"A",1],"Lydian":[7,"B",1],
+  "Mixolydian":[5,"B",1],"Locrian":[1,"A",1],"Minor Pentatonic":[3,"A",0],"Major Pentatonic":[0,"B",0],
+  "Minor Blues":[3,"A",0],"Harmonic Minor":[3,"A",1],"Melodic Minor":[3,"A",1],"Harmonic Major":[0,"B",1]};
+const MAJORISH = /major|lydian|mixolydian|dominant|bhairav|spanish|whole tone|messiaen/i;
+function camelot(info){
+  if(!info || typeof info.rootNote!=="number" || !info.scale) return null;
+  let m = MODES[info.scale];
+  if(!m) m = MAJORISH.test(info.scale) ? [0,"B",1] : [3,"A",1];
+  const tonic = (info.rootNote + m[0]) % 12;            // тоника параллельного мажора
+  const num = ((tonic*7) % 12 + 7) % 12 + 1;             // C→8, G→9, F→7 …
+  return {num, letter:m[1], code:num+m[1], approx:!!m[2]};
+}
+const keyName = info => (info && typeof info.rootNote==="number") ? `${NOTES[info.rootNote]} ${info.scale||""}` : "";
+function compat(a,b){
+  if(!a||!b) return null;
+  const d = Math.min((a.num-b.num+12)%12,(b.num-a.num+12)%12);
+  if(d===0 && a.letter===b.letter) return "same";
+  if(d===1 && a.letter===b.letter) return "adj";
+  if(d===0) return "rel";
+  return null;
+}
+const COMPAT_RU = {same:"та же", adj:"соседняя", rel:"параллельная"};
+function camDist(a,b){
+  if(!a||!b) return 9;
+  const d = Math.min((a.num-b.num+12)%12,(b.num-a.num+12)%12);
+  return d + (a.letter===b.letter?0:1);
+}
+const camColor = c => c ? `hsl(${(c.num-1)*30} ${c.letter==="A"?"62% 62%":"78% 72%"})` : "";
+const ROLE_COLORS = {Drums:"#ff8a5c",Bass:"#6fa8ff",Pad:"#b79cff",Lead:"#ffd166",Arp:"#7fe0c3",Pluck:"#9be37a",Keys:"#f4a6d7",
+  Strings:"#e0b089",Brass:"#e8c15a",Mallets:"#8fd3f4",Guitar:"#d6a26b",Vocal:"#ff9fb2",FX:"#a0a7b4",Synth:"#c9cdd4",Sampler:"#e6d7b0",Audio:"#d0d0d0"};
+const ROLE_SHORT = {Drums:"DRM",Bass:"BAS",Pad:"PAD",Lead:"LEAD",Arp:"ARP",Pluck:"PLK",Keys:"KEYS",Strings:"STR",Brass:"BRS",Mallets:"MAL",Guitar:"GTR",Vocal:"VOX",FX:"FX",Synth:"SYN",Sampler:"SMP",Audio:"AUD"};
+const KIND_RU = {drift:"Drift",wavetable:"Wavetable",drumRack:"Drum Rack",melodicSampler:"Melodic Sampler",drumCell:"Drum Sampler"};
+const SOURCE_RU = {"user-library":"User Library","abl-core-library":"Core Library"};
+
+/* ───────── API ───────── */
+async function api(method, url, body){
+  const r = await fetch(url, {method, headers: body?{"Content-Type":"application/json"}:{}, body: body?JSON.stringify(body):undefined});
+  let data = {};
+  try{ data = await r.json(); }catch(e){}
+  if(r.status===401){ showAuth(); const e = new Error("auth"); e.auth = true; throw e; }
+  if(!r.ok){ const e = new Error(data.message || data.error || ("Ошибка "+r.status)); e.offline = data.error==="offline"; throw e; }
+  return data;
+}
+function status(msg, err){ const el=$("#status"); el.textContent = msg||""; el.classList.toggle("err", !!err); }
+const fail = e => { if(!e.auth) status(e.message, true); };
+
+/* ───────── загрузка данных ───────── */
+async function loadMove(){
+  try{
+    const d = await api("GET","/api/move/sets");
+    S.move = {state:"ok", sets:d.sets, msg:""}; S.ssh = d.ssh || S.ssh;
+    render(); analyzeQueue();
+  }catch(e){
+    S.move = {state: e.auth?"auth":"offline", sets:[], msg: e.auth?"Нужен код подтверждения с экрана Move.":e.message};
+    render();
+  }
+}
+let analyzing = false;
+async function analyzeQueue(){
+  if(analyzing) return; analyzing = true;
+  try{
+    for(;;){
+      const s = S.move.sets.find(x => !x.info && !x.failed);
+      if(!s) break;
+      try{
+        const d = await api("GET", `/api/move/sets/${s.id}/info?stamp=${encodeURIComponent(s.modified||"")}`);
+        s.info = d.info;
+      }catch(e){ s.failed = true; if(e.auth||e.offline) break; }
+      render();
+    }
+  }finally{ analyzing = false; }
+}
+async function loadLib(){
+  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path}; }
+  catch(e){ fail(e); }
+  render();
+}
+async function loadConfig(){
+  try{
+    const c = await api("GET","/api/config");
+    if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
+    S.uiStamp = c.uiStamp; $("#fmt").value = c.audioFormat;
+    if(c.stale) status("Программа обновилась на диске. Перезапустите её в Терминале: Ctrl+C, затем снова python3 app.py", true);
+  }catch(e){}
+}
+async function loadRecs(name){
+  if(S.recs[name]) return;
+  S.recs[name] = {loading:true, list:[]};
+  try{ const d = await api("GET","/api/move/recordings?set="+encodeURIComponent(name)); S.recs[name] = {list:d.recordings}; }
+  catch(e){ S.recs[name] = {list:[], error:e.auth?"нужен вход на Move":e.message}; }
+  renderInspector();
+}
+
+/* ───────── выбор ───────── */
+const items = side => side==="move" ? S.move.sets : S.lib.items;
+const selItem = () => S.sel ? items(S.sel.side).find(x => x.id===S.sel.id) : null;
+function select(side,id){ S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; render(); }
+
+/* ───────── отрисовка ───────── */
+function tileHTML(side, it, pad){
+  const info = it.info, cam = camelot(info), sel = selItem(), selCam = sel ? camelot(sel.info) : null;
+  const isSel = S.sel && S.sel.side===side && S.sel.id===it.id;
+  const cls = ["tile"]; if(isSel) cls.push("sel");
+  if(selCam && !isSel){
+    const c = compat(selCam, cam);
+    if(c) cls.push("c-"+c); else cls.push("dim");
+  }
+  if(S.playing==="lib:"+it.id && side==="lib") cls.push("playing");
+  const job = S.jobs[side+":"+it.id];
+  const roles = (info?.tracks||[]).map(t => `<span class="role" style="background:${ROLE_COLORS[t.role]||"#888"}" title="${esc(t.name)}">${esc(ROLE_SHORT[t.role]||"—")}</span>`).join("");
+  const onOther = side==="move" ? S.lib.items.some(x => x.sourceId===it.id || x.name===it.name) : false;
+  const pc = pad && PAD_COLORS[it.color] ? ` style="--pc:rgb(${PAD_COLORS[it.color]})"` : "";
+  return `<div class="${cls.join(" ")}" draggable="true" data-side="${side}" data-id="${esc(it.id)}"${side==="lib"?` data-group="${esc(it.group||"")}"`:""}${pad?` data-slot="${it.slot}" title="Пэд ${it.slot+1}: ${esc(it.name)} — ${esc(keyName(info))}"`:""}${pc} tabindex="0">
+    <div class="top">${cam ? `<span class="keyb" style="background:${camColor(cam)}" title="${cam.approx?"Приблизительно: по набору нот лада":"Код Камелота"}">${cam.code}${cam.approx?"≈":""}</span>` : `<span class="keyb none">—</span>`}
+      <span class="bpm">${info?.tempo ? Math.round(info.tempo*10)/10+(pad?"":" bpm") : ""}</span></div>
+    <div class="name">${esc(it.name)}</div>
+    <div class="scale"${pad&&info?" hidden":""}>${info ? esc(keyName(info)) : (it.failed ? "не удалось прочитать" : `<span class="shim">читаю проект…</span>`)}</div>
+    <div class="roles">${roles}</div>
+    ${side==="lib" && it.audio ? `<button class="play" data-play="${esc(it.id)}" aria-label="Слушать">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚" : "▶"}</button>` : ""}
+    ${onOther ? `<span class="tag" title="Есть копия на компьютере">⤓</span>` : ""}
+    ${job ? `<div class="job"><div>${esc(job.stage||"…")}</div><div class="bar ${job.progress==null?"ind":""}"><i style="${job.progress!=null?`width:${Math.round(job.progress*100)}%`:""}"></i></div></div>` : ""}
+  </div>`;
+}
+function renderPane(side){
+  const grid = $(side==="move" ? "#moveGrid" : "#libGrid"), list = items(side);
+  const pads = side==="move" && padMode() && S.move.state==="ok";
+  grid.classList.toggle("pads", pads);
+  let html;
+  if(pads){
+    const bySlot = {}; const loose = [];
+    for(const it of list){ if(it.slot!=null && it.slot>=0 && it.slot<32 && !bySlot[it.slot]) bySlot[it.slot] = it; else loose.push(it); }
+    html = "";
+    for(let r=0;r<4;r++) for(let c=0;c<8;c++){ const idx = (3-r)*8+c; html += bySlot[idx] ? tileHTML("move", bySlot[idx], true) : `<div class="slot" data-slot="${idx}">${idx+1}</div>`; }
+    if(loose.length) html += `<div class="rowlabel">Без пэда</div>` + loose.map(it => tileHTML("move", it)).join("");
+  } else if(side==="lib" && list.length && libGroups().length){
+    const sect = (g, label) => { const its = list.filter(x => (x.group||"")===g), col = !!S.collapsed[g];
+      return `<div class="ghead" data-group="${esc(g)}" data-ghead="1" title="Щелчок — свернуть, двойной щелчок — переименовать"><span>${col?"▸":"▾"} ${esc(label)}</span><span class="gc">${its.length}</span>${g && !its.length?`<span class="ga">пусто — перетащите сюда проект</span>`:""}</div>` + (col ? "" : its.map(it => tileHTML("lib", it)).join("")); };
+    html = libGroups().map(g => sect(g, g)).join("") + sect("", "Без группы");
+  } else {
+    html = list.map(it => tileHTML(side,it)).join("");
+    if(side==="move" && S.move.state!=="ok"){
+      html = S.move.state==="loading" ? `<div class="empty">Ищу Move в сети…</div>`
+        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">${S.move.state==="auth"?"Ввести код":"Повторить"}</button></div>`;
+    } else if(!list.length){
+      html = `<div class="empty">${side==="move" ? "На Move нет проектов." : "Папка пуста. Перетащите сюда проект с Move."}</div>`;
+    }
+  }
+  grid.innerHTML = html;
+  $(side==="move"?"#moveCount":"#libCount").textContent = list.length ? list.length : "";
+  if(side==="move"){
+    const b = $("#moveBanner"), job = S.jobs["ssh"];
+    if(S.move.state!=="ok" || pads) b.innerHTML = "";
+    else if(job) b.innerHTML = `<div class="banner"><div>${esc(job.stage||"Подключаю…")}</div></div>`;
+    else if(S.ssh.enabled && S.ssh.error) b.innerHTML = `<div class="banner err"><div>Не получилось прочитать пэды: ${esc(S.ssh.error)}</div><button id="sshSetup">Подключить заново</button></div>`;
+    else b.innerHTML = `<div class="banner"><div>Расположение проектов по пэдам и правка проекта без смены пэда требуют SSH-доступа к Move. Программа создаст свой ключ и попросит подтвердить его колесом на устройстве.</div><button class="primary" id="sshSetup">Включить</button></div>`;
+  }
+}
+function render(){
+  renderPane("move"); renderPane("lib"); renderInspector();
+  $("#libPath").textContent = S.lib.path.split("/").filter(Boolean).slice(-2).join("/"); $("#libPath").title = S.lib.path;
+  const ok = S.move.state==="ok";
+  $("#dot").className = "dot " + (ok?"ok":S.move.state==="loading"?"":"bad");
+  $("#connText").textContent = ok ? "Move подключён" : S.move.state==="loading" ? "подключение…" : S.move.state==="auth" ? "нужен код" : "Move не в сети";
+}
+
+function wheelSVG(selCam){
+  const all = [...S.move.sets, ...S.lib.items].map(x => camelot(x.info)).filter(Boolean);
+  const cnt = {}; all.forEach(c => cnt[c.code] = (cnt[c.code]||0)+1);
+  const P = (r,a) => [100 + r*Math.sin(a), 100 - r*Math.cos(a)];
+  let out = "";
+  for(let n=1;n<=12;n++) for(const L of ["B","A"]){
+    const r0 = L==="B"?64:34, r1 = L==="B"?94:62, a0 = (n-1.5)*Math.PI/6+0.012, a1 = (n-0.5)*Math.PI/6-0.012;
+    const [x0,y0]=P(r1,a0),[x1,y1]=P(r1,a1),[x2,y2]=P(r0,a1),[x3,y3]=P(r0,a0);
+    const c = {num:n,letter:L}, rel = selCam ? compat(selCam,c) : null;
+    const fill = rel ? camColor(c) : (cnt[n+L] ? "#2f343b" : "#1d2024");
+    const stroke = rel==="same" ? "#fff" : "none";
+    const [tx,ty] = P((r0+r1)/2,(n-1)*Math.PI/6);
+    out += `<path d="M${x0} ${y0}A${r1} ${r1} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 0 0 ${x3} ${y3}Z" fill="${fill}" stroke="${stroke}" stroke-width="1.5"><title>${n+L}${cnt[n+L]?` — проектов: ${cnt[n+L]}`:""}</title></path>
+      <text x="${tx}" y="${ty+3}" text-anchor="middle" font-size="9" font-family="ui-monospace,Menlo,monospace" font-weight="700" fill="${rel?"#111":cnt[n+L]?"#c9cdd4":"#4b5058"}">${n+L}</text>`;
+  }
+  return `<svg viewBox="0 0 200 200" width="190" height="190" style="display:block;margin:4px auto" role="img" aria-label="Колесо Камелота">${out}</svg>`;
+}
+
+const fmtSize = b => b>1048576 ? (b/1048576).toFixed(1)+" МБ" : Math.max(1,Math.round(b/1024))+" КБ";
+function soundHTML(side, it){
+  if(side!=="lib") return "";
+  const rec = S.recording && S.recording.id===it.id;
+  const onMove = S.move.state==="ok" && S.move.sets.some(x => x.id===it.sourceId || x.name===it.name);
+  const inputs = S.inputs.length ? `<select id="inputSel" aria-label="Аудиовход для записи" style="margin-bottom:6px"><option value="">Вход по умолчанию</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Вход")}</option>`).join("")}</select>` : "";
+  return `<h3>Звучание</h3>
+    <div class="hint">${it.audio ? "Звук проекта: "+esc(it.audioSource||it.audio) : "У проекта пока нет звука."}</div>
+    ${it.audioError ? `<div class="hint" style="color:var(--bad)">Последний экспорт не удался: ${esc(it.audioError)}</div>` : ""}
+    <div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move экспортирует звук проекта заново":"Проект должен быть на Move"}">Экспорт с Move</button><button id="actRec" class="recbtn ${rec?"on":""}">${rec?"■ Остановить запись":"● Записать со входа"}</button><button id="actAudio">Файл…</button></div>
+    ${inputs}`;
+}
+function renderInspector(){
+  const el = $("#insp"), it = selItem();
+  if(document.activeElement && el.contains(document.activeElement) && ["TEXTAREA","INPUT"].includes(document.activeElement.tagName) && !["checkbox","range"].includes(document.activeElement.type) && it && el.dataset.key===S.sel.side+":"+S.sel.id) return;
+  if(!it){ el.dataset.key=""; el.innerHTML = `<h3>Проект</h3><div class="hint">Выберите проект слева или справа. Перетаскивание внутри окна меняет порядок, между окнами — переносит проект.</div>`; return; }
+  el.dataset.key = S.sel.side+":"+S.sel.id;
+  const side = S.sel.side, info = it.info, cam = camelot(info);
+  const tracks = info?.tracks || [];
+  const order = S.order || tracks.map((_,i)=>i);
+  const panOf = t => (t.index in S.pans) ? S.pans[t.index] : (t.pan||0);
+  const changed = isChanged(it);
+  const trk = order.map((ti,pos) => { const t = tracks[ti];
+    const path = [SOURCE_RU[t.source]||t.source, ...t.folders].filter(Boolean).join(" / ");
+    const sub = [path, KIND_RU[t.kind]||t.kind, t.clips?`клипов: ${t.clips}`:"", t.sampleCount?`сэмплов: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
+    const pv = panOf(t);
+    return `<div class="trk" data-pos="${pos}" title="${esc(t.samples?.length?"Сэмплы: "+t.samples.join(", "):"")}">
+      <span class="n" draggable="true" title="Потяните, чтобы переставить">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
+      <div class="b"><div class="t">${esc(t.preset||t.name)}</div><div class="p" title="${esc(sub)}">${esc(sub)}</div>
+</div></div>`; }).join("");
+  const panRows = order.map((ti,pos) => { const t = tracks[ti], pv = panOf(t);
+    return `<div class="trk"><span class="n" style="cursor:default;width:12px">${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
+      <div class="b"><div class="t">${esc(t.preset||t.name)}</div>
+        <div class="pan"><input type="range" min="-50" max="50" step="1" value="${Math.round(pv*50)}" data-pan="${t.index}" aria-label="Панорама дорожки ${pos+1}" title="Двойной щелчок — в центр"><span class="${Math.round(pv*50)?"on":""}">${panLabel(pv)}</span></div></div></div>`; }).join("");
+  // подсказки по Камелоту
+  let sugg = "";
+  if(cam){
+    const up = (cam.num%12)+1, down = ((cam.num+10)%12)+1, other = cam.letter==="A"?"B":"A";
+    sugg = `<div class="hint">Сочетаются: ${cam.code}, ${down+cam.letter}, ${up+cam.letter}, ${cam.num+other}${cam.approx?". Код приблизительный: лад сведён к мажору/минору с тем же набором нот.":""}</div>`;
+  }
+  el.innerHTML = `
+    <div class="where">${side==="move"?"на Move"+(it.slot!=null?` · пэд ${it.slot+1}`:""):"на компьютере"}</div>
+    <input type="text" class="namein" id="nameIn" value="${esc(it.name)}" aria-label="Название проекта">
+    <div class="facts">
+      ${cam?`<span class="keyb" style="background:${camColor(cam)}">${cam.code}${cam.approx?"≈":""}</span>`:""}
+      ${info?`<span class="fact">${esc(keyName(info))}</span>`:""}
+      ${info?.tempo?`<span class="fact">${Math.round(info.tempo*10)/10} bpm</span>`:""}
+      ${info?.timeSignature?`<span class="fact">${esc(info.timeSignature)}</span>`:""}
+    </div>
+    <div class="acts">
+      ${side==="move" ? `<button class="primary" id="actPull">На компьютер →</button>` : `<button class="primary" id="actPush">← На Move</button>`}
+      ${side==="lib" && it.audio ? `<button id="actPlay">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚ Пауза":"▶ Слушать"}</button>` : ""}
+      ${side==="lib" ? `<button id="actReveal">Показать в Finder</button>` : ""}
+      <button class="danger" id="actDel">Удалить</button>
+    </div>
+    ${soundHTML(side, it)}
+    ${side==="lib" ? `<h3>Группа</h3><input type="text" id="groupIn" list="groupList" value="${esc(it.group||"")}" placeholder="Без группы" aria-label="Группа проекта"><datalist id="groupList">${libGroups().map(g=>`<option value="${esc(g)}">`).join("")}</datalist>` : ""}
+    ${info && typeof info.rootNote==="number" ? `<h3>Тональность и темп</h3>
+      <div class="keyrow"><select id="keyRoot" aria-label="Тоника">${NOTES.map((n,i)=>`<option value="${i}" ${i===(S.key?S.key.rootNote:info.rootNote)?"selected":""}>${n}</option>`).join("")}</select>
+      <select id="keyScale" aria-label="Лад">${knownScales().map(sc=>`<option ${sc===(S.key?S.key.scale:info.scale)?"selected":""}>${esc(sc)}</option>`).join("")}</select>
+      <input type="number" id="keyTempo" min="40" max="300" step="0.1" value="${S.key && isFinite(S.key.tempo) ? S.key.tempo : Math.round((info.tempo||120)*100)/100}" aria-label="Темп, bpm" title="Темп, bpm" style="width:84px;flex:none;background:#111214;border:1px solid var(--line);border-radius:6px;padding:6px 8px"></div>
+      <div class="hint">Тоника и лад задают раскладку пэдов; записанные ноты остаются на своих местах. Знак ≈ у кода Камелота — код приблизительный: лад не мажор и не минор.</div>` : ""}
+    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Дорожки</button><button class="tab ${S.tab==="pan"?"on":""}" data-tab="pan">Панорамирование</button></div>
+    ${tracks.length ? (S.tab==="pan" ? panRows : trk) : `<div class="hint">${info?.error?esc(info.error):"Проект ещё читается…"}</div>`}
+    ${tracks.length ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" ${changed?"":"disabled"}>Применить изменения</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Сбросить</button></div>
+      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "изменить сам проект на Move — пэд и цвет сохранятся (иначе создам копию «_edit»)" : "заменить оригинал — проект переедет на другой пэд (иначе создам копию «_edit»)"}</label>`:""}` : ""}
+    <h3>Камелот</h3>
+    ${wheelSVG(cam)}
+    <div class="legend"><span><i style="background:var(--ok)"></i>та же</span><span><i style="background:#d9c545"></i>соседняя ±1</span><span><i style="background:#57a8e8"></i>параллельная</span></div>
+    ${sugg}
+    <h3>Описание</h3>
+    <textarea id="descIn" rows="2" placeholder="Коротко: что это за проект">${esc(it.description)}</textarea>
+    <h3>Заметки</h3>
+    <textarea id="notesIn" rows="5" placeholder="Идеи, что доделать, где играл…">${esc(it.notes)}</textarea>
+    <div class="hint">${side==="move"?"Описание и заметки к проектам на Move хранятся на компьютере, в файле config.json программы; на само устройство не пишутся. При переносе проекта переезжают в его папку.":"Сохраняются в meta.json в папке проекта."}</div>`;
+}
+
+/* ───────── фоновые задачи ───────── */
+async function runJob(key, startFn){
+  S.jobs[key] = {stage:"…", progress:null}; render();
+  try{
+    let job = await startFn();
+    while(job.status==="running"){
+      if(job.saved && !job._seen){ loadLib(); } job._seen = job._seen || job.saved;
+      S.jobs[key] = job; render();
+      await new Promise(r => setTimeout(r, 600));
+      job = await api("GET", "/api/jobs/"+job.id);
+    }
+    if(job.status==="error"){ if(job.error==="auth"){ showAuth(); throw Object.assign(new Error("auth"),{auth:true}); } throw new Error(job.error); }
+    return job.result || {};
+  } finally { delete S.jobs[key]; render(); }
+}
+async function pull(id, group){
+  const it = S.move.sets.find(x=>x.id===id); if(!it) return;
+  const ex = S.lib.items.find(x=>x.name===it.name);
+  if(ex && !confirm(`«${it.name}» уже есть на компьютере. Обновить проект и его звук? Описание и заметки сохранятся.`)) return;
+  status(`Переношу «${it.name}» на компьютер…`);
+  try{
+    let seen = false;
+    const res = await runJob("move:"+id, async () => { const j = await api("POST", `/api/move/sets/${id}/pull`, {audio: $("#withAudio").checked, group: group ?? null}); return j; });
+    await loadLib();
+    status(res.audioError ? `«${it.name}» сохранён без звука: ${res.audioError}` : `«${it.name}» сохранён на компьютере`, !!res.audioError);
+  }catch(e){ fail(e); await loadLib(); }
+}
+async function renderLib(id){
+  const it = S.lib.items.find(x=>x.id===id); if(!it) return;
+  status(`Move экспортирует звук «${it.name}»…`);
+  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/render`)); stopIfPlaying(id); await loadLib(); status("Звук проекта обновлён"); }
+  catch(e){ fail(e); await loadLib(); }
+}
+async function setGroup(id, group){
+  try{ await api("PATCH", `/api/library/${encodeURIComponent(id)}`, {group}); if(group && S.collapsed[group]){ delete S.collapsed[group]; saveGroups(); } await loadLib(); }
+  catch(e){ fail(e); }
+}
+async function renameGroup(old){
+  const n = (prompt("Новое название группы (пусто — расформировать):", old) ?? old).trim(); if(n===old) return;
+  try{
+    for(const x of S.lib.items.filter(x=>x.group===old)) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:n});
+    S.groups = S.groups.filter(g=>g!==old); if(n && !S.groups.includes(n)) S.groups.push(n); saveGroups(); await loadLib();
+  }catch(e){ fail(e); }
+}
+async function push(id, slot){
+  const it = S.lib.items.find(x=>x.id===id); if(!it) return;
+  if(S.move.sets.some(x=>x.name===it.name) && !confirm(`На Move уже есть проект «${it.name}». Загрузить ещё один с тем же названием?`)) return;
+  status(`Загружаю «${it.name}» на Move…`);
+  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null})); await loadMove(); status(`«${it.name}» загружен на Move`); }
+  catch(e){ fail(e); }
+}
+async function applyOrder(){
+  const it = selItem(); if(!it) return;
+  const {side,id} = S.sel, order = S.order, pans = S.pans;
+  try{
+    if(side==="move"){
+      if(S.replace && !padMode() && !confirm(`Заменить «${it.name}» на Move изменённой версией? Старая версия будет удалена, а проект окажется на другом пэде.`)) return;
+      status("Применяю изменения…");
+      const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/edit`, {order, pans, replace:S.replace, key:keyPayload(it)}));
+      S.order = null; S.pans = {}; S.key = null; await loadMove();
+      status(res.inPlace ? "Изменения записаны в проект на Move. Если он сейчас открыт на устройстве, откройте его заново." : res.replaced ? "Проект заменён изменённой версией" : `Создана копия «${res.copy}»`);
+    } else {
+      await api("POST", `/api/library/${encodeURIComponent(id)}/edit`, {order, pans, key:keyPayload(it)});
+      S.order = null; S.pans = {}; S.key = null; await loadLib(); status("Изменения сохранены в проекте на компьютере");
+    }
+  }catch(e){ fail(e); }
+}
+async function moveSlot(id, slot){
+  const it = S.move.sets.find(x=>x.id===id); if(!it || it.slot===slot) return;
+  const other = S.move.sets.find(x=>x.slot===slot && x.id!==id);
+  const moves = [{id, slot}];
+  if(other){ if(it.slot==null){ status("Этот пэд занят", true); return; } moves.push({id:other.id, slot:it.slot}); other.slot = it.slot; }
+  it.slot = slot; render();
+  try{ await api("POST","/api/move/slots",{moves}); status(other ? `«${it.name}» и «${other.name}» поменялись пэдами` : `«${it.name}» перенесён на пэд ${slot+1}`); }
+  catch(e){ fail(e); }
+  await loadMove();
+}
+async function setupSsh(){
+  status("Подключаю управление пэдами…");
+  try{ await runJob("ssh", () => api("POST","/api/ssh/setup")); await loadMove(); status(padMode() ? "Пэды подключены" : "Ключ добавлен, но пэды прочитать не удалось", !padMode()); }
+  catch(e){ fail(e); await loadMove(); }
+}
+async function saveOrder(side){ try{ await api("POST","/api/order",{side, ids: items(side).map(x=>x.id)}); }catch(e){ fail(e); } }
+function autoOrder(side){
+  const list = items(side).slice(); if(list.length<2) return;
+  const start = (S.sel && S.sel.side===side && list.find(x=>x.id===S.sel.id)) || list.find(x=>camelot(x.info)) || list[0];
+  const out = [start]; const rest = list.filter(x=>x!==start);
+  while(rest.length){
+    const last = out[out.length-1], lc = camelot(last.info);
+    rest.sort((a,b) => (camDist(lc,camelot(a.info)) - camDist(lc,camelot(b.info))) || (Math.abs((a.info?.tempo||0)-(last.info?.tempo||0)) - Math.abs((b.info?.tempo||0)-(last.info?.tempo||0))));
+    out.push(rest.shift());
+  }
+  if(side==="move" && padMode()){
+    const slotted = out.filter(x=>x.slot!=null), free = slotted.map(x=>x.slot).sort((a,b)=>visPos(a)-visPos(b));
+    if(!confirm(`Переставить ${slotted.length} проектов на пэдах Move по Камелоту, начиная с «${start.name}»?`)) return;
+    const moves = slotted.map((x,i)=>({id:x.id, slot:free[i]})).filter((m,i)=>slotted[i].slot!==m.slot);
+    api("POST","/api/move/slots",{moves}).then(()=>{ status("Пэды переставлены по Камелоту"); return loadMove(); }).catch(e=>{ fail(e); loadMove(); });
+    return;
+  }
+  if(side==="move") S.move.sets = out; else S.lib.items = out;
+  render(); saveOrder(side); status("Порядок выстроен по Камелоту, начиная с «"+start.name+"»");
+}
+
+/* ───────── плеер ───────── */
+const audio = $("#audio");
+const fmtT = t => isFinite(t) ? Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0") : "0:00";
+function playSrc(key, src, title){
+  if(S.playing===key){ audio.paused ? audio.play() : audio.pause(); return; }
+  S.playing = key; audio.src = src;
+  audio.play().catch(e => status("Не удалось воспроизвести: "+e.message, true));
+}
+function play(id){
+  const it = S.lib.items.find(x=>x.id===id); if(!it || !it.audio) return;
+  playSrc("lib:"+id, `/api/library/${encodeURIComponent(id)}/audio?v=${encodeURIComponent((it.savedAt||"")+(it.audioSource||"")+it.audio)}`, it.name);
+}
+const stopIfPlaying = id => { if(S.playing==="lib:"+id){ audio.pause(); audio.removeAttribute("src"); S.playing = null; } };
+async function useRecording(id, name){
+  status(`Скачиваю «${name}» с Move…`);
+  try{ stopIfPlaying(id); await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/audio-from-move`, {name})); await loadLib(); status("Звук проекта обновлён"); }
+  catch(e){ fail(e); }
+}
+async function uploadAudio(id, blob, ext){
+  const r = await fetch(`/api/library/${encodeURIComponent(id)}/audio?ext=${ext}`, {method:"POST", body:blob});
+  const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message||"Не удалось сохранить звук");
+  stopIfPlaying(id); await loadLib();
+}
+async function loadInputs(){
+  try{ S.inputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind==="audioinput" && d.deviceId && d.deviceId!=="default"); }catch(e){ S.inputs = []; }
+}
+async function toggleRecord(id){
+  if(S.recording){ S.recording.rec.stop(); return; }
+  try{
+    const audioC = {echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:2};
+    if(S.inputId) audioC.deviceId = {exact:S.inputId};
+    let stream;
+    try{ stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
+    catch(e){ if(!S.inputId) throw e; S.inputId = ""; delete audioC.deviceId; stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
+    await loadInputs();
+    if(!S.inputChosen){
+      // первый раз: только показываем список входов и ничего не пишем, чтобы не записать микрофон по ошибке
+      stream.getTracks().forEach(t=>t.stop()); S.inputChosen = true; renderInspector();
+      status("Выберите аудиовход в списке под кнопками и нажмите «Записать со входа» ещё раз"); return;
+    }
+    const mime = ["audio/webm;codecs=opus","audio/mp4","audio/webm"].find(m => MediaRecorder.isTypeSupported(m)) || "";
+    const rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:256000} : undefined), chunks = [], t0 = Date.now();
+    rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(S.recording.timer); stream.getTracks().forEach(t=>t.stop()); S.recording = null; renderInspector();
+      try{ await uploadAudio(id, new Blob(chunks, {type:rec.mimeType}), /mp4/.test(rec.mimeType)?"m4a":"webm"); status("Запись сохранена как звук проекта"); }
+      catch(e){ fail(e); }
+    };
+    const label = stream.getAudioTracks()[0]?.label || "вход по умолчанию";
+    S.recording = {id, rec, timer: setInterval(() => status(`● Идёт запись (${fmtT((Date.now()-t0)/1000)}) — ${label}`), 500)};
+    rec.start(1000); renderInspector();
+  }catch(e){ status("Нет доступа к аудиовходу: "+e.message, true); }
+}
+for(const ev of ["play","pause","ended"]) audio.addEventListener(ev, () => { if(ev==="ended") S.playing = null; render(); });
+
+/* ───────── события: плитки ───────── */
+let drag = null, ghTimer = null;
+for(const g of [$("#moveGrid"), $("#libGrid")]){
+  g.addEventListener("click", e => {
+    if(e.target.id==="sshSetup") return setupSsh();
+    const gh = e.target.closest("[data-ghead]");
+    if(gh){ const g = gh.dataset.group; clearTimeout(ghTimer); if(e.detail>1){ if(g) renameGroup(g); } else { ghTimer = setTimeout(() => { S.collapsed[g] = !S.collapsed[g]; saveGroups(); render(); }, 220); } return; }
+    if(e.target.id==="retry"){ S.move.state==="auth" ? showAuth() : (S.move.state="loading", render(), loadMove()); return; }
+    const p = e.target.closest("[data-play]"); if(p){ e.stopPropagation(); play(p.dataset.play); return; }
+    const t = e.target.closest(".tile"); if(t) select(t.dataset.side, t.dataset.id);
+  });
+  g.addEventListener("keydown", e => { const t = e.target.closest(".tile"); if(t && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); select(t.dataset.side,t.dataset.id); } });
+  g.addEventListener("dragstart", e => { const t = e.target.closest(".tile"); if(!t) return; drag = {side:t.dataset.side, id:t.dataset.id}; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.id); });
+  g.addEventListener("dragover", e => { if(!drag) return; e.preventDefault();
+    document.querySelectorAll(".tile.over").forEach(x=>x.classList.remove("over"));
+    document.querySelectorAll(".slot.over, .ghead.over").forEach(x=>x.classList.remove("over"));
+    const sl = e.target.closest(".slot, .ghead"); if(sl){ sl.classList.add("over"); return; }
+    if(drag.side===g.dataset.side){ const t = e.target.closest(".tile"); if(t && t.dataset.id!==drag.id) t.classList.add("over"); }
+    else g.classList.add("drop"); });
+  g.addEventListener("dragleave", e => { if(!g.contains(e.relatedTarget)) g.classList.remove("drop"); });
+  g.addEventListener("drop", e => { if(!drag) return; e.preventDefault(); g.classList.remove("drop");
+    const side = g.dataset.side, d = drag; drag = null;
+    const cell = e.target.closest("[data-slot]"), slot = cell && cell.dataset.slot!=="null" ? +cell.dataset.slot : null;
+    if(d.side!==side){ d.side==="move" ? pull(d.id, e.target.closest("[data-group]")?.dataset.group) : push(d.id, cell && cell.classList.contains("slot") ? slot : null); return; }
+    if(side==="move" && padMode()){ if(slot!=null) moveSlot(d.id, slot); return; }
+    if(side==="lib"){ const gEl = e.target.closest("[data-group]"), me = S.lib.items.find(x=>x.id===d.id);
+      if(gEl && me && (me.group||"")!==gEl.dataset.group){ setGroup(d.id, gEl.dataset.group); return; } }
+    const list = items(side), from = list.findIndex(x=>x.id===d.id), t = e.target.closest(".tile");
+    if(from<0) return; const [m] = list.splice(from,1);
+    let to = t ? list.findIndex(x=>x.id===t.dataset.id) : list.length; if(to<0) to = list.length;
+    list.splice(to,0,m); render(); saveOrder(side); });
+  g.addEventListener("dragend", () => { drag = null; document.querySelectorAll(".over,.drop").forEach(x=>x.classList.remove("over","drop")); });
+}
+$("#moveBanner").addEventListener("click", e => { if(e.target.id==="sshSetup") setupSsh(); });
+async function importFiles(files, group){
+  const list = [...files].filter(f => /\.(ablbundle|zip)$/i.test(f.name)); if(!list.length){ status("Нужны файлы .ablbundle", true); return; }
+  let ok = 0;
+  for(const f of list){
+    status(`Добавляю «${f.name}»…`);
+    try{ const r = await fetch(`/api/library-import?name=${encodeURIComponent(f.name)}${group?`&group=${encodeURIComponent(group)}`:""}`, {method:"POST", body:f});
+      const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message||"не удалось добавить"); ok++; }
+    catch(e){ status(`«${f.name}»: ${e.message}`, true); await loadLib(); return; }
+  }
+  await loadLib(); status(`Добавлено проектов: ${ok}`);
+}
+$("#importBtn").onclick = () => { $("#bundleFile").value = ""; $("#bundleFile").click(); };
+$("#bundleFile").onchange = e => importFiles(e.target.files);
+$("#libGrid").addEventListener("dragover", e => { if(!drag && e.dataTransfer.types.includes("Files")){ e.preventDefault(); $("#libGrid").classList.add("drop"); } });
+$("#libGrid").addEventListener("drop", e => { if(!drag && e.dataTransfer.files.length){ e.preventDefault(); $("#libGrid").classList.remove("drop"); importFiles(e.dataTransfer.files, e.target.closest("[data-group]")?.dataset.group); } });
+$("#newGroup").onclick = () => { const n = (prompt("Название новой группы:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Группа «${n}» создана — перетащите в неё проекты`); };
+
+/* ───────── события: инспектор ───────── */
+const insp = $("#insp"); let trkDrag = null, saveTimer = null;
+function moveTrack(from,to){ const it = selItem(); if(!it) return; const o = S.order || it.info.tracks.map((_,i)=>i); const [m] = o.splice(from,1); o.splice(to,0,m); S.order = o; renderInspector(); }
+insp.addEventListener("click", async e => {
+  const it = selItem(); if(!it) return; const {side,id} = S.sel, t = e.target;
+  if(t.dataset.up!==undefined) return moveTrack(+t.dataset.up, +t.dataset.up-1);
+  if(t.dataset.down!==undefined) return moveTrack(+t.dataset.down, +t.dataset.down+1);
+  if(t.dataset.go) return select(t.dataset.go, t.dataset.goid);
+  if(t.id==="actPull") return pull(id);
+  if(t.id==="actPush") return push(id);
+  if(t.id==="actPlay") return play(id);
+  if(t.id==="applyOrder") return applyOrder();
+  if(t.id==="resetOrder"){ S.order = null; S.pans = {}; S.key = null; return renderInspector(); }
+  if(t.id==="actAudio"){ $("#audioFile").value = ""; return $("#audioFile").click(); }
+  if(t.id==="actRec") return toggleRecord(id);
+  if(t.id==="actRender") return renderLib(id);
+  if(t.dataset.tab){ S.tab = t.dataset.tab; return renderInspector(); }
+  if(t.dataset.recplay) return playSrc("rec:"+t.dataset.recplay, `/api/move/recordings/${encodeURIComponent(t.dataset.recplay)}/audio`, t.dataset.recplay.replace(/\.wav$/i,""));
+  if(t.dataset.recuse) return useRecording(id, t.dataset.recuse);
+  if(t.id==="actReveal") return api("POST", `/api/library/${encodeURIComponent(id)}/reveal`).catch(fail);
+  if(t.id==="actDel"){
+    try{
+      if(side==="move"){
+        if(!confirm(`Удалить «${it.name}» с Move? Это действие нельзя отменить.`)) return;
+        await api("DELETE", `/api/move/sets/${id}`); S.sel = null; await loadMove(); status(`«${it.name}» удалён с Move`);
+      } else {
+        if(!confirm(`Убрать «${it.name}» из папки? Проект переедет в подпапку «_Удалённые».`)) return;
+        stopIfPlaying(id);
+        await api("DELETE", `/api/library/${encodeURIComponent(id)}`); S.sel = null; await loadLib(); status(`«${it.name}» перемещён в «_Удалённые»`);
+      }
+    }catch(err){ fail(err); }
+  }
+});
+insp.addEventListener("change", async e => {
+  if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
+  if(e.target.id==="inputSel"){ S.inputId = e.target.value; S.inputChosen = true; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} return; }
+  if(e.target.id==="groupIn"){ const it = selItem(); if(it && S.sel.side==="lib" && e.target.value.trim()!==(it.group||"")){ e.target.blur(); setGroup(it.id, e.target.value.trim()); } return; }
+  if(e.target.id==="keyRoot" || e.target.id==="keyScale"){ const it = selItem(); if(!it) return;
+    S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat($("#keyTempo").value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return; }
+  if(e.target.id==="nameIn"){
+    const it = selItem(), name = e.target.value.trim(); if(!it || !name || name===it.name){ e.target.value = it?.name||""; return; }
+    const {side,id} = S.sel;
+    try{
+      if(side==="move"){ await api("PATCH", `/api/move/sets/${id}`, {name}); e.target.blur(); await loadMove(); }
+      else { const r = await api("PATCH", `/api/library/${encodeURIComponent(id)}`, {name}); if(S.playing==="lib:"+id) S.playing = "lib:"+r.id; S.sel = {side, id:r.id}; e.target.blur(); await loadLib(); }
+      status("Переименовано");
+    }catch(err){ fail(err); e.target.value = it.name; }
+  }
+});
+insp.addEventListener("keydown", e => { if((e.target.id==="nameIn" || e.target.id==="groupIn") && e.key==="Enter") e.target.blur(); });
+insp.addEventListener("dblclick", e => { if(e.target.dataset.pan!==undefined){ e.target.value = 0; e.target.dispatchEvent(new Event("input",{bubbles:true})); } });
+insp.addEventListener("input", e => {
+  if(e.target.dataset.pan!==undefined){
+    const it = selItem(); if(!it) return; const ti = +e.target.dataset.pan, v = +e.target.value/50;
+    S.pans[ti] = v; const lab = e.target.nextElementSibling; lab.textContent = panLabel(v); lab.classList.toggle("on", !!Math.round(v*50));
+    const ch = isChanged(it);
+    $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return;
+  }
+  if(e.target.id==="keyTempo"){ const it = selItem(); if(!it) return;
+    S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat(e.target.value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return; }
+  if(e.target.id!=="descIn" && e.target.id!=="notesIn") return;
+  const it = selItem(); if(!it) return; const {side,id} = S.sel;
+  const field = e.target.id==="descIn" ? "description" : "notes"; it[field] = e.target.value;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try{ await api(side==="move"?"POST":"PATCH", side==="move"?`/api/move/sets/${id}/meta`:`/api/library/${encodeURIComponent(id)}`, {description:it.description, notes:it.notes}); status("Заметки сохранены"); }
+    catch(err){ fail(err); }
+  }, 500);
+});
+insp.addEventListener("dragstart", e => { const r = e.target.closest(".trk"); if(r && e.target.classList.contains("n")){ trkDrag = +r.dataset.pos; e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain","t"); } });
+insp.addEventListener("dragover", e => { if(trkDrag===null) return; e.preventDefault(); insp.querySelectorAll(".trk.over").forEach(x=>x.classList.remove("over")); const r = e.target.closest(".trk"); if(r) r.classList.add("over"); });
+insp.addEventListener("drop", e => { if(trkDrag===null) return; e.preventDefault(); const r = e.target.closest(".trk"); const from = trkDrag; trkDrag = null; if(r && +r.dataset.pos!==from) moveTrack(from, +r.dataset.pos); });
+insp.addEventListener("dragend", () => { trkDrag = null; });
+
+$("#audioFile").onchange = async e => {
+  const f = e.target.files[0], it = selItem(); if(!f || !it || S.sel.side!=="lib") return;
+  try{ await uploadAudio(it.id, f, f.name.split(".").pop().toLowerCase()); status("Файл прикреплён как звук проекта"); }
+  catch(err){ fail(err); }
+};
+
+/* ───────── шапка ───────── */
+$("#fmt").onchange = e => api("POST","/api/config",{audioFormat:e.target.value}).catch(fail);
+$("#refresh").onclick = () => { status(""); S.recs = {}; loadConfig(); loadMove(); loadLib(); };
+$("#chooseFolder").onclick = async () => {
+  try{
+    status("Выберите папку в открывшемся окне Finder…");
+    const r = await api("POST","/api/choose-folder"); status(r.chosen ? "Папка: "+r.library : ""); await loadLib();
+  }catch(e){
+    const p = prompt("Путь к папке для проектов:", S.lib.path);
+    if(p){ try{ await api("POST","/api/config",{library:p}); await loadLib(); status("Папка: "+p); }catch(err){ fail(err); } }
+  }
+};
+
+/* ───────── авторизация ───────── */
+let authOpen = false;
+async function showAuth(){
+  if(authOpen) return; authOpen = true;
+  $("#auth").classList.add("on"); $("#authErr").textContent = ""; $("#code").value = ""; $("#code").focus();
+  try{ const r = await fetch("/api/auth/start",{method:"POST"}); if(!r.ok){ const d = await r.json().catch(()=>({})); $("#authErr").textContent = d.message || "Move не отвечает"; } }
+  catch(e){ $("#authErr").textContent = "Move не отвечает"; }
+}
+function hideAuth(){ authOpen = false; $("#auth").classList.remove("on"); }
+async function submitCode(){
+  const code = $("#code").value.trim(); if(!code) return;
+  $("#authOk").disabled = true;
+  try{
+    const r = await fetch("/api/auth/code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code})});
+    const d = await r.json().catch(()=>({}));
+    if(d.ok){ hideAuth(); S.move.state = "loading"; render(); loadMove(); }
+    else { $("#authErr").textContent = d.error || d.message || "Не получилось"; $("#code").value = ""; $("#code").focus(); }
+  }catch(e){ $("#authErr").textContent = "Move не отвечает"; }
+  $("#authOk").disabled = false;
+}
+$("#authOk").onclick = submitCode;
+$("#authCancel").onclick = hideAuth;
+$("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); if(e.key==="Escape") hideAuth(); });
+
+render(); loadConfig(); loadLib(); loadMove();
+</script>
+</body>
+</html>
