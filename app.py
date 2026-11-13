@@ -4,7 +4,9 @@
 Запуск:  python3 app.py     (откроется http://127.0.0.1:8765)
 Нужен только пакет requests:  python3 -m pip install requests
 """
+import copy
 import json
+import math
 import mimetypes
 import os
 import re
@@ -23,6 +25,8 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests
 
+from midi import MidiError, clip_to_midi, midi_to_notes
+
 APP_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.json"
 CACHE_DIR = APP_DIR / "cache"
@@ -30,7 +34,7 @@ STATIC_DIR = APP_DIR / "static"
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "16"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "20"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -225,7 +229,71 @@ def parse_song(song):
         "timeSignature": f"{ts.get('upper', 4)}/{ts.get('lower', 4)}",
         "scenes": len(song.get("scenes") or []),
         "tracks": tracks,
+        "clips": clips_grid(song),
     }
+
+
+def clips_grid(song):
+    """Сетка клипов: по дорожкам, по сценам — {"notes", "length"} или None."""
+    grid = []
+    for tr in song.get("tracks") or []:
+        row = []
+        for slot in tr.get("clipSlots") or []:
+            c = (slot or {}).get("clip")
+            if c:
+                region = c.get("region") or {}
+                row.append({"notes": len(c.get("notes") or []),
+                            "length": float(region.get("end", 0.0)) - float(region.get("start", 0.0))})
+            else:
+                row.append(None)
+        grid.append(row)
+    return grid
+
+
+def _slot(song, track, scene):
+    tracks = song.get("tracks") or []
+    if not 0 <= track < len(tracks):
+        raise AppError("Такой дорожки в проекте нет")
+    slots = tracks[track].get("clipSlots") or []
+    if not 0 <= scene < len(slots):
+        raise AppError("Такой сцены в проекте нет")
+    return tracks[track], slots[scene]
+
+
+def get_clip(song, track, scene):
+    _, slot = _slot(song, track, scene)
+    if not slot.get("clip"):
+        raise AppError("Ячейка пуста")
+    return slot["clip"]
+
+
+def put_clip(song, track, scene, notes, length):
+    """Ставит клип с нотами в ячейку. Длина — вверх до целого такта, не меньше одного такта."""
+    tr, slot = _slot(song, track, scene)
+    if tr.get("kind") != "midi":
+        raise AppError("MIDI-клип можно загрузить только в MIDI-дорожку")
+    ts = dict(song.get("timeSignature") or {"upper": 4, "lower": 4})
+    bar = int(ts.get("upper", 4)) * 4 / int(ts.get("lower", 4))
+    bars = max(1, math.ceil(round(float(length) / bar, 6)))
+    total = float(bars * bar)
+    template = None
+    for t in song.get("tracks") or []:
+        for sl in t.get("clipSlots") or []:
+            if (sl or {}).get("clip"):
+                template = sl["clip"]
+                break
+        if template:
+            break
+    if template:
+        clip = {k: copy.deepcopy(v) for k, v in template.items() if k not in ("notes", "envelopes")}
+    else:
+        clip = {"isPlaying": False, "name": "", "color": None, "isEnabled": True,
+                "grooveId": None, "stepEditorScrollPosition": 0}
+    clip.update({"isPlaying": False, "name": "", "timeSignature": ts,
+                 "region": {"start": 0.0, "end": total, "loop": {"start": 0.0, "end": total, "isEnabled": True}},
+                 "notes": list(notes), "envelopes": []})
+    slot["clip"] = clip
+    return song
 
 
 def find_song_entry(zf):
@@ -628,7 +696,9 @@ def cache_info(oid, stamp, info):
 
 def cached_info(oid, stamp):
     c = INFO_CACHE.get(oid)
-    return c["info"] if c and c.get("stamp") == stamp else None
+    if not c or c.get("stamp") != stamp or "clips" not in (c.get("info") or {}):    # без clips — от старой сборки
+        return None
+    return c["info"]
 
 
 def tmp_path(suffix):
@@ -695,7 +765,7 @@ def lib_item(d):
     meta_path = d / "meta.json"
     meta = read_json(meta_path, {})
     stamp = f"{bundle.stat().st_mtime_ns}:{bundle.stat().st_size}"
-    if meta.get("bundleStamp") != stamp or "info" not in meta:
+    if meta.get("bundleStamp") != stamp or "clips" not in (meta.get("info") or {}):   # без clips — прочитано старой сборкой
         try:
             meta["info"] = parse_song(read_song(bundle))
         except Exception as e:
@@ -915,16 +985,17 @@ def job_edit_move(oid, order, pans, replace, key=None):
     def fn(stage):
         obj = set_by_id(oid)
         if replace and ssh_enabled():
-            stage("Читаю проект на Move")
-            song = ssh_read_song(oid)
-            backups = APP_DIR / "backups"
-            backups.mkdir(exist_ok=True)
-            (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
-            stage("Записываю изменения")
-            ssh_write_song(oid, dump_song(edit_song(song, order, pans, key)))
-            with LOCK:
-                INFO_CACHE.pop(oid, None)
-            return {"inPlace": True}
+            with target_lock("move:" + oid):
+                stage("Читаю проект на Move")
+                song = ssh_read_song(oid)
+                backups = APP_DIR / "backups"
+                backups.mkdir(exist_ok=True)
+                (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
+                stage("Записываю изменения")
+                ssh_write_song(oid, dump_song(edit_song(song, order, pans, key)))
+                with LOCK:
+                    INFO_CACHE.pop(oid, None)
+                return {"inPlace": True}
         before = {o["objectId"] for o in MOVE.list_sets()}
         src, dst = tmp_path(".ablbundle"), tmp_path(".ablbundle")
         new_name = f"{obj['name']}_edit"
@@ -953,6 +1024,94 @@ def job_edit_move(oid, order, pans, replace, key=None):
             return {"replaced": True}
         return {"copy": new_name}
     return fn
+
+
+def transform_bundle(src, dst, fn):
+    """Пересобирает бандл: Song.abl проходит через fn(song) -> song, остальные файлы копируются как есть."""
+    with zipfile.ZipFile(src) as zi:
+        entry = find_song_entry(zi)
+        song = fn(json.loads(zi.read(entry).decode("utf-8")))
+        payload = dump_song(song)
+        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zo:
+            for item in zi.infolist():
+                zo.writestr(item.filename, payload if item.filename == entry else zi.read(item.filename))
+    return song
+
+
+def read_midi_upload(data):
+    if not data:
+        raise AppError("Файл пустой")
+    try:
+        return midi_to_notes(data)
+    except MidiError as e:
+        raise AppError(f"MIDI-файл не прочитан: {e}")
+
+
+def cell_busy(song, track, scene):
+    try:
+        get_clip(song, track, scene)
+        return True
+    except AppError:
+        _slot(song, track, scene)          # неверный индекс — ошибка, а не «свободно»
+        return False
+
+
+def library_put_clip(folder, track, scene, notes, length):
+    d = lib_dir(folder)
+    bundle = find_file(d, {".ablbundle"})
+    tmp = tmp_path(".ablbundle")
+    try:
+        with target_lock("lib:" + d.name):
+            transform_bundle(bundle, tmp, lambda song: put_clip(song, track, scene, notes, length))
+            shutil.move(str(tmp), bundle)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def move_song(oid):
+    """Song.abl сета на Move: по SSH, если включён, иначе через скачивание бандла."""
+    if ssh_enabled():
+        try:
+            return ssh_read_song(oid)
+        except (SshError, ValueError):
+            pass
+    tmp = tmp_path(".ablbundle")
+    try:
+        MOVE.download(oid, tmp)
+        return read_song(tmp)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+TARGET_LOCKS = {}
+
+
+def target_lock(key):
+    """Один замок на проект: чтение → правка → запись одного проекта не перемешиваются."""
+    with LOCK:
+        return TARGET_LOCKS.setdefault(key, threading.Lock())
+
+
+def job_clip_move(oid, track, scene, notes, length):
+    def fn(stage):
+        stage("Жду завершения другой правки этого проекта" if target_lock("move:" + oid).locked() else "Читаю проект на Move")
+        with target_lock("move:" + oid):
+            return _clip_move(oid, track, scene, notes, length, stage)
+    return fn
+
+
+def _clip_move(oid, track, scene, notes, length, stage):
+    obj = set_by_id(oid)
+    stage("Читаю проект на Move")
+    song = ssh_read_song(oid)
+    backups = APP_DIR / "backups"
+    backups.mkdir(exist_ok=True)
+    (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
+    stage("Записываю клип")
+    ssh_write_song(oid, dump_song(put_clip(song, track, scene, notes, length)))
+    with LOCK:
+        INFO_CACHE.pop(oid, None)
+    return {"ok": True}
 
 
 def edit_library(folder, order, pans, key=None):
@@ -1073,6 +1232,13 @@ def trash_library(folder):
 
 # ───────────────────────── HTTP ─────────────────────────
 
+def cell_args(q):
+    try:
+        return int((q.get("track") or [""])[0]), int((q.get("scene") or [""])[0])
+    except ValueError:
+        raise AppError("Не указана ячейка")
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -1088,8 +1254,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_midi(self, data, filename):
+        from urllib.parse import quote
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/midi")
+        self.send_header("Content-Disposition",
+                         f"attachment; filename=\"clip.mid\"; filename*=UTF-8''{quote(filename)}")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def raw_body(self, limit=5 * 1024 * 1024):
+        n = int(self.headers.get("Content-Length") or 0)
+        self._body_read = True
+        if n > limit:
+            raise AppError("Файл слишком большой")
+        return self.rfile.read(n) if n else b""
+
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
+        self._body_read = True
         if not n:
             return {}
         try:
@@ -1146,6 +1331,7 @@ class Handler(BaseHTTPRequestHandler):
         if host not in ("127.0.0.1", "localhost") or (
                 origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost")):
             return self.send_json({"error": "forbidden"}, 403)
+        self._body_read = False
         try:
             self.route()
         except AuthRequired:
@@ -1159,6 +1345,10 @@ class Handler(BaseHTTPRequestHandler):
             pass
         except Exception as e:  # noqa: BLE001
             self.send_json({"error": "app", "message": f"Внутренняя ошибка: {e}"}, 500)
+        finally:
+            # ответ отправлен, а тело запроса так и не прочитано — его байты сломали бы следующий запрос
+            if not self._body_read and int(self.headers.get("Content-Length") or 0) > 0:
+                self.close_connection = True
 
     do_GET = do_POST = do_PATCH = do_DELETE = do_HEAD = handle_any
 
@@ -1298,6 +1488,20 @@ class Handler(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", oid):
                 raise AppError("Некорректный идентификатор")
             act = seg[3] if len(seg) > 3 else None
+            if act == "clip.mid" and m == "GET":
+                t, sc = cell_args(q)
+                song = move_song(oid)
+                name = set_by_id(oid).get("name", "Clip")
+                return self.send_midi(clip_to_midi(get_clip(song, t, sc), song.get("tempo") or 120, name),
+                                      f"{safe_name(name)} T{t + 1} S{sc + 1}.mid")
+            if act == "clip" and m == "POST":
+                t, sc = cell_args(q)
+                if not ssh_enabled():
+                    raise AppError("Импорт на Move работает при включённом управлении пэдами")
+                notes, length = read_midi_upload(self.raw_body())
+                if (q.get("replace") or ["0"])[0] != "1" and cell_busy(ssh_read_song(oid), t, sc):
+                    return self.send_json({"error": "busy", "message": "Ячейка занята"}, 409)
+                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length)))
             if act == "info" and m == "GET":
                 return self.send_json({"info": analyze_set(oid, (q.get("stamp") or [""])[0])})
             if act == "pull" and m == "POST":
@@ -1336,6 +1540,20 @@ class Handler(BaseHTTPRequestHandler):
         if len(seg) >= 2 and seg[0] == "library":
             folder = seg[1]
             act = seg[2] if len(seg) > 2 else None
+            if act == "clip.mid" and m == "GET":
+                t, sc = cell_args(q)
+                d = lib_dir(folder)
+                song = read_song(find_file(d, {".ablbundle"}))
+                return self.send_midi(clip_to_midi(get_clip(song, t, sc), song.get("tempo") or 120, d.name),
+                                      f"{d.name} T{t + 1} S{sc + 1}.mid")
+            if act == "clip" and m == "POST":
+                t, sc = cell_args(q)
+                notes, length = read_midi_upload(self.raw_body())
+                d = lib_dir(folder)
+                if (q.get("replace") or ["0"])[0] != "1" and cell_busy(read_song(find_file(d, {".ablbundle"})), t, sc):
+                    return self.send_json({"error": "busy", "message": "Ячейка занята"}, 409)
+                library_put_clip(folder, t, sc, notes, length)
+                return self.send_json({"ok": True})
             if act == "audio" and m in ("GET", "HEAD"):
                 audio = find_file(lib_dir(folder), AUDIO_EXTS)
                 if not audio:
