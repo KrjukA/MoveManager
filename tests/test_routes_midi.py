@@ -151,7 +151,7 @@ class RouteTests(RouteBase):
         self.assertEqual(job["status"], "done", job.get("error"))
         self.assertEqual(len(self.writes), 1)
         self.assertEqual(app.parse_song(self.writes[0])["clips"][0][1], {"notes": 2, "length": 8.0})
-        self.assertEqual(len(list((self.tmp / "backups").glob("Live Set *.abl"))), 1)
+        self.assertEqual(len(list((self.tmp / "history" / "move" / OID).glob("*.abl"))), 1)   # сборка 52: история вместо backups/
 
     def test_import_into_move_busy(self):
         status, _, body = self.req("POST", f"/api/move/sets/{OID}/clip?track=0&scene=0&replace=0", self.midi_file())
