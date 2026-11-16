@@ -5,6 +5,7 @@
 Нужен только пакет requests:  python3 -m pip install requests
 """
 import copy
+import io
 import json
 import math
 import mimetypes
@@ -13,6 +14,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import tarfile
 import sys
 import threading
 import time
@@ -25,16 +27,45 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests
 
-from midi import MidiError, clip_to_midi, midi_to_notes
+import drumgen
+import samplelib
+from midi import MidiError, _no_overlaps, clip_to_midi, midi_to_notes
 
 APP_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = APP_DIR / "config.json"
-CACHE_DIR = APP_DIR / "cache"
-STATIC_DIR = APP_DIR / "static"
+FROZEN = bool(getattr(sys, "frozen", False))       # собранное приложение (PyInstaller)
+
+
+def user_data_dir(frozen, platform, env, home):
+    """Где лежат личные данные (вход на Move, ключ, кэш, копии). Из исходников — рядом с app.py, как всегда;
+    в собранном приложении — в папке пользователя, потому что папка самого приложения временная или только для чтения."""
+    if not frozen:
+        return APP_DIR
+    if platform.startswith("win"):
+        return Path(env.get("APPDATA") or (Path(home) / "AppData" / "Roaming")) / "Move Manager"
+    if platform == "darwin":
+        return Path(home) / "Library" / "Application Support" / "Move Manager"
+    return Path(env.get("XDG_DATA_HOME") or (Path(home) / ".local" / "share")) / "move-manager"
+
+
+def resource_dir(frozen, meipass):
+    """Где лежат файлы программы (страница, рисунки ударных): внутри сборки или рядом с app.py."""
+    return Path(meipass) if frozen and meipass else APP_DIR
+
+
+RES_DIR = resource_dir(FROZEN, getattr(sys, "_MEIPASS", None))
+DATA_DIR = user_data_dir(FROZEN, sys.platform, os.environ, Path.home())
+CONFIG_PATH = DATA_DIR / "config.json"
+CACHE_DIR = DATA_DIR / "cache"
+STATIC_DIR = RES_DIR / "static"
+KNOWN_HOSTS = DATA_DIR / "known_hosts"
+
+
+def backups_dir():
+    return DATA_DIR / "backups"
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "20"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "49"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -230,6 +261,8 @@ def parse_song(song):
         "scenes": len(song.get("scenes") or []),
         "tracks": tracks,
         "clips": clips_grid(song),
+        "schwung": "/Schwung/" in json.dumps([t.get("devices") for t in song.get("tracks") or []]).replace("%20", " ")
+                   or any("Schwung" in t["folders"] for t in tracks),
     }
 
 
@@ -253,25 +286,34 @@ def clips_grid(song):
 def _slot(song, track, scene):
     tracks = song.get("tracks") or []
     if not 0 <= track < len(tracks):
-        raise AppError("Такой дорожки в проекте нет")
+        raise AppError("No such track in the project")
     slots = tracks[track].get("clipSlots") or []
     if not 0 <= scene < len(slots):
-        raise AppError("Такой сцены в проекте нет")
+        raise AppError("No such scene in the project")
     return tracks[track], slots[scene]
 
 
 def get_clip(song, track, scene):
     _, slot = _slot(song, track, scene)
     if not slot.get("clip"):
-        raise AppError("Ячейка пуста")
+        raise AppError("Cell is empty")
     return slot["clip"]
+
+
+def remove_clip(song, track, scene):
+    """Очищает ячейку: клипа нет — ошибка (чтобы не писать проект впустую)."""
+    _, slot = _slot(song, track, scene)
+    if not slot.get("clip"):
+        raise AppError("Cell is empty")
+    slot["clip"] = None
+    return song
 
 
 def put_clip(song, track, scene, notes, length):
     """Ставит клип с нотами в ячейку. Длина — вверх до целого такта, не меньше одного такта."""
     tr, slot = _slot(song, track, scene)
     if tr.get("kind") != "midi":
-        raise AppError("MIDI-клип можно загрузить только в MIDI-дорожку")
+        raise AppError("A MIDI clip can only go into a MIDI track")
     ts = dict(song.get("timeSignature") or {"upper": 4, "lower": 4})
     bar = int(ts.get("upper", 4)) * 4 / int(ts.get("lower", 4))
     bars = max(1, math.ceil(round(float(length) / bar, 6)))
@@ -300,7 +342,7 @@ def find_song_entry(zf):
     for name in zf.namelist():
         if name.split("/")[-1] == "Song.abl":
             return name
-    raise AppError("В бандле не найден Song.abl")
+    raise AppError("Song.abl not found in the bundle")
 
 
 def read_song(bundle_path):
@@ -314,20 +356,20 @@ def edit_song(song, order=None, pans=None, key=None):
     if key and ("rootNote" in key or "scale" in key):
         root, scale = int(key.get("rootNote", -1)), str(key.get("scale") or "").strip()
         if not 0 <= root <= 11 or not scale or len(scale) > 60:
-            raise AppError("Некорректная тональность")
+            raise AppError("Invalid key")
         song["rootNote"], song["scale"] = root, scale
     if key and key.get("tempo") is not None:
         try:
             tempo = round(float(key["tempo"]), 2)
         except (TypeError, ValueError):
-            raise AppError("Некорректный темп")
+            raise AppError("Invalid tempo")
         if not 40 <= tempo <= 300:
-            raise AppError("Темп должен быть от 40 до 300 bpm")
+            raise AppError("Tempo must be between 40 and 300 bpm")
         song["tempo"] = tempo
     for key, val in (pans or {}).items():
         i = int(key)
         if not 0 <= i < len(tracks):
-            raise AppError("Неверный номер дорожки")
+            raise AppError("Invalid track number")
         v = max(-1.0, min(1.0, float(val)))
         mixer = tracks[i].setdefault("mixer", {})
         if isinstance(mixer.get("pan"), dict):
@@ -336,7 +378,7 @@ def edit_song(song, order=None, pans=None, key=None):
             mixer["pan"] = v
     if order:
         if sorted(order) != list(range(len(tracks))):
-            raise AppError(f"Неверный порядок дорожек: в проекте их {len(tracks)}")
+            raise AppError(f"Invalid track order: the project has {len(tracks)} tracks")
         song["tracks"] = [tracks[i] for i in order]
     return song
 
@@ -388,17 +430,17 @@ class Move:
     def start_challenge(self):
         r = self.req("POST", "/api/v1/challenge")
         if r.status_code >= 400:
-            raise AppError("Move не показал код. Убедитесь, что он включён и не в режиме загрузки.")
+            raise AppError("Move did not show a code. Make sure it is on and not booting.")
 
     def answer_challenge(self, code):
         try:
             r = self.req("POST", "/api/v1/challenge-response", json={"secret": code})
         except AuthRequired:
-            return {"ok": False, "error": "Неверный код"}
+            return {"ok": False, "error": "Wrong code"}
         if r.status_code == 429:
-            return {"ok": False, "error": f"Слишком много попыток, подождите {r.headers.get('retry-after', '60')} с"}
+            return {"ok": False, "error": f"Too many attempts, wait {r.headers.get('retry-after', '60')} s"}
         if r.status_code >= 400:
-            return {"ok": False, "error": f"Ошибка авторизации ({r.status_code})"}
+            return {"ok": False, "error": f"Authorization error ({r.status_code})"}
         token = r.headers.get("Ableton-Challenge-Response-Token")
         if token:
             self.s.headers["Ableton-Challenge-Response-Token"] = token
@@ -408,13 +450,13 @@ class Move:
     def list_sets(self):
         r = self.req("GET", "/api/v1/data/Sets")
         if r.status_code >= 400:
-            raise AppError(f"Move ответил {r.status_code}")
+            raise AppError(f"Move answered {r.status_code}")
         return r.json().get("objects", [])
 
     def download(self, oid, dest, progress=None):
         r = self.req("GET", f"/api/v1/data/Sets/{oid}", stream=True, timeout=(10, 300))
         if r.status_code != 200:
-            raise AppError(f"Не удалось скачать проект ({r.status_code})")
+            raise AppError(f"Could not download the project ({r.status_code})")
         total = int(r.headers.get("content-length") or 0)
         done = 0
         with open(dest, "wb") as f:
@@ -430,7 +472,7 @@ class Move:
             r = self.req("POST", "/api/v1/data/Sets", timeout=(10, 600),
                          files={"file": (filename, f, "application/zip")})
         if r.status_code not in (200, 201, 204):
-            raise AppError(f"Move не принял проект ({r.status_code}): {r.text[:200]}")
+            raise AppError(f"Move rejected the project ({r.status_code}): {r.text[:200]}")
         try:
             for item in (r.json() or {}).get("files", []):
                 if item.get("error"):
@@ -441,7 +483,7 @@ class Move:
     def recordings(self):
         r = self.req("GET", "/api/v1/files/Recordings")
         if r.status_code >= 400:
-            raise AppError(f"Move не отдал список записей ({r.status_code})")
+            raise AppError(f"Move did not return the recordings list ({r.status_code})")
         out = []
         for p in r.json().get("paths", []):
             if not p.get("isDirectory"):
@@ -451,7 +493,7 @@ class Move:
 
     def recording_response(self, name, range_header=None):
         if "/" in name or name.startswith("."):
-            raise AppError("Некорректное имя записи")
+            raise AppError("Invalid recording name")
         headers = {"Range": range_header} if range_header else {}
         return self.req("GET", "/api/v1/files/Recordings/" + requests.utils.quote(name, safe=""),
                         stream=True, timeout=(10, 300), headers=headers)
@@ -459,12 +501,12 @@ class Move:
     def rename(self, oid, name):
         r = self.req("PATCH", f"/api/v1/data/Sets/{oid}", json={"newName": name})
         if r.status_code >= 400:
-            raise AppError(f"Не удалось переименовать ({r.status_code}): {r.text[:200]}")
+            raise AppError(f"Could not rename ({r.status_code}): {r.text[:200]}")
 
     def delete(self, oid):
         r = self.req("DELETE", f"/api/v1/data/Sets/{oid}")
         if r.status_code >= 400:
-            raise AppError(f"Не удалось удалить ({r.status_code})")
+            raise AppError(f"Could not delete ({r.status_code})")
 
     def render(self, oid, fmt, dest, progress=None, cancelled=None):
         """Экспорт звука сета самим Move — тот же запрос, что и «Export as Audio» в штатном менеджере.
@@ -475,7 +517,7 @@ class Move:
         cancelled = cancelled or (lambda: False)
         while not RENDER_LOCK.acquire(timeout=1):
             if cancelled():
-                raise AppError("Экспорт звука пропущен")
+                raise AppError("Audio export skipped")
         try:
             return self._render(oid, fmt, dest, progress, cancelled)
         finally:
@@ -486,12 +528,12 @@ class Move:
         silence_timeout = float(os.environ.get("MOVE_RENDER_SILENCE_TIMEOUT", "600"))
         r = self.req("POST", f"/api/v1/render/{oid}", params={"format": fmt}, timeout=60)
         if r.status_code >= 400:
-            raise AppError(f"Move не начал экспорт ({r.status_code}): {r.text[:200]}")
+            raise AppError(f"Move did not start the export ({r.status_code}): {r.text[:200]}")
         info = r.json()
         rid, href = info.get("id"), info.get("href")
-        render_log(f"--- экспорт (сборка {BUILD}): сет {oid}, формат {fmt}; ответ на запрос: {r.status_code} {r.text[:200]}")
+        render_log(f"--- export (build {BUILD}): set {oid}, format {fmt}; response: {r.status_code} {r.text[:200]}")
         if not href:
-            raise AppError("Move не вернул ссылку на аудио")
+            raise AppError("Move did not return an audio link")
         t0 = time.time()
         st = {"got": False, "finished": False, "failed": None, "last": t0, "logged": None}
         stop = threading.Event()
@@ -517,7 +559,7 @@ class Move:
                         st["got"], st["last"] = True, time.time()
                         status = d.get("status")
                         if status != st["logged"]:
-                            render_log(f"событие: {line[:300]}")
+                            render_log(f"event: {line[:300]}")
                             st["logged"] = status
                         if progress and status == "finalizing":
                             progress(None)
@@ -538,31 +580,31 @@ class Move:
             while resp is None:
                 now = time.time()
                 if cancelled():
-                    render_log("экспорт пропущен пользователем")
-                    raise AppError("Экспорт звука пропущен")
+                    render_log("export skipped by user")
+                    raise AppError("Audio export skipped")
                 if st["failed"]:
-                    raise AppError("Move сообщил, что экспорт не удался")
+                    raise AppError("Move reported that the export failed")
                 if not st["got"] and now - t0 > start_timeout:
-                    render_log(f"за {int(start_timeout)} с Move не начал экспорт — задание снято")
-                    raise AppError(f"Move не экспортирует этот проект: за {int(start_timeout)} с экспорт не начался. "
-                                   "Так же он ведёт себя в штатном менеджере")
+                    render_log(f"Move did not start the export within {int(start_timeout)} s — job cancelled")
+                    raise AppError(f"Move does not export this project: no export started within {int(start_timeout)} s. "
+                                   "The built-in manager behaves the same way")
                 if st["got"] and not st["finished"] and now - st["last"] > silence_timeout:
-                    render_log("Move перестал присылать события — задание снято")
-                    raise AppError("Move начал экспорт, но перестал отвечать")
+                    render_log("Move stopped sending events — job cancelled")
+                    raise AppError("Move started the export but stopped responding")
                 if st["finished"] or (st["got"] and now >= next_probe):
                     next_probe = now + 5
                     a = self.req("GET", href, stream=True, timeout=(10, 600))
                     if a.status_code == 200:
-                        render_log(f"скачивание {href}: 200 {a.headers.get('content-type')} {a.headers.get('content-length')}")
+                        render_log(f"download {href}: 200 {a.headers.get('content-type')} {a.headers.get('content-length')}")
                         resp = a
                         break
                     body = a.text[:120]
                     a.close()
                     if st["finished"]:
                         misses += 1
-                        render_log(f"скачивание {href}, попытка {misses}: {a.status_code} {body}")
+                        render_log(f"download {href}, attempt {misses}: {a.status_code} {body}")
                         if misses >= 8:
-                            raise AppError(f"Экспорт закончился, но Move не отдал файл ({a.status_code})")
+                            raise AppError(f"Export finished but Move did not return the file ({a.status_code})")
                 time.sleep(1)
             with open(dest, "wb") as f:
                 for chunk in resp.iter_content(1 << 16):
@@ -583,7 +625,10 @@ MOVE = Move()
 # ───────────────────────── SSH: слоты пэдов и правка на месте ─────────────────────────
 
 SETS_DIR = os.environ.get("MOVE_SETS_DIR", "/data/UserData/UserLibrary/Sets")
-SSH_KEY = APP_DIR / "move_ssh_key"
+SCHWUNG_DIR = os.environ.get("MOVE_SCHWUNG_DIR", "/data/UserData/schwung/set_state")   # состояние Schwung по сетам
+SCHWUNG_SKIP = {"snapshot", "copy_source.txt"}      # Schwung сам пересоздаёт их для нового сета
+SCHWUNG_FILE = "schwung_state.tar.gz"
+SSH_KEY = DATA_DIR / "move_ssh_key"
 UUID_RE = re.compile(r"[0-9a-fA-F-]{8,64}")
 REFRESH = ("dbus-send --system --type=method_call --dest=com.ableton.move --print-reply "
            "/com/ableton/move/browser com.ableton.move.Browser.refreshCache >/dev/null 2>&1 || true")
@@ -593,28 +638,155 @@ def ssh_enabled():
     return bool(CFG.get("ssh_enabled"))
 
 
-def ssh_run(script, data=None, timeout=40):
+def ssh_cmd():
     if os.environ.get("MOVE_SSH_CMD"):
-        cmd = shlex.split(os.environ["MOVE_SSH_CMD"])
-    else:
-        host = urlparse(CFG["move_url"]).hostname or "move.local"
-        cmd = ["ssh", "-i", str(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-               "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={APP_DIR / 'known_hosts'}",
-               "-o", "ConnectTimeout=8", f"ableton@{host}"]
+        return shlex.split(os.environ["MOVE_SSH_CMD"])
+    host = urlparse(CFG["move_url"]).hostname or "move.local"
+    return ["ssh", "-i", str(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={KNOWN_HOSTS}",
+            "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", f"ableton@{host}"]
+
+
+NO_SSH_MSG = ("The ssh command was not found on this computer. On Windows 10/11 turn on "
+              "Settings → System → Optional features → OpenSSH Client; on a Mac it is built in.")
+
+
+class _SshSession:
+    """Одна открытая оболочка на Move: команды идут в неё по очереди, без нового рукопожатия на каждую.
+    У каждой команды свой конец (случайная метка) — по нему вывод отделяется от кода возврата и текста ошибки.
+    Команда не может прочитать поток команд: её stdin — /dev/null."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.p = self.cmd = self.err = None
+        self.q = None
+
+    def close(self):
+        self.q = None
+        if self.p is not None:
+            try:
+                self.p.kill(); self.p.wait(timeout=2)
+            except Exception:  # noqa: BLE001
+                pass
+        self.p = None
+
+    def _start(self, cmd):
+        import tempfile
+        self.close()
+        self.err = tempfile.TemporaryFile()
+        try:
+            self.p = subprocess.Popen(cmd + ["sh"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.err, bufsize=0,
+                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except FileNotFoundError:
+            self.p = None
+            raise SshError(NO_SSH_MSG)
+        self.cmd = cmd
+        # ответы читает отдельный поток: select на трубах в Windows не работает
+        import queue
+        q, out = queue.Queue(), self.p.stdout
+        def pump():
+            while True:
+                try:
+                    chunk = out.read1(1 << 16) if hasattr(out, "read1") else os.read(out.fileno(), 1 << 16)
+                except (OSError, ValueError):
+                    chunk = b""
+                q.put(chunk)
+                if not chunk:
+                    return
+        threading.Thread(target=pump, daemon=True).start()
+        self.q = q
+
+    def _dead(self, why):
+        msg = ""
+        try:
+            self.err.seek(0); msg = self.err.read().decode("utf-8", "replace").strip()[-300:]
+        except Exception:  # noqa: BLE001
+            pass
+        self.close()
+        return SshError("SSH: " + (msg or why))
+
+    def run(self, cmd, script, timeout):
+        import queue
+        tok = "MMEND" + uuid.uuid4().hex
+        wrapped = ("{ __mme=$( ( " + script + "\n) </dev/null 2>&1 1>&3 ); __mmr=$?; } 3>&1\n"
+                   f"printf '\\n%s %d\\n' {tok} $__mmr\n"
+                   '[ $__mmr -eq 0 ] || printf \'%s\' "$__mme" | head -c 400\n'
+                   f"printf '\\n%sE\\n' {tok}\n").encode("utf-8")
+        with self.lock:
+            if self.p is None or self.p.poll() is not None or self.cmd != cmd:
+                self._start(cmd)
+            try:
+                self.p.stdin.write(wrapped)
+            except OSError:                       # соединение умерло, пока простаивало: команда ещё не ушла
+                self._start(cmd)
+                try:
+                    self.p.stdin.write(wrapped)
+                except OSError:
+                    raise self._dead("connection closed")
+            try:
+                self.p.stdin.flush()
+            except OSError:
+                raise self._dead("connection closed")
+            end, q, buf = f"\n{tok}E\n".encode(), self.q, bytearray()
+            deadline = time.monotonic() + timeout
+            while not buf.endswith(end):
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    self.close()
+                    raise SshError("Move did not answer over SSH")
+                try:
+                    chunk = q.get(timeout=left)
+                except queue.Empty:
+                    continue
+                if not chunk:
+                    raise self._dead("connection closed")
+                buf += chunk
+            mark = f"\n{tok} ".encode()
+            i = buf.rfind(mark)
+            out, tail = bytes(buf[:i]), bytes(buf[i + len(mark):len(buf) - len(end)])
+            rc_s, _, msg = tail.partition(b"\n")
+            rc = int(rc_s or b"1")
+            if rc != 0:
+                raise SshError("SSH: " + (msg.decode("utf-8", "replace").strip()[-300:] or f"code {rc}"))
+            return out
+
+
+_SSH = _SshSession()
+
+
+def ssh_session_reset():
+    with _SSH.lock:
+        _SSH.close()
+
+
+def ssh_run(script, data=None, timeout=40):
+    t0 = time.monotonic()
     try:
+        return _ssh_run(script, data, timeout)
+    finally:
+        dt = time.monotonic() - t0
+        if dt > 0.3:
+            log_line("ssh-timing.log", f"{dt:6.2f}s {'+' + str(len(data)) + 'B ' if data else ''}{script[:120]}")
+
+
+def _ssh_run(script, data=None, timeout=40):
+    cmd = ssh_cmd()
+    if data is None:
+        return _SSH.run(cmd, script, timeout)
+    try:                                          # с данными на stdin — отдельное соединение
         r = subprocess.run(cmd + [script], input=data, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise SshError("Move не ответил по SSH")
+        raise SshError("Move did not answer over SSH")
     except FileNotFoundError:
-        raise SshError("На компьютере не найдена команда ssh")
+        raise SshError(NO_SSH_MSG)
     if r.returncode != 0:
-        raise SshError("SSH: " + (r.stderr.decode("utf-8", "replace").strip()[-300:] or f"код {r.returncode}"))
+        raise SshError("SSH: " + (r.stderr.decode("utf-8", "replace").strip()[-300:] or f"code {r.returncode}"))
     return r.stdout
 
 
 def set_dir(oid):
     if not UUID_RE.fullmatch(oid):
-        raise AppError("Некорректный идентификатор")
+        raise AppError("Invalid identifier")
     return shlex.quote(f"{SETS_DIR}/{oid}")
 
 
@@ -637,10 +809,571 @@ def ssh_set_slots(pairs):
     for oid, slot in pairs:
         slot = int(slot)
         if not 0 <= slot <= 31:
-            raise AppError("Номер пэда должен быть от 1 до 32")
+            raise AppError("Pad number must be between 1 and 32")
         cmds.append(f"setfattr -n user.song-index -v {slot} {set_dir(oid)}")
     if cmds:
         ssh_run(" && ".join(cmds) + "; " + REFRESH)
+
+
+def _schwung_dir(oid):
+    if not UUID_RE.fullmatch(oid or ""):
+        raise AppError("Invalid identifier")
+    return shlex.quote(f"{SCHWUNG_DIR}/{oid}")
+
+
+def _clean_schwung_tar(data):
+    """Пересобирает архив: только обычные файлы и папки с безопасными путями, без snapshot/copy_source."""
+    out = io.BytesIO()
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as src, tarfile.open(fileobj=out, mode="w:gz") as dst:
+        for m in src.getmembers():
+            name = m.name[2:] if m.name.startswith("./") else m.name
+            if name in ("", "."):
+                continue
+            parts = name.split("/")
+            if name.startswith("/") or ".." in parts or not (m.isfile() or m.isdir()):
+                raise AppError("Unsafe Schwung archive")
+            if parts[0] in SCHWUNG_SKIP:
+                continue
+            m.name = name
+            dst.addfile(m, src.extractfile(m) if m.isfile() else None)
+    return out.getvalue()
+
+
+def schwung_fetch(oid):
+    """Состояние Schwung сета с Move (tar.gz) или None, если его нет."""
+    d = _schwung_dir(oid)
+    raw = ssh_run(f'if [ -d {d} ] && [ -n "$(ls -A {d})" ]; then cd {d} && tar -czf - .; fi', timeout=120)
+    if not raw:
+        return None
+    data = _clean_schwung_tar(raw)
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as t:
+        return data if any(m.isfile() for m in t.getmembers()) else None
+
+
+# Слот Schwung занят, если его автосохранение длиннее 10 байт — так решает сам Schwung при загрузке слота.
+# Не признаки: заготовки «{}» (3 байта), master_fx_0 по умолчанию (~543 байта в каждом сете),
+# имена «Untitled» в shadow_chain_config.json — всё это есть в любом сете (проверено на настоящем Move).
+SCHWUNG_USED = 'used() {{ [ -n "$(find "$1" -maxdepth 1 -name "slot_*.json" -size +10c 2>/dev/null)" ]; }}; '
+
+
+def schwung_sets():
+    """id сетов, у которых в слотах Schwung загружен модуль."""
+    root = shlex.quote(SCHWUNG_DIR)
+    out = ssh_run(SCHWUNG_USED.format() + f'[ -d {root} ] || exit 0; cd {root} && for d in */; do '
+                  f'used "${{d%/}}" && echo "${{d%/}}"; done; exit 0', timeout=30)
+    return {x for x in out.decode("utf-8", "replace").split() if UUID_RE.fullmatch(x)}
+
+
+def schwung_restore(oid, data):
+    """Кладёт состояние Schwung в папку нового сета. Только в пустую или несуществующую: «copied» / «exists»."""
+    d = _schwung_dir(oid)
+    data = _clean_schwung_tar(data)
+    # «занято» — только если в слотах уже есть модуль; пустые заготовки «{}», которые Schwung создаёт сам, можно заменить
+    out = ssh_run(SCHWUNG_USED.format() + f'if [ -d {d} ] && used {d}; then echo exists; '
+                  f'else mkdir -p {d} && cd {d} && tar -xzf - && echo copied; fi', data=data, timeout=120)
+    return "exists" if b"exists" in out else "copied"
+
+
+# ───────────────────────── библиотека сэмплов и пресетов на Move ─────────────────────────
+USERLIB_DIR = os.environ.get("MOVE_USERLIB_DIR", "/data/UserData/UserLibrary")
+USERLIB_MODES = {"samples": "Samples", "presets": "Track Presets"}
+USERLIB_CACHE = {}           # путь источника → (подпись «время размер», текст)
+FILE_MARK = "@@MM-FILE@@ "
+
+
+def _mode_root(mode):
+    if mode not in USERLIB_MODES:
+        raise AppError("Unknown library section")
+    return USERLIB_MODES[mode]
+
+
+def _check_rel(mode, rel):
+    if not samplelib.safe_rel(rel) or not (rel == _mode_root(mode) or rel.startswith(_mode_root(mode) + "/")):
+        raise AppError("Invalid path")
+    return rel
+
+
+def _q(rel):
+    return shlex.quote(f"{USERLIB_DIR}/{rel}")
+
+
+def lib_tree(mode):
+    """Папки и файлы раздела (Samples или Track Presets) на Move: пути относительно библиотеки, размеры."""
+    top = _mode_root(mode)
+    out = ssh_run(f'{NEED_STAT}cd {shlex.quote(USERLIB_DIR)} && [ -d {shlex.quote(top)} ] || exit 0; '
+                  f'find {shlex.quote(top)} -mindepth 1 -type d | sed "s/^/D|/"; '
+                  f'find {shlex.quote(top)} -type f -exec {STAT_F} {{}} + 2>/dev/null; exit 0', timeout=60)
+    folders, files = [], []
+    for kind, size, _mt, path in _stat_lines(out):
+        if kind == "D":
+            folders.append(path)
+        elif not path.endswith(".mmtmp"):
+            files.append({"rel": path, "size": size})
+    return {"folders": sorted(folders), "files": sorted(files, key=lambda f: f["rel"].lower())}
+
+
+# Имена берутся из find/stat: BusyBox ls без UTF-8-локали печатает «?» вместо не-ASCII,
+# и тогда проект с кириллицей пропал бы из индекса, а его сэмплы выглядели бы неиспользуемыми.
+NEED_STAT = 'command -v stat >/dev/null 2>&1 && command -v find >/dev/null 2>&1 || { echo "MM-NO-STAT"; exit 0; }; '
+STAT_F = "stat -c 'F|%s|%Y|%n'"
+
+
+def _stat_lines(out):
+    """Строки «D|путь» и «F|размер|время|путь» → (вид, размер, время, путь). Без stat/find — отказ, а не пустой список."""
+    text = out.decode("utf-8", "replace")
+    if "MM-NO-STAT" in text:
+        raise AppError("Move has no find/stat commands, so the library can't be read safely")
+    rows = []
+    for line in text.splitlines():
+        if line.startswith("D|"):
+            rows.append(("D", 0, "", line[2:]))
+        elif line.startswith("F|"):
+            parts = line.split("|", 3)
+            if len(parts) == 4 and parts[1].isdigit():
+                rows.append(("F", int(parts[1]), parts[2], parts[3]))
+    return rows
+
+
+def _source_listing():
+    """Файлы, которые могут ссылаться на сэмплы/пресеты: проекты, пресеты, эффекты, состояние Schwung."""
+    lib, sw = shlex.quote(USERLIB_DIR), shlex.quote(SCHWUNG_DIR)
+    out = ssh_run(f'{NEED_STAT}cd {lib} && {{ for f in Sets/*/*/Song.abl; do [ -f "$f" ] && {STAT_F} "$f"; done; '
+                  f'find "Track Presets" "Audio Effects" -type f \\( -name "*.ablpreset" -o -name "*.json" \\) -exec {STAT_F} {{}} + 2>/dev/null; }}; '
+                  f'[ -d {sw} ] && find {sw} -name "slot_*.json" -size +10c -size -2000k -exec {STAT_F} {{}} + 2>/dev/null; exit 0', timeout=60)
+    items = {}
+    for _k, size, mtime, path in _stat_lines(out):
+        path = path if path.startswith("/") else f"{USERLIB_DIR}/{path}"
+        items[path] = f"{mtime} {size}"
+    return items
+
+
+def _read_many(paths):
+    """Тексты нескольких файлов устройства одним вызовом SSH."""
+    if not paths:
+        return {}
+    script = "; ".join(f'printf "\\n{FILE_MARK}%s\\n" {shlex.quote(p)}; cat {shlex.quote(p)}' for p in paths)
+    raw = ssh_run(script, timeout=120).decode("utf-8", "replace")
+    out = {}
+    for chunk in raw.split("\n" + FILE_MARK)[1:]:
+        name, _, body = chunk.partition("\n")
+        out[name] = body
+    return out
+
+
+def userlib_cache_drop():
+    """После своих записей на Move — забыть все тексты, и в памяти, и на диске."""
+    USERLIB_CACHE.clear()
+    try:
+        (CACHE_DIR / "userlib_sources.json").unlink()
+    except OSError:
+        pass
+
+
+def _save_userlib_cache():
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        disk = CACHE_DIR / "userlib_sources.json"
+        tmp = disk.with_suffix(".tmp")
+        tmp.write_text(json.dumps(USERLIB_CACHE, ensure_ascii=False), "utf-8")
+        tmp.replace(disk)
+    except OSError:
+        pass
+
+
+def ref_sources():
+    """{путь источника: текст}; неизменившиеся файлы берутся из кэша."""
+    listing = _source_listing()
+    disk = CACHE_DIR / "userlib_sources.json"
+    if not USERLIB_CACHE:                        # после перезапуска — тексты с диска, читаются только изменившиеся
+        try:
+            USERLIB_CACHE.update({k: tuple(v) for k, v in json.loads(disk.read_text("utf-8")).items()})
+        except (OSError, ValueError):
+            pass
+    stale = [p for p, sig in listing.items() if USERLIB_CACHE.get(p, (None,))[0] != sig]
+    for i in range(0, len(stale), 40):
+        for p, text in _read_many(stale[i:i + 40]).items():
+            USERLIB_CACHE[p] = (listing.get(p), text)
+    gone = [p for p in USERLIB_CACHE if p not in listing]
+    for p in gone:
+        USERLIB_CACHE.pop(p)
+    if stale or gone or not disk.exists():
+        _save_userlib_cache()
+    return {p: USERLIB_CACHE[p][1] for p in listing if p in USERLIB_CACHE}
+
+
+def _project_of(path):
+    m = re.match(re.escape(USERLIB_DIR) + r"/Sets/([^/]+)/([^/]+)/Song\.abl$", path)
+    return m.group(2) if m else None
+
+
+def userlib_index():
+    src = ref_sources()
+    return {"refs": samplelib.build_index(src), "projects": {p: _project_of(p) for p in src if _project_of(p)}}
+
+
+def userlib_plan(mode, moves):
+    moves = [(_check_rel(mode, o), _check_rel(mode, n)) for o, n in moves]
+    tree = lib_tree(mode)
+    files, folders = [f["rel"] for f in tree["files"]], set(tree["folders"])
+    plan = samplelib.make_plan(moves, files, ref_sources())
+    # папка переносится целиком одной командой mv: с вложенными и пустыми папками, без пустых остатков
+    for old, new in moves:
+        if old in folders and (new in folders or new in files or new == old or new.startswith(old + "/")):
+            plan["conflicts"].append(new)
+    plan["ops"] = [[o, n] for o, n in moves if o in folders or o in set(files)]
+    if not plan["moves"] and not plan["ops"]:
+        raise AppError("Nothing to move")
+    plan["mode"] = mode
+    plan["projects"] = sorted({_project_of(p) for p in plan["touch"] if _project_of(p)})
+    return plan
+
+
+def _put_texts(files):
+    """Записывает тексты на Move: один сжатый архив с временными «.mmtmp» рядом с целями по отдельному подключению
+    (так же, как перенос Schwung — этот путь проверен на Move), затем mv каждого на место через открытое соединение."""
+    buf, now = io.BytesIO(), time.time()
+    with tarfile.open(fileobj=buf, mode="w:gz", format=tarfile.GNU_FORMAT, compresslevel=6) as t:
+        for path, text in files.items():
+            data = text.encode("utf-8")
+            info = tarfile.TarInfo((path + ".mmtmp").lstrip("/"))
+            info.size, info.mtime, info.mode = len(data), now, 0o644
+            t.addfile(info, io.BytesIO(data))
+    ssh_run("cd / && tar -xzf -", data=buf.getvalue(), timeout=180)
+    ssh_run(" && ".join(f"mv {shlex.quote(p + '.mmtmp')} {shlex.quote(p)}" for p in files))
+
+
+def _cache_written(texts_by_target, old_paths):
+    """После своей записи: новые тексты сразу в кэш (с подписями с Move), старые пути — вон. Так после переноса
+    не нужно заново читать все проекты."""
+    if not texts_by_target:
+        return
+    out = ssh_run(f"{NEED_STAT}" + "stat -c 'F|%s|%Y|%n' " + " ".join(shlex.quote(p) for p in texts_by_target) + "; exit 0")
+    sigs = {path: f"{mt} {size}" for _k, size, mt, path in _stat_lines(out)}
+    for p in old_paths:
+        USERLIB_CACHE.pop(p, None)
+    for p, text in texts_by_target.items():
+        if p in sigs:
+            USERLIB_CACHE[p] = (sigs[p], text)
+        else:
+            USERLIB_CACHE.pop(p, None)
+    _save_userlib_cache()
+
+
+def apply_userlib_plan(plan, stage):
+    """Применяет план: копии затронутых файлов → перенос → замена ссылок → refreshCache → проверка.
+    Любая ошибка — откат: файлы на прежние места, тексты из копий."""
+    if plan.get("conflicts"):
+        raise AppError("The plan has conflicts: " + ", ".join(plan["conflicts"][:3]))
+    moves = [(o, n) for o, n in plan["moves"]]
+    ops = [(o, n) for o, n in plan.get("ops") or moves]
+    mapping = dict(moves)
+    prefix = USERLIB_DIR + "/"
+    def target(path):        # источник, который сам переносится (пресет в перенесённой папке), пишется на новое место
+        rel = path[len(prefix):] if path.startswith(prefix) else None
+        return prefix + mapping[rel] if rel in mapping else path
+    stage("Reading affected files")
+    texts = _read_many(sorted(plan["touch"]))
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    (backups_dir()).mkdir(parents=True, exist_ok=True)
+    for n in range(1, 1000):                       # у каждой операции своя папка копий
+        bdir = backups_dir() / (f"samples-{stamp}" + (f"-{n}" if n > 1 else ""))
+        try:
+            bdir.mkdir()
+            break
+        except FileExistsError:
+            continue
+    manifest = {"moves": moves, "files": {}}
+    for i, (path, text) in enumerate(texts.items()):
+        (bdir / f"{i}.txt").write_text(text, "utf-8")
+        manifest["files"][path] = f"{i}.txt"
+    write_json(bdir / "manifest.json", manifest)
+    done_moves, written = [], []
+    try:
+        stage("Moving files")
+        for old, new in ops:
+            ssh_run(f'[ -e {_q(new)} ] && exit 3; mkdir -p "$(dirname {_q(new)})" && mv {_q(old)} {_q(new)}')
+            done_moves.append((old, new))
+        stage("Updating references")
+        if texts:
+            _put_texts({target(path): samplelib.rewrite(text, mapping)[0] for path, text in texts.items()})
+            written.extend(texts)
+        stage("Checking")
+        check = _read_many(sorted(target(p) for p in texts))
+        wanted = sorted({rel for t in check.values() for rel in samplelib.find_refs(t) if rel in mapping.values()})
+        missing = ssh_run("for f in " + " ".join(_q(r) for r in wanted) + '; do [ -e "$f" ] || echo "$f"; done; exit 0'
+                          ).decode("utf-8", "replace").split() if wanted else []
+        if missing:
+            raise AppError("Check failed: " + missing[0])
+    except (AppError, SshError) as e:
+        stage("Rolling back")
+        if written:
+            try:
+                _put_texts({target(path): texts[path] for path in written})
+            except SshError:
+                pass
+        for old, new in reversed(done_moves):
+            try:
+                ssh_run(f'mkdir -p "$(dirname {_q(old)})" && mv {_q(new)} {_q(old)}')
+            except SshError:
+                pass
+        try:                                     # тексты, что могли остаться временными
+            ssh_run("rm -f " + " ".join(f"{shlex.quote(p)}.mmtmp {shlex.quote(target(p))}.mmtmp" for p in texts) + "; exit 0")
+        except SshError:
+            pass
+        raise AppError(f"Nothing was changed: {e}")
+    ssh_run(REFRESH + " || true")
+    try:
+        _cache_written({target(p): samplelib.rewrite(texts[p], mapping)[0] for p in written},
+                       [p for p in written if target(p) != p])
+    except (AppError, SshError):
+        userlib_cache_drop()
+    return {"moved": len(moves), "files": len(written), "backup": bdir.name}
+
+
+def userlib_mkdir(mode, rel):
+    ssh_run(f"mkdir -p {_q(_check_rel(mode, rel))}")
+
+
+def userlib_upload(mode, folder, name, data):
+    folder = _check_rel(mode, folder)
+    if not samplelib.safe_rel(name) or "/" in name:
+        raise AppError("Invalid file name")
+    if Path(name).suffix.lower() not in (".wav", ".aif", ".aiff", ".flac", ".mp3", ".ablpreset", ".json"):
+        raise AppError("Supported: WAV, AIFF, FLAC, MP3 (and presets)")
+    stem, ext = Path(name).stem, Path(name).suffix
+    existing = {f["rel"] for f in lib_tree(mode)["files"]}
+    rel, n = f"{folder}/{name}", 2
+    while rel in existing:
+        rel, n = f"{folder}/{stem} {n}{ext}", n + 1
+    ssh_run(f'( mkdir -p {_q(folder)} && cat > {_q(rel)}.mmtmp && mv {_q(rel)}.mmtmp {_q(rel)} ) '
+            f'|| {{ rm -f {_q(rel)}.mmtmp; exit 1; }}; {REFRESH} || true',
+            data=data, timeout=300)
+    return rel
+
+
+def userlib_delete(mode, rels):
+    """Удаляет файлы и папки библиотеки на Move — только то, чем ничего не пользуется. Папка — целиком, если всё внутри свободно."""
+    rels = [_check_rel(mode, r) for r in rels]
+    root = _mode_root(mode)
+    if any(r == root for r in rels):
+        raise AppError("The section folder itself can't be deleted")
+    tree = lib_tree(mode)
+    folders, files = set(tree["folders"]), [f["rel"] for f in tree["files"]]
+    refs = userlib_index()["refs"]
+    for r in rels:
+        inside = [f for f in files if f.startswith(r + "/")] if r in folders else [r]
+        used = [f for f in inside if refs.get(f)]
+        if used:
+            raise AppError(f"Still used by projects or presets: {used[0]}")
+    ssh_run("rm -rf " + " ".join(_q(r) for r in rels) + f" || exit 1; {REFRESH} || true")
+
+
+# ───────────────────────── компьютер ↔ Move: две панели ─────────────────────────
+
+def fs_roots(platform, home):
+    """Где можно ходить по папкам компьютера: домашняя папка и внешние диски (Mac — /Volumes, Windows — все диски)."""
+    if platform.startswith("win"):
+        return [str(home)] + [f"{c}:\\" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if os.path.isdir(f"{c}:\\")]
+    return [str(home), "/Volumes"] if platform == "darwin" else [str(home), "/media", "/mnt"]
+
+
+FS_ROOTS = fs_roots(sys.platform, Path.home())
+FS_EXT = {"samples": {".wav", ".aif", ".aiff", ".flac", ".mp3"}, "presets": {".ablpreset", ".json"}}
+FS_SHOW = {"samples": FS_EXT["samples"], "presets": {".ablpreset"}}
+
+
+def _fs_ext(mode):
+    if mode not in FS_EXT:
+        raise AppError("Unknown library section")
+    return FS_EXT[mode]
+
+
+def fs_check(path, must_dir=False):
+    """Путь на компьютере внутри разрешённых корней (после раскрытия ссылок и «..»)."""
+    try:
+        p = Path(str(path)).expanduser().resolve()
+    except (OSError, RuntimeError):
+        raise AppError("Invalid path")
+    for r in FS_ROOTS:
+        root = Path(r).resolve()
+        if p == root or root in p.parents:
+            if not p.exists():
+                raise AppError("Not found: " + p.name)
+            if must_dir and not p.is_dir():
+                raise AppError("Not a folder: " + p.name)
+            return p
+    raise AppError("This folder is outside your home folder and external drives")
+
+
+def _fs_root_of(p):
+    return any(p == Path(r).resolve() for r in FS_ROOTS)
+
+
+def fs_list(path, mode):
+    p = fs_check(path, must_dir=True)
+    show = FS_SHOW.get(mode) or _fs_ext(mode)
+    folders, files = [], []
+    try:
+        entries = list(os.scandir(p))
+    except OSError as e:
+        raise AppError(f"Can't open the folder: {e.strerror or e}")
+    for e in entries:
+        if e.name.startswith("."):
+            continue
+        try:
+            if e.is_dir():
+                folders.append(e.name)
+            elif e.is_file() and Path(e.name).suffix.lower() in show:
+                files.append({"name": e.name, "size": e.stat().st_size})
+        except OSError:
+            continue
+    return {"path": p.as_posix(), "parent": None if _fs_root_of(p) else p.parent.as_posix(),
+            "folders": sorted(folders, key=str.lower), "files": sorted(files, key=lambda f: f["name"].lower())}
+
+
+def unique_name(name, taken):
+    """«snare.wav» → «snare 2.wav», если имя занято; у папок — «Kits 2»."""
+    if name not in taken:
+        return name
+    stem, ext = (Path(name).stem, Path(name).suffix) if Path(name).suffix else (name, "")
+    n = 2
+    while f"{stem} {n}{ext}" in taken:
+        n += 1
+    return f"{stem} {n}{ext}"
+
+
+def _fs_name(name):
+    name = str(name or "").strip()
+    if not name or "/" in name or "\\" in name or name in (".", "..") or name.startswith("."):
+        raise AppError("Invalid name")
+    return name
+
+
+def fs_mkdir(parent, name):
+    d = fs_check(parent, must_dir=True) / _fs_name(name)
+    if d.exists():
+        raise AppError(f'"{d.name}" already exists here')
+    d.mkdir()
+    return d.as_posix()
+
+
+def fs_rename(path, name):
+    p = fs_check(path)
+    if _fs_root_of(p):
+        raise AppError("This folder can't be renamed here")
+    t = p.parent / _fs_name(name)
+    if t == p:
+        return p.as_posix()
+    if t.exists():
+        raise AppError(f'"{t.name}" already exists here')
+    p.rename(t)
+    return t.as_posix()
+
+
+def fs_move(src, dst_dir):
+    s, d = fs_check(src), fs_check(dst_dir, must_dir=True)
+    if d == s or s in d.parents:
+        raise AppError("A folder can't be moved into itself")
+    if d == s.parent:
+        return s.as_posix()
+    target = d / s.name
+    if target.exists():
+        raise AppError(f'"{s.name}" already exists there')
+    shutil.move(str(s), str(target))
+    return target.as_posix()
+
+
+def copy_to_move(mode, paths, folder, stage):
+    """Копирует файлы и папки с компьютера в папку библиотеки на Move. Существующее не трогается: занятые имена получают « 2»."""
+    folder = _check_rel(mode, folder)
+    allowed = _fs_ext(mode)
+    tree = lib_tree(mode)
+    taken = {f["rel"] for f in tree["files"]} | set(tree["folders"])
+    here = lambda: {r.split("/")[-1] for r in taken if r.rsplit("/", 1)[0] == folder}
+    plan, skipped = [], 0
+    for raw in paths:
+        p = fs_check(raw)
+        if p.is_dir():
+            top = unique_name(p.name, here())
+            taken.add(f"{folder}/{top}")
+            for dirpath, dirs, files in os.walk(p):
+                dirs[:] = sorted(x for x in dirs if not x.startswith("."))
+                for fn in sorted(files):
+                    if fn.startswith("."):
+                        continue
+                    if Path(fn).suffix.lower() not in allowed:
+                        skipped += 1
+                        continue
+                    rel = Path(dirpath).relative_to(p).as_posix()
+                    plan.append((Path(dirpath) / fn, f"{folder}/{top}" + ("" if rel == "." else "/" + rel) + "/" + fn))
+        elif Path(p.name).suffix.lower() in allowed:
+            name = unique_name(p.name, here())
+            taken.add(f"{folder}/{name}")
+            plan.append((p, f"{folder}/{name}"))
+        else:
+            skipped += 1
+    for _local, rel in plan:
+        if not samplelib.safe_rel(rel):
+            raise AppError("Invalid file name: " + rel)
+    if not plan:
+        raise AppError("Nothing to copy: no " + ("audio files" if mode == "samples" else "presets") + " here")
+    batch, size, done = [], 0, 0
+    def send(items):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w", format=tarfile.GNU_FORMAT) as t:
+            for local, rel in items:
+                t.add(str(local), arcname=rel, recursive=False)
+        ssh_run(f"cd {shlex.quote(USERLIB_DIR)} && tar -xf -", data=buf.getvalue(), timeout=600)
+    for local, rel in plan:
+        batch.append((local, rel)); size += local.stat().st_size
+        if size > 100 * 1024 * 1024:
+            stage(f"Copying to Move: {done + len(batch)}/{len(plan)}", (done + len(batch)) / len(plan))
+            send(batch); done += len(batch); batch, size = [], 0
+    if batch:
+        stage(f"Copying to Move: {len(plan)}/{len(plan)}", 1)
+        send(batch)
+    ssh_run(REFRESH + " || true")
+    return {"copied": len(plan), "skipped": skipped}
+
+
+def copy_to_pc(mode, rels, folder, stage):
+    """Копирует файлы и папки библиотеки Move в папку на компьютере. Существующее не трогается."""
+    dest = fs_check(folder, must_dir=True)
+    rels = [_check_rel(mode, r) for r in rels]
+    copied = 0
+    for i, rel in enumerate(rels):
+        stage(f"Copying to the computer: {i + 1}/{len(rels)}", (i + 1) / len(rels))
+        parent, base = rel.rsplit("/", 1) if "/" in rel else ("", rel)
+        data = ssh_run(f"cd {_q(parent)} && tar -cf - {shlex.quote(base)}", timeout=600)
+        tmp = dest / f".mm-copy-{uuid.uuid4().hex[:8]}"
+        tmp.mkdir()
+        try:
+            with tarfile.open(fileobj=io.BytesIO(data)) as t:
+                if hasattr(tarfile, "data_filter"):
+                    t.extractall(tmp, filter="data")
+                else:                                    # старый Python: только обычные файлы и папки внутри tmp
+                    for mem in t.getmembers():
+                        if not (mem.isfile() or mem.isdir()) or mem.name.startswith("/") or ".." in Path(mem.name).parts:
+                            raise AppError("Unexpected entry in the copy from Move: " + mem.name)
+                    t.extractall(tmp)
+            got = tmp / base
+            copied += sum(1 for x in got.rglob("*") if x.is_file()) if got.is_dir() else 1
+            got.rename(dest / unique_name(base, set(os.listdir(dest))))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return {"copied": copied}
+
+
+def userlib_read(mode, rel):
+    return ssh_run(f"cat {_q(_check_rel(mode, rel))}", timeout=120)
+
+
+def prune_backups(folder, name, keep=5):
+    """Хранит только последние keep резервных копий Song.abl одного проекта (имя «<проект> ГГГГММДД-ЧЧММСС.abl»)."""
+    pat = re.compile(re.escape(name) + r" \d{8}-\d{6}\.abl")
+    files = sorted(p for p in Path(folder).glob("*.abl") if pat.fullmatch(p.name))
+    for old in files[:-keep]:
+        old.unlink(missing_ok=True)
 
 
 def ssh_read_song(oid):
@@ -653,18 +1386,18 @@ def ssh_write_song(oid, payload):
 
 
 def job_ssh_setup(stage):
-    stage("Готовлю ключ")
+    stage("Preparing key")
     pub_path = Path(str(SSH_KEY) + ".pub")
     if not SSH_KEY.exists() or not pub_path.exists():
         try:
             subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", str(SSH_KEY)],
                            check=True, capture_output=True)
         except (OSError, subprocess.CalledProcessError) as e:
-            raise AppError(f"Не удалось создать SSH-ключ: {e}")
+            raise AppError(f"Could not create SSH key: {e}")
     try:
         ssh_run("echo ok", timeout=15)
     except SshError:
-        stage("Подтвердите добавление ключа колесом на Move")
+        stage("Confirm the key with the wheel on Move")
         r = MOVE.req("POST", "/api/v1/ssh", data=pub_path.read_text().strip().encode(), timeout=(10, 180),
                      headers={"Content-Type": "application/x-www-form-urlencoded"})
         added = False
@@ -673,8 +1406,8 @@ def job_ssh_setup(stage):
         except ValueError:
             pass
         if r.status_code >= 400 or not added:
-            raise AppError("Move не добавил ключ. Подтвердите запрос колесом на устройстве и попробуйте ещё раз.")
-        stage("Проверяю подключение")
+            raise AppError("Move did not add the key. Confirm the request with the wheel on the device and try again.")
+        stage("Checking connection")
         ssh_run("echo ok", timeout=20)
     CFG["ssh_enabled"] = True
     save_config()
@@ -739,7 +1472,7 @@ def safe_name(name):
     name = re.sub(r'[/\\:\x00-\x1f]', " ", name or "").strip().strip(".")
     name = re.sub(r"\s+", " ", name)
     if not name:
-        raise AppError("Пустое название")
+        raise AppError("Empty name")
     return name[:120]
 
 
@@ -747,7 +1480,7 @@ def lib_dir(folder):
     root = lib_root()
     p = (root / folder).resolve()
     if p.parent != root.resolve() or not p.is_dir():
-        raise AppError("Проект не найден в папке")
+        raise AppError("Project not found in the folder")
     return p
 
 
@@ -785,6 +1518,7 @@ def lib_item(d):
         "audioSource": meta.get("audioSource"),
         "audioError": meta.get("audioError"),
         "group": meta.get("group") or "",
+        "schwung": bool(meta.get("schwung")) or (d / SCHWUNG_FILE).exists(),
         "size": bundle.stat().st_size,
         "info": meta.get("info"),
     }
@@ -816,20 +1550,77 @@ def replace_in_order(root, old, new):
         write_json(root / ".order.json", [new if n == old else n for n in order])
 
 
-def choose_folder_dialog():
-    if sys.platform != "darwin":
-        raise AppError("Системный выбор папки доступен только на macOS — введите путь вручную")
-    script = 'POSIX path of (choose folder with prompt "Папка для проектов Move")'
-    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
-    path = r.stdout.strip()
+def _code_changed():
+    """Код поменялся после запуска (из исходников) — интерфейс предложит перезапустить программу."""
+    try:
+        return (APP_DIR / "app.py").stat().st_mtime > STARTED
+    except OSError:
+        return False
+
+
+def folder_dialog_cmd(platform, prompt):
+    """Команда системного окна выбора папки; None — на этой системе такого окна нет."""
+    clean = re.sub(r"[\"'`$\\\r\n]", " ", str(prompt))[:120]
+    if platform == "darwin":
+        return ["osascript", "-e", f'POSIX path of (choose folder with prompt "{clean}")']
+    if platform.startswith("win"):
+        ps = ("Add-Type -AssemblyName System.Windows.Forms; "
+              "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+              f"$f.Description = '{clean}'; $f.ShowNewFolderButton = $true; "
+              "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $f.SelectedPath }")
+        return ["powershell", "-NoProfile", "-STA", "-Command", ps]
+    return None
+
+
+def choose_folder_dialog(prompt="Folder for Move projects"):
+    cmd = folder_dialog_cmd(sys.platform, prompt)
+    if cmd is None:
+        raise AppError("The system folder picker isn't available on this system — type the path")
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=300,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    path = r.stdout.decode("utf-8", "replace").strip()
     if r.returncode != 0 or not path:
         return None
     return path
 
 
+def reveal_cmd(platform, path, select):
+    """Показать файл (select) или открыть папку в Finder/Проводнике."""
+    if platform == "darwin":
+        return ["open", "-R", path] if select else ["open", path]
+    if platform.startswith("win"):
+        from pathlib import PureWindowsPath
+        p = str(PureWindowsPath(path))
+        return ["explorer", "/select," + p] if select else ["explorer", p]
+    return ["xdg-open", str(Path(path).parent if select else path)]
+
+
+def reveal(path, select=False):
+    try:
+        subprocess.Popen(reveal_cmd(sys.platform, str(path), select))
+    except OSError:
+        pass
+
+
 # ───────────────────────── фоновые задачи ─────────────────────────
 
 JOBS = {}
+
+
+def log_line(name, text):
+    """Короткий журнал в cache/: ошибки задач и медленные команды к Move — чтобы разбирать сбои по факту."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        f = CACHE_DIR / name
+        if f.exists() and f.stat().st_size > 300_000:
+            f.write_text(f.read_text("utf-8", "replace")[-150_000:], "utf-8")
+        with f.open("a", encoding="utf-8") as h:
+            h.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text.replace("\n", " ")[:600] + "\n")
+    except OSError:
+        pass
 
 
 def start_job(title, fn):
@@ -853,8 +1644,9 @@ def start_job(title, fn):
         except AuthRequired:
             job.update(status="error", error="auth")
         except MoveOffline:
-            job.update(status="error", error="Move недоступен. Проверьте, что он включён и в той же сети.")
+            job.update(status="error", error="Move is unreachable. Check that it is on and on the same network.")
         except Exception as e:  # noqa: BLE001
+            log_line("errors.log", f"{title}: {e}")
             job.update(status="error", error=str(e))
 
     threading.Thread(target=run, daemon=True).start()
@@ -865,26 +1657,26 @@ def set_by_id(oid):
     for o in MOVE.list_sets():
         if o.get("objectId") == oid:
             return o
-    raise AppError("Проект не найден на Move")
+    raise AppError("Project not found on Move")
 
 
 def render_into(oid, d, stage):
     """Экспортирует звук сета средствами Move и кладёт файл в папку проекта. Возвращает текст ошибки или None."""
     fmt = CFG.get("audio_format", "wav")
     tmp_a = tmp_path("." + fmt)
-    label = "Move экспортирует звук"
+    label = "Move is exporting audio"
 
     def prog(p):
-        stage("Move собирает файл" if p is None else label, p)
+        stage("Move is building the file" if p is None else label, p)
     try:
-        stage("Жду очереди на экспорт" if RENDER_LOCK.locked() else label, None, cancellable=True)
+        stage("Waiting in the export queue" if RENDER_LOCK.locked() else label, None, cancellable=True)
         MOVE.render(oid, fmt, tmp_a, prog, getattr(stage, "cancelled", None))
         clear_audio(d)
         shutil.move(str(tmp_a), d / f"{d.name}.{fmt}")
-        update_meta(d, audioSource="экспорт Move", audioError=None)
+        update_meta(d, audioSource="Move export", audioError=None)
         return None
     except (AppError, MoveOffline) as e:
-        msg = str(e) or "Move недоступен"
+        msg = str(e) or "Move is unreachable"
         update_meta(d, audioError=msg)
         return msg
     finally:
@@ -899,10 +1691,10 @@ def job_pull(oid, with_audio, group=None):
         root = lib_root()
         d = root / name
         d.mkdir(exist_ok=True)
-        stage("Скачиваю проект")
+        stage("Downloading project")
         tmp = tmp_path(".ablbundle")
         try:
-            MOVE.download(oid, tmp, lambda p: stage("Скачиваю проект", p))
+            MOVE.download(oid, tmp, lambda p: stage("Downloading project", p))
             info = parse_song(read_song(tmp))
             for old in d.glob("*.ablbundle"):
                 old.unlink()
@@ -920,11 +1712,24 @@ def job_pull(oid, with_audio, group=None):
         })
         if group is not None:
             meta["group"] = str(group)[:80]
+        schwung = False
+        if ssh_enabled():                    # состояние Schwung хранится на Move отдельно от сета
+            stage("Copying Schwung state")
+            try:
+                data = schwung_fetch(oid)
+            except (SshError, AppError, tarfile.TarError):
+                data = None
+            if data:
+                (d / SCHWUNG_FILE).write_bytes(data)
+                schwung = True
+            else:
+                (d / SCHWUNG_FILE).unlink(missing_ok=True)
+        meta["schwung"] = schwung
         meta.pop("bundleStamp", None)
         write_json(d / "meta.json", meta)
-        stage("Проект сохранён", None, saved=True)
+        stage("Project saved", None, saved=True)
         audio_error = render_into(oid, d, stage) if with_audio else None
-        return {"folder": name, "audioError": audio_error}
+        return {"folder": name, "audioError": audio_error, "schwung": schwung}
     return fn
 
 
@@ -936,7 +1741,7 @@ def job_render_library(folder):
         if oid not in ids:
             same = [o for o in ids.values() if o.get("name") == d.name]
             if len(same) != 1:
-                raise AppError("Этого проекта сейчас нет на Move. Загрузите его на Move и повторите экспорт.")
+                raise AppError("This project is not on Move now. Upload it to Move and export again.")
             oid = same[0]["objectId"]
             update_meta(d, sourceId=oid)
         err = render_into(oid, d, stage)
@@ -952,20 +1757,30 @@ def job_push(folder, slot=None, replace_id=None):
         d = lib_dir(folder)
         bundle = find_file(d, {".ablbundle"})
         if not bundle:
-            raise AppError("В папке проекта нет .ablbundle")
+            raise AppError("No .ablbundle in the project folder")
         if replace_id and not UUID_RE.fullmatch(replace_id):
-            raise AppError("Некорректный идентификатор")
+            raise AppError("Invalid identifier")
         before = {o["objectId"] for o in MOVE.list_sets()}
         if replace_id and replace_id not in before:
-            raise AppError("Заменяемого проекта уже нет на Move")
-        stage("Загружаю на Move")
-        MOVE.upload(bundle, f"{d.name}.ablbundle")
+            raise AppError("The project to replace is no longer on Move")
+        stage("Uploading to Move")
+        with zipfile.ZipFile(bundle) as zi:
+            nested = unwrap_nested_racks(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")))[1]
+        if nested:      # копия для Move без лишней обёртки рэка; файл на компьютере не меняется
+            fixed = CACHE_DIR / f"push-{uuid.uuid4().hex}.ablbundle"
+            try:
+                transform_bundle(bundle, fixed, lambda song: unwrap_nested_racks(song)[0])
+                MOVE.upload(fixed, f"{d.name}.ablbundle")
+            finally:
+                fixed.unlink(missing_ok=True)
+        else:
+            MOVE.upload(bundle, f"{d.name}.ablbundle")
         created = [o["objectId"] for o in MOVE.list_sets() if o["objectId"] not in before]
         if replace_id:
             # старый проект удаляем только после того, как новый однозначно найден на устройстве
             if len(created) != 1:
-                raise AppError("Новый проект загружен, но я не смог однозначно его найти — старый оставлен на месте")
-            stage("Убираю прежний проект с пэда")
+                raise AppError("The new project was uploaded but could not be identified — the old one was kept")
+            stage("Removing the previous project from the pad")
             MOVE.delete(replace_id)
             with LOCK:
                 CFG.setdefault("move_meta", {}).pop(replace_id, None)
@@ -977,7 +1792,20 @@ def job_push(folder, slot=None, replace_id=None):
             if int(slot) not in taken:
                 ssh_set_slots([(created[0], slot)])
                 placed = int(slot)
-        return {"name": d.name, "slot": placed, "replaced": bool(replace_id)}
+        schwung = None
+        state = d / SCHWUNG_FILE
+        if state.exists():
+            if not ssh_enabled():
+                schwung = "needs pad control"
+            elif len(created) != 1:
+                schwung = "set not identified"
+            else:
+                stage("Restoring Schwung state")
+                try:                         # сет уже загружен: ошибка Schwung не должна выглядеть как провал загрузки
+                    schwung = schwung_restore(created[0], state.read_bytes())
+                except (SshError, AppError, tarfile.TarError) as e:
+                    schwung = f"error: {e}"
+        return {"name": d.name, "slot": placed, "replaced": bool(replace_id), "schwung": schwung}
     return fn
 
 
@@ -986,12 +1814,13 @@ def job_edit_move(oid, order, pans, replace, key=None):
         obj = set_by_id(oid)
         if replace and ssh_enabled():
             with target_lock("move:" + oid):
-                stage("Читаю проект на Move")
+                stage("Reading project on Move")
                 song = ssh_read_song(oid)
-                backups = APP_DIR / "backups"
+                backups = backups_dir()
                 backups.mkdir(exist_ok=True)
                 (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
-                stage("Записываю изменения")
+                prune_backups(backups, safe_name(obj['name']))
+                stage("Writing changes")
                 ssh_write_song(oid, dump_song(edit_song(song, order, pans, key)))
                 with LOCK:
                     INFO_CACHE.pop(oid, None)
@@ -1000,11 +1829,11 @@ def job_edit_move(oid, order, pans, replace, key=None):
         src, dst = tmp_path(".ablbundle"), tmp_path(".ablbundle")
         new_name = f"{obj['name']}_edit"
         try:
-            stage("Скачиваю проект")
+            stage("Downloading project")
             MOVE.download(oid, src)
-            stage("Применяю изменения")
+            stage("Applying changes")
             edit_bundle(src, dst, order, pans, key)
-            stage("Загружаю на Move")
+            stage("Uploading to Move")
             MOVE.upload(dst, f"{new_name}.ablbundle")
         finally:
             src.unlink(missing_ok=True)
@@ -1012,8 +1841,8 @@ def job_edit_move(oid, order, pans, replace, key=None):
         if replace:
             created = [o for o in MOVE.list_sets() if o["objectId"] not in before]
             if len(created) != 1:
-                raise AppError("Новая версия загружена, но я не смог однозначно её найти — оригинал оставлен на месте")
-            stage("Заменяю оригинал")
+                raise AppError("The new version was uploaded but could not be identified — the original was kept")
+            stage("Replacing the original")
             MOVE.delete(oid)
             MOVE.rename(created[0]["objectId"], obj["name"])
             with LOCK:
@@ -1024,6 +1853,26 @@ def job_edit_move(oid, order, pans, replace, key=None):
             return {"replaced": True}
         return {"copy": new_name}
     return fn
+
+
+RACK_KINDS = {"instrumentRack", "audioEffectRack", "midiEffectRack"}
+
+
+def unwrap_nested_racks(song):
+    """Обёртка Schwung «ME Slot»: рэк, в единственной цепочке которого лежит ещё один рэк с одной цепочкой.
+    Move такое не принимает («Rack chain must have exactly one device»), поэтому внутренний рэк
+    убирается, а его устройства переезжают в цепочку внешнего. Звук не меняется. Возвращает (song, changed)."""
+    changed = False
+    for track in song.get("tracks") or []:
+        for dev in track.get("devices") or []:
+            chains = dev.get("chains") or []
+            if dev.get("kind") not in RACK_KINDS or len(chains) != 1:
+                continue
+            inner = chains[0].get("devices") or []
+            if len(inner) == 1 and inner[0].get("kind") in RACK_KINDS and len(inner[0].get("chains") or []) == 1:
+                chains[0]["devices"] = inner[0]["chains"][0].get("devices") or []
+                changed = True
+    return song, changed
 
 
 def transform_bundle(src, dst, fn):
@@ -1040,11 +1889,11 @@ def transform_bundle(src, dst, fn):
 
 def read_midi_upload(data):
     if not data:
-        raise AppError("Файл пустой")
+        raise AppError("The file is empty")
     try:
         return midi_to_notes(data)
     except MidiError as e:
-        raise AppError(f"MIDI-файл не прочитан: {e}")
+        raise AppError(f"MIDI file could not be read: {e}")
 
 
 def cell_busy(song, track, scene):
@@ -1057,12 +1906,14 @@ def cell_busy(song, track, scene):
 
 
 def library_put_clip(folder, track, scene, notes, length):
+    """notes=None — удалить клип из ячейки."""
     d = lib_dir(folder)
     bundle = find_file(d, {".ablbundle"})
     tmp = tmp_path(".ablbundle")
     try:
         with target_lock("lib:" + d.name):
-            transform_bundle(bundle, tmp, lambda song: put_clip(song, track, scene, notes, length))
+            transform_bundle(bundle, tmp, lambda song: put_clip(song, track, scene, notes, length)
+                             if notes is not None else remove_clip(song, track, scene))
             shutil.move(str(tmp), bundle)
     finally:
         tmp.unlink(missing_ok=True)
@@ -1075,12 +1926,251 @@ def move_song(oid):
             return ssh_read_song(oid)
         except (SshError, ValueError):
             pass
+    if oid not in {o["objectId"] for o in MOVE.list_sets()}:
+        raise AppError("This project is no longer on Move (it was replaced or deleted). The list has been refreshed.")
     tmp = tmp_path(".ablbundle")
     try:
         MOVE.download(oid, tmp)
         return read_song(tmp)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+# ───────────────────────── генератор барабанов ─────────────────────────
+PATTERNS = None
+MINE_CACHE = {}          # путь бандла → (mtime, [рисунки])
+
+
+def builtin_patterns():
+    global PATTERNS
+    if PATTERNS is None:
+        PATTERNS = drumgen.load_patterns()
+    return PATTERNS
+
+
+def clip_to_pattern(clip, pads, pid, name, genre):
+    """Барабанный клип → рисунок по ролям, квантованный к 1/16, не длиннее двух тактов."""
+    region = clip.get("region") or {}
+    start = float(region.get("start", 0.0))
+    length = min(8.0, max(4.0, float(region.get("end", 4.0)) - start))
+    steps = 16 if length <= 4.0 else 32
+    roles = {p["note"]: p["role"] for p in pads}
+    hits = {}
+    for n in clip.get("notes") or []:
+        role = roles.get(n.get("noteNumber"))
+        st = int(round((float(n.get("startTime", 0)) - start) / 0.25))
+        if role and 0 <= st < steps:
+            hits.setdefault(role, [0.0] * steps)[st] = 0.8
+    return {"id": pid, "name": name, "genre": genre, "source": "mine", "steps": steps, "hits": hits}
+
+
+MINE_STATE = {"running": False, "done": 0, "total": 0, "ready": False}
+MINE_LOCK = threading.Lock()
+
+
+def _mine_cache_file():
+    return CACHE_DIR / "mine_patterns.json"
+
+
+def _bundle_patterns(bundle, folder):
+    """Барабанные клипы проекта → рисунки без жанра (жанр — группа проекта, подставляется при выдаче)."""
+    pats = []
+    try:
+        song = read_song(bundle)
+        for t, tr in enumerate(song.get("tracks") or []):
+            pads = drumgen.kit_pads(song, t)
+            if not pads:
+                continue
+            for sc, slot in enumerate(tr.get("clipSlots") or []):
+                clip = (slot or {}).get("clip")
+                if clip and len(clip.get("notes") or []) >= 4:
+                    pat = clip_to_pattern(clip, pads, f"mine:{folder}:{t}:{sc}", f"{folder} T{t + 1} S{sc + 1}", "")
+                    if pat["hits"]:
+                        pats.append(pat)
+    except (AppError, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile):
+        pats = []
+    return pats
+
+
+def scan_mine():
+    """Фоновый разбор барабанных клипов библиотеки. Неизменённые проекты (путь, время, размер) не читаются:
+    результат хранится в cache/mine_patterns.json и переживает перезапуск. Библиотека может лежать в iCloud —
+    первое чтение каждого бандла тогда скачивает его, поэтому всё это идёт в фоне с ходом выполнения."""
+    with MINE_LOCK:
+        if MINE_STATE["running"]:
+            return
+        MINE_STATE["running"] = True
+    try:
+        if not MINE_CACHE:
+            MINE_CACHE.update(read_json(_mine_cache_file(), {}))
+        root = lib_root()
+        dirs = [d for d in sorted(root.iterdir(), key=lambda p: p.name.lower())
+                if d.is_dir() and not d.name.startswith((".", "_"))]
+        MINE_STATE.update(total=len(dirs), done=0)
+        seen, changed = set(), False
+        for d in dirs:
+            bundle = find_file(d, {".ablbundle"})
+            if bundle:
+                st = bundle.stat()
+                key, sig = str(bundle), [st.st_mtime, st.st_size]
+                seen.add(key)
+                if (MINE_CACHE.get(key) or {}).get("sig") != sig:
+                    MINE_CACHE[key] = {"sig": sig, "folder": d.name, "pats": _bundle_patterns(bundle, d.name)}
+                    changed = True
+            MINE_STATE["done"] += 1
+        for key in [k for k in MINE_CACHE if k not in seen]:
+            MINE_CACHE.pop(key)
+            changed = True
+        if changed:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            write_json(_mine_cache_file(), MINE_CACHE)
+        MINE_STATE["ready"] = True
+    finally:
+        MINE_STATE["running"] = False
+
+
+def start_mine_scan():
+    if not MINE_STATE["running"]:
+        threading.Thread(target=scan_mine, daemon=True).start()
+
+
+def my_patterns():
+    """Рисунки из уже разобранных проектов (без чтения бандлов). Жанр — текущая группа проекта."""
+    out = []
+    root = lib_root()
+    for entry in list(MINE_CACHE.values()):
+        group = read_json(root / entry["folder"] / "meta.json", {}).get("group") or "My clips"
+        for p in entry["pats"]:
+            out.append(dict(p, genre=group))
+    return out
+
+
+GM_DRUMS = {35: "kick", 36: "kick", 37: "rim", 38: "snare", 40: "snare", 39: "clap", 42: "chh", 44: "chh", 46: "ohh",
+            41: "tom_low", 43: "tom_low", 45: "tom_mid", 47: "tom_mid", 48: "tom_high", 50: "tom_high",
+            49: "crash", 52: "crash", 55: "crash", 57: "crash", 51: "ride", 53: "ride", 59: "ride",
+            54: "perc", 56: "cowbell", 69: "shaker", 70: "shaker", 60: "perc", 61: "perc", 62: "perc", 63: "perc",
+            64: "perc", 75: "rim", 76: "perc", 77: "perc"}
+MIDI_CACHE = {}          # путь → (mtime, size, рисунок | None)
+
+
+def midi_file_pattern(path, root):
+    """Барабанный .mid → рисунок по ролям (раскладка General MIDI), 1/16, до двух тактов."""
+    notes, _ = midi_to_notes(path.read_bytes())
+    end = max(n["startTime"] for n in notes)
+    steps = 16 if end < 4.0 else 32
+    hits = {}
+    for n in notes:
+        role, st = GM_DRUMS.get(n["noteNumber"]), int(round(n["startTime"] / 0.25))
+        if role and 0 <= st < steps:
+            hits.setdefault(role, [0.0] * steps)[st] = 0.8
+    if not hits:
+        return None
+    rel = path.relative_to(root)
+    genre = rel.parts[0] if len(rel.parts) > 1 else "MIDI folder"
+    return {"id": f"midi:{rel.as_posix()}", "name": path.stem, "genre": genre, "source": "midi",
+            "steps": steps, "hits": hits}
+
+
+def midi_folder_patterns(folder):
+    """Рисунки из папки с .mid (жанр — первая подпапка). Битые и небарабанные файлы пропускаются."""
+    root = Path(folder).expanduser()
+    if not folder or not root.is_dir():
+        return []
+    out = []
+    files = sorted(p for p in root.rglob("*") if p.suffix.lower() in (".mid", ".midi") and p.is_file())[:3000]
+    for f in files:
+        st = f.stat()
+        if st.st_size > 1_000_000:
+            continue
+        key = str(f)
+        cached = MIDI_CACHE.get(key)
+        if not cached or cached[:2] != (st.st_mtime, st.st_size):
+            try:
+                pat = midi_file_pattern(f, root)
+            except (MidiError, OSError, ValueError):
+                pat = None
+            cached = MIDI_CACHE[key] = (st.st_mtime, st.st_size, pat)
+        if cached[2]:
+            out.append(dict(cached[2]))
+    return out
+
+
+def all_patterns():
+    return drumgen.unify_genres(builtin_patterns() + [dict(p) for p in my_patterns()]
+                                + midi_folder_patterns(CFG.get("midiFolder") or ""))
+
+
+def kit_overrides(side, ident, track):
+    if side == "move":
+        return ((CFG.get("move_meta") or {}).get(ident, {}).get("kitRoles") or {}).get(str(track), {})
+    return (read_json(lib_dir(ident) / "meta.json", {}).get("kitRoles") or {}).get(str(track), {})
+
+
+def save_kit_overrides(side, ident, track, overrides):
+    clean = {str(int(k)): v for k, v in (overrides or {}).items() if v in drumgen.ROLES and 36 <= int(k) <= 51}
+    if side == "move":
+        with LOCK:
+            CFG.setdefault("move_meta", {}).setdefault(ident, {}).setdefault("kitRoles", {})[str(track)] = clean
+            save_config()
+    else:
+        d = lib_dir(ident)
+        meta = read_json(d / "meta.json", {})
+        meta.setdefault("kitRoles", {})[str(track)] = clean
+        write_json(d / "meta.json", meta)
+
+
+def known_pads(raw):
+    """Раскладка кита, которую интерфейс уже получил: не читать проект заново (на Move это SSH на каждое нажатие)."""
+    pads = []
+    try:
+        for p in raw:
+            note, role = int(p["note"]), str(p["role"])
+            if not 36 <= note <= 51 or role not in drumgen.ROLES:
+                raise ValueError
+            pads.append({"note": note, "sample": str(p.get("sample") or "")[:200], "role": role})
+    except (KeyError, TypeError, ValueError):
+        raise AppError("Invalid kit")
+    if not pads:
+        raise AppError("Invalid kit")
+    return pads
+
+
+def side_song(side, ident):
+    if side == "move":
+        if not UUID_RE.fullmatch(ident or ""):
+            raise AppError("Invalid identifier")
+        return move_song(ident)
+    return read_song(find_file(lib_dir(ident), {".ablbundle"}))
+
+
+MAX_CLIP_BEATS = 256.0       # 64 такта 4/4
+
+
+def clip_length(b):
+    try:
+        length = float(b.get("length") or 4)
+    except (TypeError, ValueError):
+        raise AppError("Invalid clip length")
+    if not 0 < length <= MAX_CLIP_BEATS:
+        raise AppError("Invalid clip length")
+    return length
+
+
+def clean_notes(raw, length=MAX_CLIP_BEATS):
+    """Ноты из запроса: высота 0–127, громкость 1–127, без наложений одинаковых нот."""
+    notes = []
+    for n in raw or []:
+        try:
+            pitch, st, dur, vel = int(n["noteNumber"]), float(n["startTime"]), float(n["duration"]), float(n["velocity"])
+        except (KeyError, TypeError, ValueError):
+            raise AppError("Invalid notes")
+        if not (0 <= pitch <= 127 and 0 <= st < length and dur > 0 and 1 <= vel <= 127):
+            raise AppError("Invalid notes")
+        notes.append((pitch, round(st * 960), round((st + dur) * 960), vel))
+    if not notes or len(notes) > 4096:
+        raise AppError("Invalid notes")
+    return [{"noteNumber": p, "startTime": a / 960, "duration": (e - a) / 960, "velocity": float(v), "offVelocity": 0.0}
+            for p, a, e, v in _no_overlaps(notes, 960)]
 
 
 TARGET_LOCKS = {}
@@ -1094,7 +2184,7 @@ def target_lock(key):
 
 def job_clip_move(oid, track, scene, notes, length):
     def fn(stage):
-        stage("Жду завершения другой правки этого проекта" if target_lock("move:" + oid).locked() else "Читаю проект на Move")
+        stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
         with target_lock("move:" + oid):
             return _clip_move(oid, track, scene, notes, length, stage)
     return fn
@@ -1102,13 +2192,15 @@ def job_clip_move(oid, track, scene, notes, length):
 
 def _clip_move(oid, track, scene, notes, length, stage):
     obj = set_by_id(oid)
-    stage("Читаю проект на Move")
+    stage("Reading project on Move")
     song = ssh_read_song(oid)
-    backups = APP_DIR / "backups"
+    backups = backups_dir()
     backups.mkdir(exist_ok=True)
     (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
-    stage("Записываю клип")
-    ssh_write_song(oid, dump_song(put_clip(song, track, scene, notes, length)))
+    prune_backups(backups, safe_name(obj['name']))
+    stage("Writing clip" if notes is not None else "Removing clip")
+    ssh_write_song(oid, dump_song(put_clip(song, track, scene, notes, length) if notes is not None
+                                  else remove_clip(song, track, scene)))
     with LOCK:
         INFO_CACHE.pop(oid, None)
     return {"ok": True}
@@ -1134,7 +2226,7 @@ def import_bundle(filename, data, group=None):
         try:
             read_song(tmp)
         except (zipfile.BadZipFile, AppError, ValueError, KeyError):
-            raise AppError(f"«{filename}» не похож на проект Move (.ablbundle)")
+            raise AppError(f"\"{filename}\" does not look like a Move project (.ablbundle)")
         root, final, n = lib_root(), name, 2
         while (root / final).exists():
             final, n = f"{name} ({n})", n + 1
@@ -1158,11 +2250,11 @@ def clear_audio(d):
 
 def attach_audio(folder, ext, data):
     if "." + ext not in AUDIO_EXTS:
-        raise AppError("Подходят файлы WAV, MP3, M4A, WebM и OGG")
+        raise AppError("Supported files: WAV, MP3, M4A, WebM and OGG")
     d = lib_dir(folder)
     clear_audio(d)
     (d / f"{d.name}.{ext}").write_bytes(data)
-    update_meta(d, audioSource="запись со входа" if ext in ("webm", "m4a") else "свой файл", audioError=None)
+    update_meta(d, audioSource="input recording" if ext in ("webm", "m4a") else "own file", audioError=None)
 
 
 def recordings_for(set_name):
@@ -1179,7 +2271,7 @@ def recordings_for(set_name):
 def fetch_recording(name, d, progress=None):
     r = MOVE.recording_response(name)
     if r.status_code != 200:
-        raise AppError(f"Не удалось скачать запись ({r.status_code})")
+        raise AppError(f"Could not download the recording ({r.status_code})")
     total, done = int(r.headers.get("content-length") or 0), 0
     tmp = tmp_path(".wav")
     try:
@@ -1199,8 +2291,8 @@ def fetch_recording(name, d, progress=None):
 def job_attach_recording(folder, name):
     def fn(stage):
         d = lib_dir(folder)
-        stage("Скачиваю запись с Move", 0)
-        fetch_recording(name, d, lambda p: stage("Скачиваю запись с Move", p))
+        stage("Downloading recording from Move", 0)
+        fetch_recording(name, d, lambda p: stage("Downloading recording from Move", p))
         return {"ok": True}
     return fn
 
@@ -1212,7 +2304,7 @@ def rename_library(folder, new_name):
         return d.name
     target = d.parent / new_name
     if target.exists():
-        raise AppError("Проект с таким названием уже есть в папке")
+        raise AppError("A project with this name already exists in the folder")
     for f in list(d.iterdir()):
         if f.is_file() and f.stem == d.name and f.suffix.lower() in ({".ablbundle"} | AUDIO_EXTS):
             f.rename(d / f"{new_name}{f.suffix}")
@@ -1224,7 +2316,7 @@ def rename_library(folder, new_name):
 
 def trash_library(folder):
     d = lib_dir(folder)
-    trash = d.parent / "_Удалённые"
+    trash = d.parent / "_Deleted"
     trash.mkdir(exist_ok=True)
     target = trash / f"{d.name} {time.strftime('%Y%m%d-%H%M%S')}"
     d.rename(target)
@@ -1232,11 +2324,28 @@ def trash_library(folder):
 
 # ───────────────────────── HTTP ─────────────────────────
 
+SOURCE_NAMES = {"user-library": "User Library", "abl-core-library": "Core Library"}
+KIND_NAMES = {"drift": "Drift", "wavetable": "Wavetable", "drumRack": "Drum Rack",
+              "melodicSampler": "Melodic Sampler", "drumCell": "Drum Sampler"}
+
+
+def clip_midi(song, track, scene, project):
+    """MIDI-файл клипа: имя дорожки — пресет инструмента, в мета-событии «инструмент» — тип и откуда пресет."""
+    clip = get_clip(song, track, scene)
+    info = parse_song(song)["tracks"][track]
+    preset = info.get("preset") or info.get("name") or f"Track {track + 1}"
+    where = " / ".join([SOURCE_NAMES.get(info.get("source"), info.get("source") or "")] + list(info.get("folders") or []))
+    instrument = " · ".join(x for x in (KIND_NAMES.get(info.get("kind"), info.get("kind") or ""), where.strip(" /"),
+                                        info.get("role") or "") if x)
+    filename = f"{safe_name(project)} T{track + 1} {safe_name(preset)} S{scene + 1}.mid"
+    return clip_to_midi(clip, song.get("tempo") or 120, preset, instrument), filename
+
+
 def cell_args(q):
     try:
         return int((q.get("track") or [""])[0]), int((q.get("scene") or [""])[0])
     except ValueError:
-        raise AppError("Не указана ячейка")
+        raise AppError("No cell given")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1254,6 +2363,119 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def userlib_route(self, sub, m, q):
+        """Библиотека сэмплов/пресетов на Move: дерево, план, применение, папка, загрузка, удаление, файл."""
+        if not ssh_enabled():
+            raise AppError("The sample library on Move needs pad control enabled (SSH)")
+        arg = lambda k, d="": (q.get(k) or [d])[0]
+        if sub == [] and m == "GET":
+            mode = arg("mode", "samples")
+            tree = lib_tree(mode)
+            idx = userlib_index()
+            def who(path):
+                if _project_of(path):
+                    return {"kind": "project", "name": _project_of(path)}
+                if path.startswith(SCHWUNG_DIR):
+                    return {"kind": "schwung", "name": "Schwung state"}
+                return {"kind": "preset", "name": path.split("/")[-1]}
+            for f in tree["files"]:
+                f["used"] = [who(p) for p in idx["refs"].get(f["rel"], [])]
+            return self.send_json(tree | {"mode": mode, "root": USERLIB_MODES[mode]})
+        if sub == ["plan"] and m == "POST":
+            b = self.body()
+            return self.send_json(userlib_plan(b.get("mode"), [tuple(x) for x in b.get("moves") or []]))
+        if sub == ["apply"] and m == "POST":
+            b = self.body()
+            plan = userlib_plan(b.get("mode"), [tuple(x) for x in b.get("moves") or []])   # план считается заново
+            if plan["conflicts"]:
+                raise AppError("The plan has conflicts: " + ", ".join(plan["conflicts"][:3]))
+            return self.send_json(start_job("userlib", lambda stage: apply_userlib_plan(plan, stage)))
+        if sub == ["folder"] and m == "POST":
+            b = self.body()
+            userlib_mkdir(b.get("mode"), str(b.get("rel") or ""))
+            return self.send_json({"ok": True})
+        if sub == ["upload"] and m == "POST":
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 400 * 1024 * 1024:
+                raise AppError("The file is too large")
+            rel = userlib_upload(arg("mode"), arg("dir"), arg("name"), self.rfile.read(n))
+            return self.send_json({"ok": True, "rel": rel})
+        if sub == ["delete"] and m == "POST":
+            b = self.body()
+            userlib_delete(b.get("mode"), [str(r) for r in b.get("rels") or []])
+            return self.send_json({"ok": True})
+        if sub == ["file"] and m == "GET":
+            rel = arg("rel")
+            ext = Path(rel).suffix.lower()
+            ctype = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".aif": "audio/aiff", ".aiff": "audio/aiff",
+                     ".flac": "audio/flac"}.get(ext, "application/octet-stream")
+            return self.send_bytes(userlib_read(arg("mode", "samples"), rel), ctype)
+        raise AppError("Invalid request")
+
+    def fs_route(self, seg, m, q):
+        """Папки компьютера для правой панели и копирование компьютер ↔ Move."""
+        arg = lambda k, d="": (q.get(k) or [d])[0]
+        if seg == ["fs"] and m == "GET":
+            path = arg("path")
+            if not path:
+                path = CFG.get("samplesFolder") or (str(Path.home() / "Music") if (Path.home() / "Music").is_dir() else str(Path.home()))
+                try:
+                    fs_check(path, must_dir=True)
+                except AppError:
+                    path = str(Path.home())
+            d = fs_list(path, arg("mode", "samples"))
+            if arg("path") and CFG.get("samplesFolder") != d["path"]:
+                CFG["samplesFolder"] = d["path"]
+                save_config()
+            return self.send_json(d)
+        if seg == ["fs", "choose"] and m == "POST":
+            p = choose_folder_dialog("Folder with samples on this computer")
+            if p:
+                CFG["samplesFolder"] = fs_check(p, must_dir=True).as_posix()
+                save_config()
+            return self.send_json({"path": CFG.get("samplesFolder") or "", "chosen": bool(p)})
+        if seg == ["fs", "file"] and m == "GET":
+            p = fs_check(arg("path"))
+            if not p.is_file():
+                raise AppError("Not a file")
+            ctype = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".aif": "audio/aiff", ".aiff": "audio/aiff",
+                     ".flac": "audio/flac"}.get(p.suffix.lower(), "application/octet-stream")
+            return self.send_bytes(p.read_bytes(), ctype)
+        if seg == ["fs", "move"] and m == "POST":
+            b = self.body()
+            return self.send_json({"path": fs_move(b.get("src") or "", b.get("dst") or "")})
+        if seg == ["fs", "mkdir"] and m == "POST":
+            b = self.body()
+            return self.send_json({"path": fs_mkdir(b.get("parent") or "", b.get("name") or "")})
+        if seg == ["fs", "rename"] and m == "POST":
+            b = self.body()
+            return self.send_json({"path": fs_rename(b.get("path") or "", b.get("name") or "")})
+        if seg == ["fs", "reveal"] and m == "POST":
+            p = fs_check(self.body().get("path") or "")
+            reveal(p, select=True)
+            return self.send_json({"ok": True})
+        if not ssh_enabled():
+            raise AppError("Copying to and from Move needs pad control enabled (SSH)")
+        if seg == ["xfer", "to-move"] and m == "POST":
+            b = self.body()
+            mode, paths, folder = b.get("mode"), [str(x) for x in b.get("paths") or []], str(b.get("dir") or "")
+            _check_rel(mode, folder); [fs_check(x) for x in paths]
+            return self.send_json(start_job("copy to Move", lambda stage: copy_to_move(mode, paths, folder, stage)))
+        if seg == ["xfer", "to-pc"] and m == "POST":
+            b = self.body()
+            mode, rels, folder = b.get("mode"), [str(x) for x in b.get("rels") or []], str(b.get("dir") or "")
+            [_check_rel(mode, r) for r in rels]; fs_check(folder, must_dir=True)
+            return self.send_json(start_job("copy to computer", lambda stage: copy_to_pc(mode, rels, folder, stage)))
+        raise AppError("Invalid request")
+
+    def send_bytes(self, data, ctype):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def send_midi(self, data, filename):
         from urllib.parse import quote
         self.send_response(200)
@@ -1269,7 +2491,7 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         self._body_read = True
         if n > limit:
-            raise AppError("Файл слишком большой")
+            raise AppError("The file is too large")
         return self.rfile.read(n) if n else b""
 
     def body(self):
@@ -1280,7 +2502,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return json.loads(self.rfile.read(n).decode("utf-8"))
         except ValueError:
-            raise AppError("Некорректный запрос")
+            raise AppError("Invalid request")
 
     def send_file(self, path, ctype=None):
         path = Path(path)
@@ -1338,13 +2560,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "auth"}, 401)
         except MoveOffline:
             self.send_json({"error": "offline",
-                            "message": "Move недоступен. Проверьте, что он включён и в той же Wi-Fi сети."}, 503)
+                            "message": "Move is unreachable. Check that it is on and on the same Wi-Fi network."}, 503)
         except AppError as e:
             self.send_json({"error": "app", "message": str(e)}, 400)
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:  # noqa: BLE001
-            self.send_json({"error": "app", "message": f"Внутренняя ошибка: {e}"}, 500)
+            self.send_json({"error": "app", "message": f"Internal error: {e}"}, 500)
         finally:
             # ответ отправлен, а тело запроса так и не прочитано — его байты сломали бы следующий запрос
             if not self._body_read and int(self.headers.get("Content-Length") or 0) > 0:
@@ -1369,7 +2591,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "audioFormat": CFG.get("audio_format", "wav"),
                                    "build": BUILD,
                                    "uiStamp": int((STATIC_DIR / "index.html").stat().st_mtime),
-                                   "stale": (APP_DIR / "app.py").stat().st_mtime > STARTED})
+                                   "stale": _code_changed()})
         if seg == ["config"] and m == "POST":
             b = self.body()
             if "library" in b:
@@ -1377,14 +2599,25 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     p.mkdir(parents=True, exist_ok=True)
                 except OSError as e:
-                    raise AppError(f"Не могу использовать эту папку: {e}")
+                    raise AppError(f"Cannot use this folder: {e}")
                 CFG["library"] = str(p)
             if b.get("audioFormat") in ("wav", "mp3"):
                 CFG["audio_format"] = b["audioFormat"]
             if b.get("moveUrl"):
                 CFG["move_url"] = str(b["moveUrl"]).rstrip("/")
+            if "midiFolder" in b:
+                mf = str(b["midiFolder"] or "").strip()
+                if mf and not Path(mf).expanduser().is_dir():
+                    raise AppError("MIDI folder not found")
+                CFG["midiFolder"] = str(Path(mf).expanduser()) if mf else ""
             save_config()
             return self.send_json({"ok": True, "library": CFG["library"]})
+        if seg == ["choose-midi-folder"] and m == "POST":
+            p = choose_folder_dialog("Folder with drum MIDI clips")
+            if p:
+                CFG["midiFolder"] = p
+                save_config()
+            return self.send_json({"midiFolder": CFG.get("midiFolder") or "", "chosen": bool(p)})
         if seg == ["choose-folder"] and m == "POST":
             p = choose_folder_dialog()
             if p:
@@ -1418,7 +2651,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         if len(seg) == 2 and seg[0] == "jobs" and m == "GET":
             job = JOBS.get(seg[1])
-            return self.send_json(job or {"status": "error", "error": "Задача не найдена"})
+            return self.send_json(job or {"status": "error", "error": "Job not found"})
 
         # ── Move
         if seg == ["move", "recordings"] and m == "GET":
@@ -1426,7 +2659,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(seg) == 4 and seg[:2] == ["move", "recordings"] and seg[3] == "audio" and m in ("GET", "HEAD"):
             r = MOVE.recording_response(seg[2], self.headers.get("Range"))
             if r.status_code not in (200, 206):
-                return self.send_json({"error": "нет записи"}, 404)
+                return self.send_json({"error": "no recording"}, 404)
             self.send_response(r.status_code)
             for h in ("Content-Type", "Content-Length", "Content-Range"):
                 if r.headers.get(h):
@@ -1449,16 +2682,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(start_job("ssh", job_ssh_setup))
         if seg == ["move", "slots"] and m == "POST":
             if not ssh_enabled():
-                raise AppError("Сначала включите управление пэдами")
+                raise AppError("Enable pad control first")
             moves = [(str(x["id"]), int(x["slot"])) for x in self.body().get("moves", [])]
             cur = {k: v["slot"] for k, v in ssh_slots().items()}
             for oid, slot in moves:
                 if oid not in cur:
-                    raise AppError("Проект не найден на Move")
+                    raise AppError("Project not found on Move")
                 cur[oid] = slot
             used = [v for v in cur.values() if v is not None]
             if len(used) != len(set(used)):
-                raise AppError("Два проекта не могут занимать один пэд")
+                raise AppError("Two projects cannot share one pad")
             ssh_set_slots(moves)
             return self.send_json({"ok": True})
         if seg == ["move", "sets"] and m == "GET":
@@ -1470,6 +2703,12 @@ class Handler(BaseHTTPRequestHandler):
                     ssh["ok"] = True
                 except SshError as e:
                     ssh["error"] = str(e)
+            sw = set()
+            if ssh["ok"]:
+                try:
+                    sw = schwung_sets()
+                except SshError:
+                    pass
             meta = CFG.get("move_meta") or {}
             pos = {x: i for i, x in enumerate(CFG.get("move_order") or [])}
             items = [{
@@ -1480,27 +2719,77 @@ class Handler(BaseHTTPRequestHandler):
                 "info": cached_info(o["objectId"], o.get("lastModifiedDateTime")),
                 "slot": slots.get(o["objectId"], {}).get("slot"),
                 "color": slots.get(o["objectId"], {}).get("color"),
+                "schwung": o["objectId"] in sw,
             } for o in objs]
             items.sort(key=lambda it: pos.get(it["id"], len(pos)))
             return self.send_json({"sets": items, "ssh": ssh})
+        if seg and seg[0] == "userlib":
+            return self.userlib_route(seg[1:], m, q)
+        if seg and seg[0] in ("fs", "xfer"):
+            return self.fs_route(seg, m, q)
+        if seg == ["drumgen", "patterns"] and m == "GET":
+            if not MINE_CACHE:
+                MINE_CACHE.update(read_json(_mine_cache_file(), {}))
+            start_mine_scan()                    # разбор своих проектов — в фоне, ответ сразу
+            pats = all_patterns()
+            return self.send_json({"genres": drumgen.genres(pats), "genreGroups": drumgen.genre_list(pats),
+                                   "midiFolder": CFG.get("midiFolder") or "", "credit": drumgen.CREDIT,
+                                   "mine": {k: MINE_STATE[k] for k in ("ready", "done", "total")},
+                                   "patterns": [{k: p[k] for k in ("id", "name", "genre", "source", "steps")} for p in pats]})
+        if seg == ["drumgen"] and m == "POST":
+            b = self.body()
+            side, ident, track = b.get("side"), str(b.get("id") or ""), int(b.get("track") or 0)
+            pads = known_pads(b.get("pads")) if b.get("pads") is not None else \
+                drumgen.kit_pads(side_song(side, ident), track, kit_overrides(side, ident, track))
+            if not pads:
+                raise AppError("This track has no Drum Rack")
+            return self.send_json(drumgen.generate(
+                all_patterns(), str(b.get("genre") or ""), b.get("pattern"), pads,
+                mutation=float(b.get("mutation", 35)), seed=int(b.get("seed") or 1), bars=int(b.get("bars") or 2),
+                swing=float(b.get("swing", 50)), deja_vu=float(b.get("deja_vu", 50)),
+                ghosts=b.get("ghosts", 30) if not isinstance(b.get("ghosts"), bool) else b.get("ghosts"),
+                euclid=bool(b.get("euclid", True)),
+                avoid=b.get("avoid"),
+                half=b.get("half") if b.get("half") in ("all", "kick", "kick+snare") else ("all" if b.get("half") is True else False))
+                | {"pads": pads})
         if len(seg) >= 3 and seg[:2] == ["move", "sets"]:
             oid = seg[2]
             if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", oid):
-                raise AppError("Некорректный идентификатор")
+                raise AppError("Invalid identifier")
             act = seg[3] if len(seg) > 3 else None
             if act == "clip.mid" and m == "GET":
                 t, sc = cell_args(q)
                 song = move_song(oid)
-                name = set_by_id(oid).get("name", "Clip")
-                return self.send_midi(clip_to_midi(get_clip(song, t, sc), song.get("tempo") or 120, name),
-                                      f"{safe_name(name)} T{t + 1} S{sc + 1}.mid")
+                return self.send_midi(*clip_midi(song, t, sc, set_by_id(oid).get("name", "Clip")))
             if act == "clip" and m == "POST":
                 t, sc = cell_args(q)
                 if not ssh_enabled():
-                    raise AppError("Импорт на Move работает при включённом управлении пэдами")
+                    raise AppError("Import to Move needs pad control enabled")
                 notes, length = read_midi_upload(self.raw_body())
                 if (q.get("replace") or ["0"])[0] != "1" and cell_busy(ssh_read_song(oid), t, sc):
-                    return self.send_json({"error": "busy", "message": "Ячейка занята"}, 409)
+                    return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
+                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length)))
+            if act == "clip" and m == "DELETE":
+                t, sc = cell_args(q)
+                if not ssh_enabled():
+                    raise AppError("Deleting a clip on Move needs pad control enabled")
+                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0)))
+            if act == "kit":
+                track = int((q.get("track") or ["0"])[0])
+                if m == "POST":
+                    save_kit_overrides("move", oid, track, self.body().get("overrides"))
+                    return self.send_json({"ok": True})
+                ov = kit_overrides("move", oid, track)
+                return self.send_json({"pads": drumgen.kit_pads(move_song(oid), track, ov), "overrides": ov})
+            if act == "clip-notes" and m == "POST":
+                t, sc = cell_args(q)
+                if not ssh_enabled():
+                    raise AppError("Import to Move needs pad control enabled")
+                b = self.body()
+                length = clip_length(b)
+                notes = clean_notes(b.get("notes"), length)
+                if (q.get("replace") or ["0"])[0] != "1" and cell_busy(ssh_read_song(oid), t, sc):
+                    return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
                 return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length)))
             if act == "info" and m == "GET":
                 return self.send_json({"info": analyze_set(oid, (q.get("stamp") or [""])[0])})
@@ -1531,8 +2820,8 @@ class Handler(BaseHTTPRequestHandler):
         if seg == ["library-import"] and m == "POST":
             n = int(self.headers.get("Content-Length") or 0)
             if n > 600 * 1024 * 1024:
-                raise AppError("Файл слишком большой")
-            final = import_bundle((q.get("name") or ["Проект.ablbundle"])[0], self.rfile.read(n),
+                raise AppError("The file is too large")
+            final = import_bundle((q.get("name") or ["Project.ablbundle"])[0], self.rfile.read(n),
                                   (q.get("group") or [None])[0])
             return self.send_json({"ok": True, "id": final})
         if seg == ["library"] and m == "GET":
@@ -1544,20 +2833,40 @@ class Handler(BaseHTTPRequestHandler):
                 t, sc = cell_args(q)
                 d = lib_dir(folder)
                 song = read_song(find_file(d, {".ablbundle"}))
-                return self.send_midi(clip_to_midi(get_clip(song, t, sc), song.get("tempo") or 120, d.name),
-                                      f"{d.name} T{t + 1} S{sc + 1}.mid")
+                return self.send_midi(*clip_midi(song, t, sc, d.name))
             if act == "clip" and m == "POST":
                 t, sc = cell_args(q)
                 notes, length = read_midi_upload(self.raw_body())
                 d = lib_dir(folder)
                 if (q.get("replace") or ["0"])[0] != "1" and cell_busy(read_song(find_file(d, {".ablbundle"})), t, sc):
-                    return self.send_json({"error": "busy", "message": "Ячейка занята"}, 409)
+                    return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
+                library_put_clip(folder, t, sc, notes, length)
+                return self.send_json({"ok": True})
+            if act == "clip" and m == "DELETE":
+                t, sc = cell_args(q)
+                library_put_clip(folder, t, sc, None, 0)
+                return self.send_json({"ok": True})
+            if act == "kit":
+                track = int((q.get("track") or ["0"])[0])
+                if m == "POST":
+                    save_kit_overrides("lib", folder, track, self.body().get("overrides"))
+                    return self.send_json({"ok": True})
+                ov = kit_overrides("lib", folder, track)
+                return self.send_json({"pads": drumgen.kit_pads(side_song("lib", folder), track, ov), "overrides": ov})
+            if act == "clip-notes" and m == "POST":
+                t, sc = cell_args(q)
+                b = self.body()
+                length = clip_length(b)
+                notes = clean_notes(b.get("notes"), length)
+                d = lib_dir(folder)
+                if (q.get("replace") or ["0"])[0] != "1" and cell_busy(read_song(find_file(d, {".ablbundle"})), t, sc):
+                    return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
                 library_put_clip(folder, t, sc, notes, length)
                 return self.send_json({"ok": True})
             if act == "audio" and m in ("GET", "HEAD"):
                 audio = find_file(lib_dir(folder), AUDIO_EXTS)
                 if not audio:
-                    return self.send_json({"error": "нет аудио"}, 404)
+                    return self.send_json({"error": "no audio"}, 404)
                 return self.send_file(audio)
             if act == "audio" and m == "POST":
                 n = int(self.headers.get("Content-Length") or 0)
@@ -1574,8 +2883,7 @@ class Handler(BaseHTTPRequestHandler):
                 edit_library(folder, [int(x) for x in b.get("order") or []] or None, b.get("pans") or {}, b.get("key") or None)
                 return self.send_json({"ok": True})
             if act == "reveal" and m == "POST":
-                if sys.platform == "darwin":
-                    subprocess.Popen(["open", str(lib_dir(folder))])
+                reveal(lib_dir(folder))
                 return self.send_json({"ok": True})
             if act is None and m == "PATCH":
                 b = self.body()
@@ -1592,21 +2900,27 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"error": "not found"}, 404)
 
 
-def main():
-    CACHE_DIR.mkdir(exist_ok=True)
+def make_server():
+    """Сервер программы, ещё не запущенный: (сервер, адрес)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     for f in CACHE_DIR.glob("tmp-*"):
         f.unlink(missing_ok=True)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     srv.daemon_threads = True
-    url = f"http://127.0.0.1:{PORT}"
-    print(f"Move Manager (сборка {BUILD}) запущен: {url}\nОстановить — Ctrl+C")
+    start_mine_scan()                     # свои барабанные клипы для генератора — в фоне, с первой секунды
+    return srv, f"http://127.0.0.1:{PORT}"
+
+
+def main():
+    srv, url = make_server()
+    print(f"Move Manager (build {BUILD}) running: {url}\nStop with Ctrl+C")
     if not os.environ.get("MOVE_MANAGER_NO_BROWSER"):
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\nОстановлено.")
-
+        print("\nStopped.")
 
 if __name__ == "__main__":
     main()

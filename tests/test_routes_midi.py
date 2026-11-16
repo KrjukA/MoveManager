@@ -17,7 +17,7 @@ from tests.test_clips import song
 OID = "aa98954a-8822-4a82-92d4-10529d5ca3a9"
 
 
-class RouteTests(unittest.TestCase):
+class RouteBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
@@ -30,11 +30,15 @@ class RouteTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        self._saved = {k: getattr(app, k) for k in ("APP_DIR", "ssh_enabled", "ssh_read_song", "ssh_write_song",
-                                                    "set_by_id", "save_config")}
+        self._idle_scan()
+        self._saved = {k: getattr(app, k) for k in ("DATA_DIR", "ssh_enabled", "ssh_read_song", "ssh_write_song",
+                                                    "set_by_id", "save_config", "CACHE_DIR")}
+        app.CACHE_DIR = self.tmp / "cache"           # фоновый разбор пишет кэш сюда, а не в папку программы
+        app.MINE_CACHE.clear()
+        app.MINE_STATE.update({"running": False, "ready": False, "done": 0, "total": 0})
         self._lib = app.CFG.get("library")
         app.CFG["library"] = str(self.tmp / "lib")
-        app.APP_DIR = self.tmp
+        app.DATA_DIR = self.tmp
         app.save_config = lambda: None
         d = self.tmp / "lib" / "Demo"
         d.mkdir(parents=True)
@@ -48,7 +52,15 @@ class RouteTests(unittest.TestCase):
         app.ssh_write_song = lambda oid, payload: self.writes.append(json.loads(payload))
         app.set_by_id = lambda oid: {"objectId": oid, "name": "Live Set"}
 
+    @staticmethod
+    def _idle_scan():
+        for _ in range(200):                         # фоновый разбор своих клипов не должен перейти в другой тест
+            if not app.MINE_STATE["running"]:
+                return
+            time.sleep(0.05)
+
     def tearDown(self):
+        self._idle_scan()
         for k, v in self._saved.items():
             setattr(app, k, v)
         app.CFG["library"] = self._lib
@@ -82,6 +94,8 @@ class RouteTests(unittest.TestCase):
                        {"noteNumber": 64, "startTime": 6.0, "duration": 1.5, "velocity": 70.0}]}
         return clip_to_midi(c, 120.0)
 
+
+class RouteTests(RouteBase):
     def test_export_from_library(self):
         status, headers, body = self.req("GET", "/api/library/Demo/clip.mid?track=0&scene=0")
         self.assertEqual(status, 200)
@@ -91,10 +105,23 @@ class RouteTests(unittest.TestCase):
         self.assertEqual([(n["noteNumber"], n["startTime"]) for n in notes], [(36, 0.0), (36, 1.0), (36, 2.0)])
         self.assertEqual(length, 4.0)
 
+    def test_export_names_instrument(self):
+        s = song()
+        s["tracks"][0]["devices"] = [{"kind": "instrumentRack", "name": "", "presetUri":
+            "ableton:/user-library/Track%20Presets/Ableton%20Stock%20Drift%20Presets/Bass/Skanker%20Bass.ablpreset",
+            "chains": [{"devices": [{"kind": "drift"}]}]}]
+        with zipfile.ZipFile(self.tmp / "lib" / "Demo" / "Demo.ablbundle", "w") as z:
+            z.writestr("Song.abl", json.dumps(s))
+        status, headers, body = self.req("GET", "/api/library/Demo/clip.mid?track=0&scene=0")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Skanker Bass", body)
+        self.assertIn("Bass".encode(), body)
+        self.assertIn("Skanker%20Bass", headers["Content-Disposition"])
+
     def test_export_empty_cell(self):
         status, _, body = self.req("GET", "/api/library/Demo/clip.mid?track=0&scene=1")
         self.assertEqual(status, 400)
-        self.assertIn("Ячейка пуста", json.loads(body)["message"])
+        self.assertIn("Cell is empty", json.loads(body)["message"])
 
     def test_import_into_library(self):
         status, _, _ = self.req("POST", "/api/library/Demo/clip?track=0&scene=1&replace=0", self.midi_file())
@@ -115,7 +142,7 @@ class RouteTests(unittest.TestCase):
     def test_import_broken_file(self):
         status, _, body = self.req("POST", "/api/library/Demo/clip?track=0&scene=1", b"not midi at all")
         self.assertEqual(status, 400)
-        self.assertIn("MIDI", json.loads(body)["message"])
+        self.assertIn("MIDI file could not be read", json.loads(body)["message"])
 
     def test_import_into_move(self):
         status, _, body = self.req("POST", f"/api/move/sets/{OID}/clip?track=0&scene=1&replace=0", self.midi_file())
@@ -135,7 +162,7 @@ class RouteTests(unittest.TestCase):
         app.ssh_enabled = lambda: False
         status, _, body = self.req("POST", f"/api/move/sets/{OID}/clip?track=0&scene=1", self.midi_file())
         self.assertEqual(status, 400)
-        self.assertIn("управлении пэдами", json.loads(body)["message"])
+        self.assertIn("Import to Move needs pad control enabled", json.loads(body)["message"])
 
     def test_export_from_move(self):
         status, _, body = self.req("GET", f"/api/move/sets/{OID}/clip.mid?track=0&scene=0")

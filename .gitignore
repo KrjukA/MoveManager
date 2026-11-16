@@ -1,8 +1,9 @@
-move_ssh_key
-move_ssh_key.pub
-known_hosts
 config.json
 cache/
 backups/
-.DS_Store
+move_ssh_key*
+known_hosts
 __pycache__/
+.superpowers/
+.DS_Store
+.cm-*

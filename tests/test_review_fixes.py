@@ -69,8 +69,8 @@ class ServerTests(unittest.TestCase):
 
     def setUp(self):
         self._saved = {k: getattr(app, k) for k in ("ssh_enabled", "ssh_read_song", "ssh_write_song",
-                                                    "set_by_id", "APP_DIR")}
-        app.APP_DIR = Path(tempfile.mkdtemp())
+                                                    "set_by_id", "DATA_DIR")}
+        app.DATA_DIR = Path(tempfile.mkdtemp())
 
     def tearDown(self):
         for k, v in self._saved.items():
