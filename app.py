@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import requests
 
 import drumgen
+import history
 import samplelib
 from midi import MidiError, _no_overlaps, clip_to_midi, midi_to_notes
 
@@ -1770,7 +1771,10 @@ def job_pull(oid, with_audio, group=None):
         try:
             MOVE.download(oid, tmp, lambda p: stage("Downloading project", p))
             info = parse_song(read_song(tmp))
-            for old in d.glob("*.ablbundle"):
+            olds = sorted(d.glob("*.ablbundle"))
+            if olds:                                     # проект уже был на компьютере — его версия в историю
+                save_lib_version(name, olds[0], "Replaced by copy from Move")
+            for old in olds:
                 old.unlink()
             shutil.move(str(tmp), d / f"{name}.ablbundle")
         finally:
@@ -1856,6 +1860,7 @@ def job_push(folder, slot=None, replace_id=None):
                 raise AppError("The new project was uploaded but could not be identified — the old one was kept")
             stage("Removing the previous project from the pad")
             MOVE.delete(replace_id)
+            history.move_history(history_dir("move", replace_id), history_dir("move", created[0]))   # тот же проект на пэде
             with LOCK:
                 CFG.setdefault("move_meta", {}).pop(replace_id, None)
                 INFO_CACHE.pop(replace_id, None)
@@ -1890,12 +1895,10 @@ def job_edit_move(oid, order, pans, replace, key=None):
             with target_lock("move:" + oid):
                 stage("Reading project on Move")
                 song = ssh_read_song(oid)
-                backups = backups_dir()
-                backups.mkdir(exist_ok=True)
-                (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
-                prune_backups(backups, safe_name(obj['name']))
+                new = edit_song(copy.deepcopy(song), order, pans, key)      # ошибка в правке — до записи версии
+                save_move_version(oid, song, edit_action(order, pans, key))
                 stage("Writing changes")
-                ssh_write_song(oid, dump_song(edit_song(song, order, pans, key)))
+                ssh_write_song(oid, dump_song(new))
                 with LOCK:
                     INFO_CACHE.pop(oid, None)
                 return {"inPlace": True}
@@ -1907,6 +1910,9 @@ def job_edit_move(oid, order, pans, replace, key=None):
             MOVE.download(oid, src)
             stage("Applying changes")
             edit_bundle(src, dst, order, pans, key)
+            if replace:                                  # версия до правки — в историю этого сета
+                with zipfile.ZipFile(src) as z:
+                    _save_version(history_dir("move", oid), z.read(find_song_entry(z)), edit_action(order, pans, key))
             stage("Uploading to Move")
             MOVE.upload(dst, f"{new_name}.ablbundle")
         finally:
@@ -1919,6 +1925,7 @@ def job_edit_move(oid, order, pans, replace, key=None):
             stage("Replacing the original")
             MOVE.delete(oid)
             MOVE.rename(created[0]["objectId"], obj["name"])
+            history.move_history(history_dir("move", oid), history_dir("move", created[0]["objectId"]))
             with LOCK:
                 meta = CFG.setdefault("move_meta", {})
                 if oid in meta:
@@ -1979,8 +1986,8 @@ def cell_busy(song, track, scene):
         return False
 
 
-def library_put_clip(folder, track, scene, notes, length):
-    """notes=None — удалить клип из ячейки."""
+def library_put_clip(folder, track, scene, notes, length, action=""):
+    """notes=None — удалить клип из ячейки. Порядок: правка во временный файл → версия в историю → замена."""
     d = lib_dir(folder)
     bundle = find_file(d, {".ablbundle"})
     tmp = tmp_path(".ablbundle")
@@ -1988,6 +1995,7 @@ def library_put_clip(folder, track, scene, notes, length):
         with target_lock("lib:" + d.name):
             transform_bundle(bundle, tmp, lambda song: put_clip(song, track, scene, notes, length)
                              if notes is not None else remove_clip(song, track, scene))
+            save_lib_version(folder, bundle, action)
             shutil.move(str(tmp), bundle)
     finally:
         tmp.unlink(missing_ok=True)
@@ -2256,33 +2264,85 @@ def target_lock(key):
         return TARGET_LOCKS.setdefault(key, threading.Lock())
 
 
-def job_clip_move(oid, track, scene, notes, length):
+def job_clip_move(oid, track, scene, notes, length, action=""):
     def fn(stage):
         stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
         with target_lock("move:" + oid):
-            return _clip_move(oid, track, scene, notes, length, stage)
+            return _clip_move(oid, track, scene, notes, length, stage, action)
     return fn
 
 
-def _backup_song(obj, song):
-    """Резервная копия Song.abl сета с Move перед записью (хранится 5 последних)."""
-    backups = backups_dir()
-    backups.mkdir(exist_ok=True)
-    (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
-    prune_backups(backups, safe_name(obj['name']))
+# ───────────────────────── история версий проекта ─────────────────────────
+NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+def history_dir(side, ident):
+    """Папка истории: сет на Move — по его ID в папке программы; проект на компьютере — .history внутри него."""
+    if side == "move":
+        if not UUID_RE.fullmatch(str(ident or "")):
+            raise AppError("Invalid identifier")
+        return DATA_DIR / "history" / "move" / ident
+    return lib_dir(ident) / ".history"
+
+
+def _save_version(folder, data, action):
+    """Версия до правки; не сохранилась — правку не делаем."""
+    try:
+        return history.save_version(folder, data, action)
+    except OSError as e:
+        raise AppError(f"Could not save a version to History, nothing was changed: {e}")
+
+
+def save_move_version(oid, song, action):
+    return _save_version(history_dir("move", oid), dump_song(song), action)
+
+
+def save_lib_version(folder, bundle, action):
+    with zipfile.ZipFile(bundle) as z:
+        data = z.read(find_song_entry(z))
+    return _save_version(history_dir("lib", folder), data, action)
+
+
+def cell_name(t, s):
+    return f"T{int(t) + 1} S{int(s) + 1}"
+
+
+def edit_action(order, pans, key):
+    """Название правки из Apply changes для строки истории."""
+    parts = []
+    if order and list(order) != sorted(order):
+        parts.append("Tracks reordered")
+    if pans:
+        parts.append("Pan changed")
+    if key and ("rootNote" in key or "scale" in key):
+        try:
+            parts.append(f"Key changed to {NOTE_NAMES[int(key.get('rootNote')) % 12]} {key.get('scale') or ''}".rstrip())
+        except (TypeError, ValueError):
+            parts.append("Key changed")
+    if key and key.get("tempo") is not None:
+        try:
+            parts.append(f"Tempo changed to {float(key['tempo']):g} bpm")
+        except (TypeError, ValueError):
+            parts.append("Tempo changed")
+    return ", ".join(parts)
+
+
+def clip_op_action(op, src, dst):
+    a, b = cell_name(*src), cell_name(*dst)
+    return {"copy": f"Clip copied {a} → {b}", "move": f"Clip moved {a} → {b}", "swap": f"Clips swapped {a} ↔ {b}"}[op]
 
 
 def job_clip_op(oid, op, src, dst, replace):
-    """Копия/перенос/обмен клипов на Move: одна резервная копия и одна запись проекта."""
+    """Копия/перенос/обмен клипов на Move: одна версия в истории и одна запись проекта."""
     def fn(stage):
         stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
         with target_lock("move:" + oid):
-            obj = set_by_id(oid)
             stage("Reading project on Move")
             song = ssh_read_song(oid)
-            _backup_song(obj, song)
+            new = clip_op(copy.deepcopy(song), op, src, dst, replace)     # ошибка — до записи версии
+            save_move_version(oid, song, clip_op_action(op, src, dst))
             stage("Writing clips")
-            ssh_write_song(oid, dump_song(clip_op(copy.deepcopy(song), op, src, dst, replace)))
+            ssh_write_song(oid, dump_song(new))
             with LOCK:
                 INFO_CACHE.pop(oid, None)
             return {"ok": True}
@@ -2296,19 +2356,20 @@ def library_clip_op(folder, op, src, dst, replace):
     try:
         with target_lock("lib:" + d.name):
             transform_bundle(bundle, tmp, lambda song: clip_op(song, op, src, dst, replace))
+            save_lib_version(folder, bundle, clip_op_action(op, src, dst))
             shutil.move(str(tmp), bundle)
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def _clip_move(oid, track, scene, notes, length, stage):
-    obj = set_by_id(oid)
+def _clip_move(oid, track, scene, notes, length, stage, action=""):
     stage("Reading project on Move")
     song = ssh_read_song(oid)
-    _backup_song(obj, song)
+    new = (put_clip(copy.deepcopy(song), track, scene, notes, length) if notes is not None
+           else remove_clip(copy.deepcopy(song), track, scene))    # ошибка в правке — до записи версии
+    save_move_version(oid, song, action)
     stage("Writing clip" if notes is not None else "Removing clip")
-    ssh_write_song(oid, dump_song(put_clip(song, track, scene, notes, length) if notes is not None
-                                  else remove_clip(song, track, scene)))
+    ssh_write_song(oid, dump_song(new))
     with LOCK:
         INFO_CACHE.pop(oid, None)
     return {"ok": True}
@@ -2319,8 +2380,10 @@ def edit_library(folder, order, pans, key=None):
     bundle = find_file(d, {".ablbundle"})
     tmp = tmp_path(".ablbundle")
     try:
-        edit_bundle(bundle, tmp, order, pans, key)
-        shutil.move(str(tmp), bundle)
+        with target_lock("lib:" + d.name):
+            edit_bundle(bundle, tmp, order, pans, key)      # ошибка в правке — до записи версии
+            save_lib_version(folder, bundle, edit_action(order, pans, key))
+            shutil.move(str(tmp), bundle)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -2894,12 +2957,13 @@ class Handler(BaseHTTPRequestHandler):
                 notes, length = read_midi_upload(self.raw_body())
                 if (q.get("replace") or ["0"])[0] != "1" and cell_busy(ssh_read_song(oid), t, sc):
                     return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
-                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length)))
+                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length,
+                                                                      f"Clip loaded from file {cell_name(t, sc)}")))
             if act == "clip" and m == "DELETE":
                 t, sc = cell_args(q)
                 if not ssh_enabled():
                     raise AppError("Deleting a clip on Move needs pad control enabled")
-                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0)))
+                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0, f"Clip deleted {cell_name(t, sc)}")))
             if act == "clip-op" and m == "POST":
                 op, src, dst, replace = clip_op_args(self.body())
                 if not ssh_enabled():
@@ -2922,7 +2986,8 @@ class Handler(BaseHTTPRequestHandler):
                 notes = clean_notes(b.get("notes"), length)
                 if (q.get("replace") or ["0"])[0] != "1" and cell_busy(ssh_read_song(oid), t, sc):
                     return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
-                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length)))
+                return self.send_json(start_job("clip", job_clip_move(oid, t, sc, notes, length,
+                                                                      f"Pattern generated {cell_name(t, sc)}")))
             if act == "info" and m == "GET":
                 return self.send_json({"info": analyze_set(oid, (q.get("stamp") or [""])[0])})
             if act == "pull" and m == "POST":
@@ -2972,11 +3037,11 @@ class Handler(BaseHTTPRequestHandler):
                 d = lib_dir(folder)
                 if (q.get("replace") or ["0"])[0] != "1" and cell_busy(read_song(find_file(d, {".ablbundle"})), t, sc):
                     return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
-                library_put_clip(folder, t, sc, notes, length)
+                library_put_clip(folder, t, sc, notes, length, f"Clip loaded from file {cell_name(t, sc)}")
                 return self.send_json({"ok": True})
             if act == "clip" and m == "DELETE":
                 t, sc = cell_args(q)
-                library_put_clip(folder, t, sc, None, 0)
+                library_put_clip(folder, t, sc, None, 0, action=f"Clip deleted {cell_name(t, sc)}")
                 return self.send_json({"ok": True})
             if act == "clip-op" and m == "POST":
                 library_clip_op(folder, *clip_op_args(self.body()))
@@ -2996,7 +3061,7 @@ class Handler(BaseHTTPRequestHandler):
                 d = lib_dir(folder)
                 if (q.get("replace") or ["0"])[0] != "1" and cell_busy(read_song(find_file(d, {".ablbundle"})), t, sc):
                     return self.send_json({"error": "busy", "message": "Cell is occupied"}, 409)
-                library_put_clip(folder, t, sc, notes, length)
+                library_put_clip(folder, t, sc, notes, length, f"Pattern generated {cell_name(t, sc)}")
                 return self.send_json({"ok": True})
             if act == "audio" and m in ("GET", "HEAD"):
                 audio = find_file(lib_dir(folder), AUDIO_EXTS)

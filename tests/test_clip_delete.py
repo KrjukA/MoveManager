@@ -30,7 +30,7 @@ class RemoveClip(RouteBase):
         job = self.wait_job(b)
         self.assertEqual(job["status"], "done", job)
         self.assertIsNone(self.writes[-1]["tracks"][0]["clipSlots"][0]["clip"])
-        self.assertTrue(list((self.tmp / "backups").glob("*.abl")))
+        self.assertEqual(len(list((self.tmp / "history" / "move" / OID).glob("*.abl"))), 1)   # сборка 52: история вместо backups/
 
     def test_delete_move_needs_ssh(self):
         app.ssh_enabled = lambda: False

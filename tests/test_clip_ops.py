@@ -183,7 +183,7 @@ class Routes(RouteBase):
         self.assertEqual(len(self.writes), 1)
         self.assertIsNone(cell(self.writes[0], 0, 0))
         self.assertEqual(cell(self.writes[0], 3, 1)["name"], "Lead")
-        self.assertEqual(len(list((self.tmp / "backups").glob("*.abl"))), 1)
+        self.assertEqual(len(list((self.tmp / "history" / "move" / OID).glob("*.abl"))), 1)   # сборка 52: история вместо backups/
 
     def test_move_busy_and_rule_refused_before_job(self):
         self.move_song["tracks"][3]["clipSlots"][1]["clip"] = copy.deepcopy(cell(self.move_song, 0, 0))
