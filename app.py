@@ -643,7 +643,7 @@ def ssh_cmd():
         return shlex.split(os.environ["MOVE_SSH_CMD"])
     host = urlparse(CFG["move_url"]).hostname or "move.local"
     return ["ssh", "-i", str(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-            "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={KNOWN_HOSTS}",
+            "-o", "StrictHostKeyChecking=accept-new", "-o", f'UserKnownHostsFile="{Path(KNOWN_HOSTS).as_posix()}"',
             "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", f"ableton@{host}"]
 
 
@@ -774,7 +774,8 @@ def _ssh_run(script, data=None, timeout=40):
     if data is None:
         return _SSH.run(cmd, script, timeout)
     try:                                          # с данными на stdin — отдельное соединение
-        r = subprocess.run(cmd + [script], input=data, capture_output=True, timeout=timeout)
+        r = subprocess.run(cmd + [script], input=data, capture_output=True, timeout=timeout,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         raise SshError("Move did not answer over SSH")
     except FileNotFoundError:
@@ -1177,7 +1178,7 @@ def fs_roots(platform, home):
     return [str(home), "/Volumes"] if platform == "darwin" else [str(home), "/media", "/mnt"]
 
 
-FS_ROOTS = fs_roots(sys.platform, Path.home())
+FS_ROOTS = None if sys.platform.startswith("win") else fs_roots(sys.platform, Path.home())   # Windows: диски — при каждом обращении
 FS_EXT = {"samples": {".wav", ".aif", ".aiff", ".flac", ".mp3"}, "presets": {".ablpreset", ".json"}}
 FS_SHOW = {"samples": FS_EXT["samples"], "presets": {".ablpreset"}}
 
@@ -1188,13 +1189,17 @@ def _fs_ext(mode):
     return FS_EXT[mode]
 
 
+def _roots():
+    return FS_ROOTS if FS_ROOTS is not None else fs_roots(sys.platform, Path.home())
+
+
 def fs_check(path, must_dir=False):
     """Путь на компьютере внутри разрешённых корней (после раскрытия ссылок и «..»)."""
     try:
         p = Path(str(path)).expanduser().resolve()
     except (OSError, RuntimeError):
         raise AppError("Invalid path")
-    for r in FS_ROOTS:
+    for r in _roots():
         root = Path(r).resolve()
         if p == root or root in p.parents:
             if not p.exists():
@@ -1206,7 +1211,7 @@ def fs_check(path, must_dir=False):
 
 
 def _fs_root_of(p):
-    return any(p == Path(r).resolve() for r in FS_ROOTS)
+    return any(p == Path(r).resolve() for r in _roots())
 
 
 def fs_list(path, mode):
@@ -1387,13 +1392,7 @@ def ssh_write_song(oid, payload):
 
 def job_ssh_setup(stage):
     stage("Preparing key")
-    pub_path = Path(str(SSH_KEY) + ".pub")
-    if not SSH_KEY.exists() or not pub_path.exists():
-        try:
-            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", str(SSH_KEY)],
-                           check=True, capture_output=True)
-        except (OSError, subprocess.CalledProcessError) as e:
-            raise AppError(f"Could not create SSH key: {e}")
+    pub_path = ensure_ssh_key()
     try:
         ssh_run("echo ok", timeout=15)
     except SshError:
@@ -1558,16 +1557,34 @@ def _code_changed():
         return False
 
 
+def ensure_ssh_key():
+    """Свой SSH-ключ программы; создаётся при первом включении управления пэдами. Возвращает путь к открытому ключу."""
+    pub_path = Path(str(SSH_KEY) + ".pub")
+    if not SSH_KEY.exists() or not pub_path.exists():
+        Path(SSH_KEY).parent.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", str(SSH_KEY)],
+                           check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except FileNotFoundError:
+            raise AppError(NO_SSH_MSG)
+        except (OSError, subprocess.CalledProcessError) as e:
+            raise AppError(f"Could not create SSH key: {e}")
+    return pub_path
+
+
 def folder_dialog_cmd(platform, prompt):
     """Команда системного окна выбора папки; None — на этой системе такого окна нет."""
     clean = re.sub(r"[\"'`$\\\r\n]", " ", str(prompt))[:120]
     if platform == "darwin":
         return ["osascript", "-e", f'POSIX path of (choose folder with prompt "{clean}")']
     if platform.startswith("win"):
+        # окно поверх браузера (владелец TopMost), вывод в UTF-8 без BOM — иначе путь начнётся с невидимого символа
         ps = ("Add-Type -AssemblyName System.Windows.Forms; "
+              "$o = New-Object System.Windows.Forms.Form; $o.TopMost = $true; $o.ShowInTaskbar = $false; "
               "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
               f"$f.Description = '{clean}'; $f.ShowNewFolderButton = $true; "
-              "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $f.SelectedPath }")
+              "if ($f.ShowDialog($o) -eq [System.Windows.Forms.DialogResult]::OK) { "
+              "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; $f.SelectedPath }")
         return ["powershell", "-NoProfile", "-STA", "-Command", ps]
     return None
 
@@ -1581,7 +1598,7 @@ def choose_folder_dialog(prompt="Folder for Move projects"):
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired):
         return None
-    path = r.stdout.decode("utf-8", "replace").strip()
+    path = r.stdout.decode("utf-8", "replace").lstrip("\ufeff").strip()
     if r.returncode != 0 or not path:
         return None
     return path
@@ -1593,8 +1610,8 @@ def reveal_cmd(platform, path, select):
         return ["open", "-R", path] if select else ["open", path]
     if platform.startswith("win"):
         from pathlib import PureWindowsPath
-        p = str(PureWindowsPath(path))
-        return ["explorer", "/select," + p] if select else ["explorer", p]
+        p = str(PureWindowsPath(path))       # строкой: explorer не понимает «/select,» внутри кавычек вокруг всего
+        return f'explorer /select,"{p}"' if select else f'explorer "{p}"'
     return ["xdg-open", str(Path(path).parent if select else path)]
 
 

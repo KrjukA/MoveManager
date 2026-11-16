@@ -51,8 +51,8 @@ class SystemWindows(unittest.TestCase):
     def test_reveal_per_os(self):
         self.assertEqual(app.reveal_cmd("darwin", "/x/y.wav", True), ["open", "-R", "/x/y.wav"])
         self.assertEqual(app.reveal_cmd("darwin", "/x", False), ["open", "/x"])
-        self.assertEqual(app.reveal_cmd("win32", "C:/x/y.wav", True), ["explorer", "/select," + str(PureWindowsPath("C:/x/y.wav"))])
-        self.assertEqual(app.reveal_cmd("win32", "C:/x", False), ["explorer", str(PureWindowsPath("C:/x"))])
+        self.assertEqual(app.reveal_cmd("win32", "C:/x/y.wav", True), 'explorer /select,"C:\\x\\y.wav"')
+        self.assertEqual(app.reveal_cmd("win32", "C:/x", False), 'explorer "C:\\x"')
 
     def test_roots_per_os(self):
         self.assertIn("/Volumes", app.fs_roots("darwin", Path("/Users/a")))
