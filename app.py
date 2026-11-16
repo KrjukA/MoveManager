@@ -66,7 +66,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "50"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "51"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -1479,9 +1479,15 @@ def cache_info(oid, stamp, info):
 
 def cached_info(oid, stamp):
     c = INFO_CACHE.get(oid)
-    if not c or c.get("stamp") != stamp or "clips" not in (c.get("info") or {}):    # без clips — от старой сборки
+    if not c or c.get("stamp") != stamp or stale_info(c.get("info")):
         return None
     return c["info"]
+
+
+def stale_info(info):
+    """Разбор от старой сборки: без clips (до 20) или без вида дорожки clipKind (до 51)."""
+    info = info or {}
+    return "clips" not in info or any("clipKind" not in t for t in info.get("tracks") or [])
 
 
 def tmp_path(suffix):
@@ -1548,7 +1554,7 @@ def lib_item(d):
     meta_path = d / "meta.json"
     meta = read_json(meta_path, {})
     stamp = f"{bundle.stat().st_mtime_ns}:{bundle.stat().st_size}"
-    if meta.get("bundleStamp") != stamp or "clips" not in (meta.get("info") or {}):   # без clips — прочитано старой сборкой
+    if meta.get("bundleStamp") != stamp or stale_info(meta.get("info")):   # прочитано старой сборкой
         try:
             meta["info"] = parse_song(read_song(bundle))
         except Exception as e:

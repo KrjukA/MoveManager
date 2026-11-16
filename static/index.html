@@ -203,6 +203,9 @@ aside h3:first-child{margin-top:0}
 .clipcell{height:30px;padding:0;border-radius:3px;background:var(--panel);border:1px solid var(--line);font:10px var(--mono);color:var(--faint);line-height:1.1}
 .clipcell.on{background:var(--pad);border-color:var(--pad);color:var(--dev-text)}
 .clipcell.sel{outline:2px solid var(--pick);outline-offset:0}
+.clipcell.buf{border:1px dashed var(--pick)}
+.clipcell.no{opacity:.35;cursor:not-allowed}
+.clipcell.over{background:var(--sel);border-color:var(--pick)}
 .genpanel{margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--panel)}
 .genpanel select,.genpanel input[type=range]{width:100%}
 .genrow{display:flex;gap:6px;align-items:center;margin-top:6px}
@@ -451,7 +454,7 @@ async function loadRecs(name){
 /* ───────── выбор ───────── */
 const items = side => side==="move" ? S.move.sets : S.lib.items;
 const selItem = () => S.sel ? items(S.sel.side).find(x => x.id===S.sel.id) : null;
-function select(side,id){ pickNone(); genStop(); S.gen = null; S.keyEdit = false; S.inspY = 0; S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; S.cell = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
+function select(side,id){ pickNone(); genStop(); S.gen = null; S.keyEdit = false; S.inspY = 0; S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; S.cell = null; S.clipBuf = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
 
 /* ───────── отрисовка ───────── */
 function tileHTML(side, it, pad){
@@ -601,6 +604,7 @@ function clipsHTML(side, it){
   const scenes = Math.max(0, ...grid.map(r=>r.length));
   if(!grid.length || !scenes) return `<div class="hint">The project has no clip cells.</div>`;
   const ts = (info.timeSignature||"4/4").split("/"), bar = (+ts[0]||4)*4/(+ts[1]||4);
+  const buf = clipBufHere(side, it), from = buf, fromKind = from ? (tracks[from.t]||{}).clipKind : null;
   let html = `<div class="clipgrid" style="grid-template-columns:38px repeat(${scenes},1fr)"><span></span>`;
   for(let c=0;c<scenes;c++) html += `<span class="sh">${c+1}</span>`;
   grid.forEach((row,t) => {
@@ -609,20 +613,93 @@ function clipsHTML(side, it){
     for(let c=0;c<scenes;c++){
       const cl = row[c], sel = S.cell && S.cell.t===t && S.cell.s===c;
       const bars = cl ? Math.round(cl.length/bar*10)/10 : 0;
-      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""}" data-t="${t}" data-s="${c}" title="Track ${t+1}, scene ${c+1}${cl?`: ${cl.notes} notes, ${bars} bars`:": empty"}">${cl?`${cl.notes}<br>${bars}b`:""}</button>`;
+      const isBuf = buf && buf.t===t && buf.s===c, no = fromKind && (fromKind==="audio" || tr.clipKind!==fromKind);
+      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""} ${isBuf?"buf":""} ${no?"no":""}" ${cl && tr.clipKind!=="audio"?`draggable="true"`:""} data-t="${t}" data-s="${c}" title="Track ${t+1}, scene ${c+1}${cl?`: ${cl.notes} notes, ${bars} bars`:": empty"}">${cl?`${cl.notes}<br>${bars}b`:""}</button>`;
     }
   });
   html += `</div>`;
-  if(!S.cell) return html + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.</div>`;
+  const keys = `<div class="hint" style="margin-top:6px">⌘C copy · ⌘X cut · ⌘V paste · ⌫ delete · arrows move · drag: move, onto a clip: swap, ⌥ drag: copy${buf?" · Esc: clear clipboard":""}</div>`;
+  if(!S.cell) return html + keys + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.</div>`;
   const {t, s: sc} = S.cell, cl = (grid[t]||[])[sc], tr = tracks[t] || {};
   const noSsh = side==="move" && !padMode(), audioTr = tr.trackKind && tr.trackKind!=="midi";
   const why = noSsh ? "Import to Move needs pad control enabled" : audioTr ? "This is an audio track; MIDI cannot go into it" : "";
-  return html + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
+  return html + keys + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
     ${cl ? `<button id="clipSave">Save .mid</button><button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
     <button id="clipLoad" ${why?"disabled":""} title="${esc(why||"Notes from the MIDI file become the clip in this cell")}">Load .mid</button>
     <button id="genOpen" ${why||tr.kind!=="drumRack"?"disabled":""} title="${esc(why||(tr.kind!=="drumRack"?"The generator works on Drum Rack tracks":"Generate a drum pattern for this cell"))}">Generate…</button></div>
     ${S.gen && S.gen.t===t && S.gen.s===sc && S.gen.key===side+":"+it.id ? genHTML() : ""}
     ${why ? `<div class="hint">${esc(why)}.</div>` : `<div class="hint">Only notes are taken from the file; clip length is rounded up to whole bars.${side==="move"?" The project is backed up before writing.":""}</div>`}`;
+}
+/* ───────── копия, перенос, обмен клипов (сборка 51) ───────── */
+let clipDrag = null;                                   // {t, s} клипа, который сейчас тащат
+function clipBufHere(side, it){ const b = S.clipBuf; return b && b.key===side+":"+it.id ? b : null; }
+const KIND_TEXT = {drums:"a Drum Rack track", melodic:"a melodic track", audio:"an audio track"};
+function clipRuleError(it, from, to){
+  const tr = it.info?.tracks || [], a = (tr[from.t]||{}).clipKind, b = (tr[to.t]||{}).clipKind;
+  if(a==="audio" || b==="audio") return "Audio clips can't be moved yet";
+  if(a && b && a!==b) return `A clip from ${KIND_TEXT[a]} can only go to ${KIND_TEXT[a]}`;
+  return "";
+}
+async function clipOp(op, from, to){
+  const it = selItem(); if(!it) return false; const {side, id} = S.sel;
+  if(from.t===to.t && from.s===to.s) return false;
+  const bad = clipRuleError(it, from, to); if(bad){ status(bad, true); return false; }
+  const send = replace => fetch(`${clipURL(side,it)}/clip-op`, {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({op, from:[from.t,from.s], to:[to.t,to.s], replace})});
+  try{
+    let r = await send(false);
+    if(r.status===409){
+      if(!confirm(`The cell (track ${to.t+1}, scene ${to.s+1}) already has a clip. Replace it?`)) return false;
+      r = await send(true);
+    }
+    const d = await r.json().catch(()=>({}));
+    if(r.status===401){ showAuth(); return false; }
+    if(!r.ok) throw new Error(d.message || "Could not change the clips");
+    genStop();
+    const verb = {copy:"Clip copied", move:"Clip moved", swap:"Clips swapped"}[op];
+    status(`${verb}…`);
+    if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
+    else await loadLib();
+    S.cell = {t:to.t, s:to.s}; renderInspector();
+    status(`${verb}: track ${from.t+1}, scene ${from.s+1} → track ${to.t+1}, scene ${to.s+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+    return true;
+  }catch(e){ fail(e); return false; }
+}
+function clipKeys(e){
+  /* горячие клавиши вкладки Clips; true — клавиша обработана здесь */
+  if(S.view!=="projects" || S.tab!=="clips" || !S.sel || !S.cell) return false;
+  const a = document.activeElement;
+  if(a && (["INPUT","TEXTAREA","SELECT"].includes(a.tagName) || a.isContentEditable)) return false;
+  const it = selItem(); if(!it?.info?.clips) return false;
+  const grid = it.info.clips, {t, s} = S.cell, cl = (grid[t]||[])[s], mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+  const key = S.sel.side+":"+it.id;
+  if(mod && (k==="c" || k==="x") && !e.shiftKey && !e.altKey){
+    if(String(window.getSelection?.() || "")) return false;          // выделен текст — обычное копирование
+    e.preventDefault();
+    if(!cl){ status("Cell is empty", true); return true; }
+    S.clipBuf = {key, t, s, cut: k==="x"}; renderInspector();
+    status(`${k==="x"?"Cut":"Copied"}: track ${t+1}, scene ${s+1}. Pick a cell and press ⌘V`);
+    return true;
+  }
+  if(mod && k==="v" && !e.shiftKey && !e.altKey){
+    const b = clipBufHere(S.sel.side, it); if(!b) return false;
+    e.preventDefault();
+    if(b.t===t && b.s===s){ status("Pick a different cell to paste into", true); return true; }
+    clipOp(b.cut ? "move" : "copy", b, {t, s}).then(ok => { if(ok && b.cut){ S.clipBuf = null; renderInspector(); } });
+    return true;
+  }
+  if(mod || e.altKey) return false;
+  if(e.key==="Backspace" || e.key==="Delete"){ e.preventDefault(); if(cl) deleteClip(); return true; }   // клип, а не проект
+  if(e.key==="Escape" && S.clipBuf){ e.preventDefault(); S.clipBuf = null; renderInspector(); status(""); return true; }
+  const step = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]}[e.key];
+  if(step){
+    e.preventDefault();
+    const scenes = Math.max(0, ...grid.map(r=>r.length));
+    S.cell = {t: Math.min(grid.length-1, Math.max(0, t+step[0])), s: Math.min(scenes-1, Math.max(0, s+step[1]))};
+    genStop(); renderInspector();
+    return true;
+  }
+  return false;
 }
 async function deleteClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side, id} = S.sel, {t, s: sc} = S.cell;
@@ -918,7 +995,6 @@ function renderInspectorNow(){
     </div>
     <div class="acts">
       ${side==="move" ? `<button class="primary" id="actPull">To computer →</button><span id="pullBox" class="pullbox"><label class="chk" style="margin:0" title="Move exports the project audio; if the export fails, the longest recording of this set from Recordings is used"><input type="checkbox" id="withAudio" ${S.withAudio?"checked":""}> with audio</label>${S.withAudio?`<select id="fmt" aria-label="Audio format">${["wav","mp3"].map(f=>`<option value="${f}" ${S.audioFormat===f?"selected":""}>${f.toUpperCase()}</option>`).join("")}</select>`:""}</span>` : `<button class="primary" id="actPush">← To Move</button>`}
-      ${side==="lib" && it.audio ? `<button id="actPlay">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚ Pause":"▶ Play"}</button>` : ""}
       ${side==="lib" ? `<button id="actReveal">Show in Finder</button>` : ""}
       <button class="danger" id="actDel">Delete</button>
     </div>
@@ -1036,6 +1112,7 @@ async function deleteSelected(){
   }catch(err){ fail(err); }
 }
 document.addEventListener("keydown", e => {
+  if(clipKeys(e)) return;                       // вкладка Clips с выбранной ячейкой: Delete — это клип, не проект
   if(e.key!=="Backspace" && e.key!=="Delete") return;
   const a = document.activeElement;
   if(a && (["INPUT","TEXTAREA","SELECT"].includes(a.tagName) || a.isContentEditable)) return;   // в полях клавиша стирает текст
@@ -1789,7 +1866,6 @@ insp.addEventListener("click", async e => {
   if(t.dataset.go) return select(t.dataset.go, t.dataset.goid);
   if(t.id==="actPull") return pull(id);
   if(t.id==="actPush") return push(id);
-  if(t.id==="actPlay") return play(id);
   if(t.id==="applyOrder") return applyOrder();
   if(t.id==="resetOrder"){ S.order = null; S.pans = {}; S.key = null; return renderInspector(); }
   if(t.id==="actAudio"){ $("#audioFile").value = ""; return $("#audioFile").click(); }
@@ -1862,6 +1938,28 @@ insp.addEventListener("dragstart", e => { const r = e.target.closest(".trk"); if
 insp.addEventListener("dragover", e => { if(trkDrag===null) return; e.preventDefault(); insp.querySelectorAll(".trk.over").forEach(x=>x.classList.remove("over")); const r = e.target.closest(".trk"); if(r) r.classList.add("over"); });
 insp.addEventListener("drop", e => { if(trkDrag===null) return; e.preventDefault(); const r = e.target.closest(".trk"); const from = trkDrag; trkDrag = null; if(r && +r.dataset.pos!==from) moveTrack(from, +r.dataset.pos); });
 insp.addEventListener("dragend", () => { trkDrag = null; });
+/* перетаскивание клипов: в пустую — перенос, на клип — обмен, с Alt — копия */
+insp.addEventListener("dragstart", e => {
+  const c = e.target.closest?.(".clipcell[draggable]"); if(!c) return;
+  clipDrag = {t:+c.dataset.t, s:+c.dataset.s}; e.dataTransfer.effectAllowed = "copyMove"; e.dataTransfer.setData("text/plain", "clip");
+  const it = selItem();                          // гасим недопустимые ячейки на месте: перерисовка оборвала бы перетаскивание
+  insp.querySelectorAll(".clipcell").forEach(x => x.classList.toggle("no", !!clipRuleError(it, clipDrag, {t:+x.dataset.t, s:+x.dataset.s})));
+});
+insp.addEventListener("dragover", e => {
+  if(!clipDrag) return; const c = e.target.closest(".clipcell");
+  insp.querySelectorAll(".clipcell.over").forEach(x=>x.classList.remove("over"));
+  if(!c || c.classList.contains("no")) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? "copy" : "move"; c.classList.add("over");
+});
+insp.addEventListener("drop", e => {
+  if(!clipDrag) return; e.preventDefault();
+  const c = e.target.closest(".clipcell"), from = clipDrag; clipDrag = null;
+  if(!c){ renderInspector(); return; }
+  const to = {t:+c.dataset.t, s:+c.dataset.s}, it = selItem(), full = !!((it?.info?.clips||[])[to.t]||[])[to.s];
+  renderInspector();
+  clipOp(e.altKey ? "copy" : full ? "swap" : "move", from, to);
+});
+insp.addEventListener("dragend", () => { if(clipDrag){ clipDrag = null; renderInspector(); } });   // отпустили мимо сетки
 
 $("#clipFile").onchange = e => uploadClip(e.target.files[0]);
 $("#audioFile").onchange = async e => {

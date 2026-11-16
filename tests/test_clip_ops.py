@@ -204,5 +204,18 @@ class Routes(RouteBase):
         self.assertEqual(st, 400)
 
 
+class StaleCache(unittest.TestCase):
+    def test_info_without_clip_kind_is_stale(self):
+        info = parse_song(song())
+        self.assertFalse(app.stale_info(info))
+        del info["tracks"][0]["clipKind"]
+        self.assertTrue(app.stale_info(info))
+        app.INFO_CACHE["x-51"] = {"stamp": "s1", "info": info}
+        try:
+            self.assertIsNone(app.cached_info("x-51", "s1"))
+        finally:
+            app.INFO_CACHE.pop("x-51", None)
+
+
 if __name__ == "__main__":
     unittest.main()
