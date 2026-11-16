@@ -40,7 +40,7 @@ def save_version(folder, song_bytes, action, now=None):
     tmp.replace(folder / f"{vid}.abl")
     meta = {"action": str(action or ""), "savedAt": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now))}
     (folder / f"{vid}.json").write_text(json.dumps(meta, ensure_ascii=False), "utf-8")
-    prune(folder)
+    prune(folder, protect=vid)       # только что записанную не удаляем, даже если часы перевели назад
     return vid
 
 
@@ -68,8 +68,10 @@ def read_version(folder, vid):
     return p.read_bytes()
 
 
-def prune(folder, keep=KEEP):
-    for vid in _ids(folder)[:-keep] if keep else _ids(folder):
+def prune(folder, keep=KEEP, protect=None):
+    ids = [v for v in _ids(folder) if v != protect]
+    keep -= 1 if protect else 0
+    for vid in ids[:-keep] if keep > 0 else ids:
         for ext in (".abl", ".json"):
             (Path(folder) / f"{vid}{ext}").unlink(missing_ok=True)
 

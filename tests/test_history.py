@@ -43,6 +43,14 @@ class HistoryTests(unittest.TestCase):
         self.assertNotIn(ids[0], [v["id"] for v in vs])
         self.assertEqual(len(list(self.dir.glob("*.json"))), 20)
 
+    def test_prune_never_drops_new_version_after_clock_goes_back(self):
+        t = time.time()
+        for i in range(20):
+            history.save_version(self.dir, str(i).encode(), "a", now=t + 3600 + i)
+        vid = history.save_version(self.dir, b"new", "after DST", now=t)      # часы перевели назад
+        self.assertEqual(history.read_version(self.dir, vid), b"new")
+        self.assertEqual(len(history.list_versions(self.dir)), 20)
+
     def test_read_version_rejects_bad_id(self):
         history.save_version(self.dir, b"1", "x")
         for bad in ("../x", "abc", "20261116-225619-999", "", "20261116-225619-123/../../a"):

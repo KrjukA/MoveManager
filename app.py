@@ -1910,9 +1910,8 @@ def job_edit_move(oid, order, pans, replace, key=None):
             MOVE.download(oid, src)
             stage("Applying changes")
             edit_bundle(src, dst, order, pans, key)
-            if replace:                                  # версия до правки — в историю этого сета
-                with zipfile.ZipFile(src) as z:
-                    _save_version(history_dir("move", oid), z.read(find_song_entry(z)), edit_action(order, pans, key))
+            with zipfile.ZipFile(src) as z:              # версия до правки — запишем, когда новый сет опознан
+                before_bytes = z.read(find_song_entry(z))
             stage("Uploading to Move")
             MOVE.upload(dst, f"{new_name}.ablbundle")
         finally:
@@ -1922,10 +1921,13 @@ def job_edit_move(oid, order, pans, replace, key=None):
             created = [o for o in MOVE.list_sets() if o["objectId"] not in before]
             if len(created) != 1:
                 raise AppError("The new version was uploaded but could not be identified — the original was kept")
+            new_oid = created[0]["objectId"]
+            # история — к новому сету до удаления и переименования: сбой там не оставит её у удалённого ID
+            history.move_history(history_dir("move", oid), history_dir("move", new_oid))
+            _save_version(history_dir("move", new_oid), before_bytes, edit_action(order, pans, key))
             stage("Replacing the original")
             MOVE.delete(oid)
-            MOVE.rename(created[0]["objectId"], obj["name"])
-            history.move_history(history_dir("move", oid), history_dir("move", created[0]["objectId"]))
+            MOVE.rename(new_oid, obj["name"])
             with LOCK:
                 meta = CFG.setdefault("move_meta", {})
                 if oid in meta:
@@ -2333,8 +2335,13 @@ LEGACY_RE = re.compile(r"(.+) (\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.abl")
 def legacy_backups(oid):
     """Старые копии backups/<имя> ГГГГММДД-ЧЧММСС.abl этого сета (до сборки 52).
     Если на Move два сета с таким именем — не показываем: нельзя понять, чьи они."""
-    name = safe_name(set_by_id(oid)["name"])
-    if sum(1 for o in MOVE.list_sets() if safe_name(o.get("name", "")) == name) > 1:
+    def safe(n):
+        try:
+            return safe_name(n or "")
+        except AppError:                 # пустое или странное имя другого сета не должно ломать историю
+            return None
+    name = safe(set_by_id(oid)["name"])
+    if not name or sum(1 for o in MOVE.list_sets() if safe(o.get("name")) == name) > 1:
         return []
     out = []
     folder = backups_dir()

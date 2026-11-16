@@ -192,12 +192,28 @@ class Hooks(RouteBase):
         self.assertEqual(self.mv(OID), [])
         self.assertEqual(self.mv(NEW), [])
 
-    def test_no_ssh_edit_unidentified_keeps_version_on_old(self):
+    def test_no_ssh_edit_unidentified_leaves_no_false_version(self):
         app.ssh_enabled = lambda: False
         app.MOVE.identify = False
         with self.assertRaises(app.AppError):
             app.job_edit_move(OID, None, {"0": 0.3}, True)(lambda *a, **k: None)
-        self.assertEqual(len(self.mv(OID)), 1)
+        self.assertEqual(self.mv(OID), [])                 # правки не было — и строки «before: …» нет
+
+    def test_no_ssh_edit_rename_failure_keeps_history(self):
+        history.save_version(app.history_dir("move", OID), b"{}", "old")
+        app.ssh_enabled = lambda: False
+        def boom(oid, name):
+            raise app.AppError("rename failed")
+        app.MOVE.rename = boom
+        with self.assertRaises(app.AppError):
+            app.job_edit_move(OID, None, {"0": 0.3}, True)(lambda *a, **k: None)
+        self.assertEqual([v["action"] for v in self.mv(NEW)], ["Pan changed", "old"])
+
+    def test_legacy_ignores_sets_with_unusable_names(self):
+        app.MOVE.sets.append({"objectId": "dd98954a-8822-4a82-92d4-10529d5ca3a9", "name": "", "lastModifiedDateTime": "1"})
+        app.MOVE.sets.append({"objectId": "ee98954a-8822-4a82-92d4-10529d5ca3a9", "name": "...", "lastModifiedDateTime": "1"})
+        st, _, b = self.req("GET", f"/api/move/sets/{OID}/history")
+        self.assertEqual(st, 200, b)
 
     def test_history_dir_validates(self):
         with self.assertRaises(app.AppError):
