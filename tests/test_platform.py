@@ -15,12 +15,12 @@ class DataDirs(unittest.TestCase):
 
     def test_frozen_windows_uses_appdata(self):
         d = app.user_data_dir(True, "win32", {"APPDATA": r"C:\Users\Иван\AppData\Roaming"}, Path("C:/Users/x"))
-        self.assertEqual(Path(d).name, "Move Manager")
+        self.assertEqual(Path(d).name, app.APP_NAME)
         self.assertIn("Roaming", str(d))
 
     def test_frozen_mac_uses_application_support(self):
         self.assertEqual(app.user_data_dir(True, "darwin", {}, Path("/Users/a")),
-                         Path("/Users/a/Library/Application Support/Move Manager"))
+                         Path("/Users/a/Library/Application Support") / app.APP_NAME)
 
     def test_resources_from_bundle(self):
         self.assertEqual(app.resource_dir(True, "/tmp/_MEI123"), Path("/tmp/_MEI123"))
