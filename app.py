@@ -2327,6 +2327,147 @@ def edit_action(order, pans, key):
     return ", ".join(parts)
 
 
+LEGACY_RE = re.compile(r"(.+) (\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.abl")
+
+
+def legacy_backups(oid):
+    """Старые копии backups/<имя> ГГГГММДД-ЧЧММСС.abl этого сета (до сборки 52).
+    Если на Move два сета с таким именем — не показываем: нельзя понять, чьи они."""
+    name = safe_name(set_by_id(oid)["name"])
+    if sum(1 for o in MOVE.list_sets() if safe_name(o.get("name", "")) == name) > 1:
+        return []
+    out = []
+    folder = backups_dir()
+    for p in folder.glob("*.abl") if folder.is_dir() else []:
+        m = LEGACY_RE.fullmatch(p.name)
+        if m and m.group(1) == name:
+            y, mo, d, h, mi, s = m.groups()[1:]
+            out.append({"id": "legacy:" + p.name, "savedAt": f"{y}-{mo}-{d}T{h}:{mi}:{s}", "action": "", "legacy": True})
+    return out
+
+
+def list_history(side, ident):
+    vs = history.list_versions(history_dir(side, ident))
+    if side == "move":
+        vs = sorted(vs + legacy_backups(ident), key=lambda v: v["savedAt"], reverse=True)
+    for v in vs:
+        v["when"] = history.fmt_when(v["savedAt"])
+    return vs
+
+
+def version_bytes(side, ident, vid):
+    """Байты выбранной версии и её описание; неизвестная версия — AppError."""
+    vid = str(vid or "")
+    entry = next((v for v in list_history(side, ident) if v["id"] == vid), None)
+    if not entry:
+        raise AppError("This version is no longer in History")
+    if entry["legacy"]:
+        return (backups_dir() / vid[len("legacy:"):]).read_bytes(), entry
+    try:
+        return history.read_version(history_dir(side, ident), vid), entry
+    except ValueError:
+        raise AppError("This version is no longer in History")
+
+
+def song_sample_uris(text):
+    """Все sampleUri проекта (текст Song.abl)."""
+    found = []
+    collect_uris(json.loads(text), found)
+    return found
+
+
+def collect_uris(node, out):
+    if isinstance(node, dict):
+        u = node.get("sampleUri")
+        if isinstance(u, str) and u:
+            out.append(u)
+        for v in node.values():
+            collect_uris(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            collect_uris(v, out)
+
+
+def move_missing_files(rels):
+    """Какие файлы пользовательской библиотеки на Move отсутствуют (одним вызовом SSH)."""
+    if not rels:
+        return []
+    names = " ".join(shlex.quote(r) for r in rels)
+    out = ssh_run(f'cd {shlex.quote(samplelib.ABS_PREFIX)} && for f in {names}; do [ -e "$f" ] || echo "$f"; done')
+    return [x for x in out.decode("utf-8", "replace").splitlines() if x]
+
+
+def missing_samples(side, ident, data):
+    """Сэмплы версии, которых сейчас нет: на Move — в пользовательской библиотеке девайса
+    (паки не проверяем), на компьютере — внутри .ablbundle проекта."""
+    text = data.decode("utf-8")
+    if side == "move":
+        rels = sorted(set(samplelib.find_refs(text)))
+        return move_missing_files(rels)
+    bundle = find_file(lib_dir(ident), {".ablbundle"})
+    with zipfile.ZipFile(bundle) as z:
+        base = find_song_entry(z).rpartition("/")[0]
+        names = set(z.namelist())
+    out = []
+    for uri in song_sample_uris(text):
+        if uri.startswith("ableton:") or uri.startswith("/"):
+            continue
+        rel = unquote(uri)
+        if (f"{base}/{rel}" if base else rel) not in names and rel not in out:
+            out.append(rel)
+    return sorted(out)
+
+
+def check_restore(side, ident, vid, force):
+    """Проверка до отката: версия есть, сэмплы на месте (или force). Возвращает (байты, описание)."""
+    data, entry = version_bytes(side, ident, vid)
+    try:
+        json.loads(data.decode("utf-8"))
+    except ValueError:
+        raise AppError("This version is damaged and can't be restored")
+    if not force:
+        gone = missing_samples(side, ident, data)
+        if gone:
+            raise SamplesMissing(gone)
+    return data, entry
+
+
+class SamplesMissing(AppError):
+    def __init__(self, missing):
+        super().__init__("Some samples of this version are gone")
+        self.missing = missing
+
+
+def job_restore_move(oid, data, entry):
+    """Откат сета на Move: текущая версия — в историю, затем запись выбранной."""
+    def fn(stage):
+        stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
+        with target_lock("move:" + oid):
+            stage("Reading project on Move")
+            song = ssh_read_song(oid)
+            save_move_version(oid, song, "Restore of " + history.fmt_when(entry["savedAt"]))
+            stage("Writing the saved version")
+            ssh_write_song(oid, data)
+            with LOCK:
+                INFO_CACHE.pop(oid, None)
+            return {"ok": True}
+    return fn
+
+
+def restore_library(folder, data, entry):
+    d = lib_dir(folder)
+    bundle = find_file(d, {".ablbundle"})
+    tmp = tmp_path(".ablbundle")
+    song = json.loads(data.decode("utf-8"))
+    try:
+        with target_lock("lib:" + d.name):
+            transform_bundle(bundle, tmp, lambda _old: song)
+            save_lib_version(folder, bundle, "Restore of " + history.fmt_when(entry["savedAt"]))
+            shutil.move(str(tmp), bundle)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def clip_op_action(op, src, dst):
     a, b = cell_name(*src), cell_name(*dst)
     return {"copy": f"Clip copied {a} → {b}", "move": f"Clip moved {a} → {b}", "swap": f"Clips swapped {a} ↔ {b}"}[op]
@@ -2746,6 +2887,8 @@ class Handler(BaseHTTPRequestHandler):
                             "message": "Move is unreachable. Check that it is on and on the same Wi-Fi network."}, 503)
         except CellBusy as e:
             self.send_json({"error": "busy", "message": str(e)}, 409)
+        except SamplesMissing as e:
+            self.send_json({"error": "missing", "message": str(e), "missing": e.missing}, 409)
         except AppError as e:
             self.send_json({"error": "app", "message": str(e)}, 400)
         except (BrokenPipeError, ConnectionResetError):
@@ -2964,6 +3107,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not ssh_enabled():
                     raise AppError("Deleting a clip on Move needs pad control enabled")
                 return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0, f"Clip deleted {cell_name(t, sc)}")))
+            if act == "history" and m == "GET" and len(seg) == 4:
+                return self.send_json({"versions": list_history("move", oid)})
+            if act == "history" and m == "POST" and seg[4:] == ["restore"]:
+                b = self.body()
+                if not ssh_enabled():
+                    raise AppError("Restoring on Move needs pad control enabled")
+                data, entry = check_restore("move", oid, b.get("id"), bool(b.get("force")))
+                return self.send_json(start_job("restore", job_restore_move(oid, data, entry)))
             if act == "clip-op" and m == "POST":
                 op, src, dst, replace = clip_op_args(self.body())
                 if not ssh_enabled():
@@ -3045,6 +3196,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
             if act == "clip-op" and m == "POST":
                 library_clip_op(folder, *clip_op_args(self.body()))
+                return self.send_json({"ok": True})
+            if act == "history" and m == "GET" and len(seg) == 3:
+                return self.send_json({"versions": list_history("lib", folder)})
+            if act == "history" and m == "POST" and seg[3:] == ["restore"]:
+                b = self.body()
+                data, entry = check_restore("lib", folder, b.get("id"), bool(b.get("force")))
+                restore_library(folder, data, entry)
                 return self.send_json({"ok": True})
             if act == "kit":
                 track = int((q.get("track") or ["0"])[0])
