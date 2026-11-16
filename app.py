@@ -246,6 +246,7 @@ def parse_song(song):
             "source": (preset or {}).get("source") or "",
             "kind": kind,
             "trackKind": tr.get("kind") or "",
+            "clipKind": track_clip_kind(tr),
             "role": guess_role(folders, [name, (preset or {}).get("name") or ""], kind, tr.get("kind")),
             "clips": clips,
             "pan": pan if isinstance(pan, (int, float)) else 0,
@@ -336,6 +337,55 @@ def put_clip(song, track, scene, notes, length):
                  "region": {"start": 0.0, "end": total, "loop": {"start": 0.0, "end": total, "isEnabled": True}},
                  "notes": list(notes), "envelopes": []})
     slot["clip"] = clip
+    return song
+
+
+class CellBusy(AppError):
+    """Ячейка-цель занята, а замена не разрешена (маршрут отвечает 409)."""
+
+
+def track_clip_kind(track):
+    """Вид дорожки для операций с клипами: drums (Drum Rack), melodic (другая MIDI-дорожка), audio."""
+    if (track or {}).get("kind") == "audio":
+        return "audio"
+    inst = find_instrument((track or {}).get("devices")) or {}
+    return "drums" if inst.get("kind") == "drumRack" else "melodic"
+
+
+KIND_WORDS = {"drums": "a Drum Rack track", "melodic": "a melodic track", "audio": "an audio track"}
+
+
+def clip_op(song, op, src, dst, replace=False):
+    """Копия, перенос или обмен клипов внутри проекта — одним изменением song.
+    Клип берётся целиком (ноты, длина, имя, цвет, огибающие); ударные — только на ударные, мелодия — на мелодию."""
+    if op not in ("copy", "move", "swap"):
+        raise AppError("Unknown clip operation")
+    (st, ss), (dt, ds) = (int(src[0]), int(src[1])), (int(dst[0]), int(dst[1]))
+    s_track, s_slot = _slot(song, st, ss)
+    d_track, d_slot = _slot(song, dt, ds)
+    if (st, ss) == (dt, ds):
+        raise AppError("Pick a different cell")
+    a, b = s_slot.get("clip"), d_slot.get("clip")
+    if op == "swap" and not a:                       # пустой источник при обмене — переносим клип цели сюда
+        (s_track, s_slot, a), (d_track, d_slot, b) = (d_track, d_slot, b), (s_track, s_slot, a)
+    if not a:
+        raise AppError("Cell is empty")
+    sk, dk = track_clip_kind(s_track), track_clip_kind(d_track)
+    if "audio" in (sk, dk):
+        raise AppError("Audio clips can't be moved yet")
+    if sk != dk:
+        raise AppError(f"A clip from {KIND_WORDS[sk]} can only go to {KIND_WORDS[sk]}")
+    if b and op != "swap" and not replace:
+        raise CellBusy("Cell is occupied")
+    moved = copy.deepcopy(a)
+    moved["isPlaying"] = False
+    if op == "swap" and b:
+        back = copy.deepcopy(b)
+        back["isPlaying"] = False
+        s_slot["clip"] = back
+    elif op in ("move", "swap"):
+        s_slot["clip"] = None
+    d_slot["clip"] = moved
     return song
 
 
