@@ -227,6 +227,12 @@ aside h3:first-child{margin-top:0}
 .recbtn.on{border-color:var(--bad);color:var(--bad)}
 #meter{width:100%;height:26px;display:block;margin:6px 0;border-radius:3px;background:var(--device)}
 .hint{color:var(--faint);font-size:11px;margin:4px 0}
+.warnline{font-size:11px;line-height:1.35;margin:10px 0 2px;padding:5px 8px;border-left:2px solid var(--pick);background:var(--panel);color:var(--text)}
+.hist{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.hist .row{display:flex;align-items:center;gap:8px;padding:5px 6px;border:1px solid var(--line);border-radius:3px;background:var(--panel)}
+.hist .when{font:12px var(--mono);color:var(--text)}
+.hist .what{font:10px var(--mono);color:var(--faint);margin-top:2px;overflow-wrap:anywhere}
+.hist .grow{flex:1;min-width:0}
 .modes{display:flex;gap:2px;margin-left:6px}.modes button{padding:2px 8px;font-size:11px}.modes button.on{background:var(--sel);color:var(--text);border-color:var(--pick)}
 .modes[hidden]{display:none}
 .pane{position:relative}
@@ -408,7 +414,7 @@ const fail = e => { if(!e.auth) status(e.message, true); };
 async function loadMove(){
   try{
     const d = await api("GET","/api/move/sets");
-    S.move = {state:"ok", sets:d.sets, msg:""}; S.ssh = d.ssh || S.ssh;
+    S.move = {state:"ok", sets:d.sets, msg:""}; S.ssh = d.ssh || S.ssh; S.hist = null;
     render(); analyzeQueue();
   }catch(e){
     S.move = {state: e.auth?"auth":"offline", sets:[], msg: e.auth?"Enter the confirmation code from the Move screen.":e.message};
@@ -431,7 +437,7 @@ async function analyzeQueue(){
   }finally{ analyzing = false; }
 }
 async function loadLib(){
-  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path}; }
+  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path}; S.hist = null; }
   catch(e){ fail(e); }
   render();
 }
@@ -661,7 +667,7 @@ async function clipOp(op, from, to){
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
     S.cell = {t:to.t, s:to.s}; renderInspector();
-    status(`${verb}: track ${from.t+1}, scene ${from.s+1} → track ${to.t+1}, scene ${to.s+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+    status(`${verb}: track ${from.t+1}, scene ${from.s+1} → track ${to.t+1}, scene ${to.s+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
     return true;
   }catch(e){ fail(e); return false; }
 }
@@ -701,6 +707,52 @@ function clipKeys(e){
   }
   return false;
 }
+/* ───────── история проекта (сборка 52) ───────── */
+function historyHTML(side, it){
+  const key = side+":"+it.id, h = S.hist;
+  if(!h || h.key!==key){ loadHistory(side, it); return `<div class="hint">Reading history…</div>`; }
+  if(h.err) return `<div class="hint">${esc(h.err)}</div>`;
+  if(h.loading) return `<div class="hint">Reading history…</div>`;
+  const noSsh = side==="move" && !padMode();
+  const head = `<div class="hint">A version is saved before every change made here (up to 20). Restore puts the project back; the current version is saved first, so a restore can be undone.</div>`;
+  if(!h.versions.length) return head + `<div class="hint">No saved versions yet. A version is saved before every change made here.</div>`;
+  return head + `<div class="hist">${h.versions.map(v => `<div class="row"><div class="grow"><div class="when">${esc(v.when)}</div>
+      <div class="what">${v.legacy ? "older backup" : v.action ? "before: "+esc(v.action) : "—"}</div></div>
+      <button data-restore="${esc(v.id)}" ${noSsh?"disabled":""} title="${noSsh?"Restoring on Move needs pad control enabled":"Put the project back to this version"}">Restore</button></div>`).join("")}</div>`;
+}
+async function loadHistory(side, it){
+  const key = side+":"+it.id;
+  if(S.hist && S.hist.key===key && S.hist.loading) return;
+  S.hist = {key, loading:true, versions:[]};
+  try{
+    const d = await api("GET", `${clipURL(side,it)}/history`);
+    if(S.hist?.key===key) S.hist = {key, versions:d.versions||[]};
+  }catch(e){ if(S.hist?.key===key) S.hist = {key, versions:[], err:e.message||"Could not read history"}; }
+  renderInspector();
+}
+async function restoreVersion(vid){
+  const it = selItem(); if(!it) return; const {side, id} = S.sel;
+  const v = (S.hist?.versions||[]).find(x=>x.id===vid); if(!v) return;
+  if(!confirm(`Restore the project to ${v.when}? The current version is saved to History first.${side==="move"?"\nIf the project is open on Move, leave it and open it again.":""}`)) return;
+  const send = force => fetch(`${clipURL(side,it)}/history/restore`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({id: vid, force})});
+  try{
+    let r = await send(false);
+    if(r.status===409){
+      const d = await r.json().catch(()=>({})), miss = d.missing||[];
+      const list = miss.slice(0,12).map(x=>"• "+x).join("\n") + (miss.length>12 ? `\n…and ${miss.length-12} more` : "");
+      if(!confirm(`These samples of the ${v.when} version are no longer ${side==="move"?"on Move":"in the project"}:\n\n${list}\n\nThey will be missing in the project. Restore anyway?`)) return;
+      r = await send(true);
+    }
+    const d = await r.json().catch(()=>({}));
+    if(r.status===401){ showAuth(); return; }
+    if(!r.ok) throw new Error(d.message || "Could not restore the version");
+    status(`Restoring ${v.when}…`);
+    if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
+    else await loadLib();
+    S.hist = null; renderInspector();
+    status(`Restored to ${v.when}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
+  }catch(e){ fail(e); }
+}
 async function deleteClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side, id} = S.sel, {t, s: sc} = S.cell;
   if(!confirm(`Delete the clip in track ${t+1}, scene ${sc+1}?${side==="move"?" The project on Move is backed up first.":""}`)) return;
@@ -712,7 +764,7 @@ async function deleteClip(){
     genStop();
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
-    status(`Clip deleted: track ${t+1}, scene ${sc+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+    status(`Clip deleted: track ${t+1}, scene ${sc+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
   }catch(e){ fail(e); }
 }
 async function saveClip(){
@@ -744,7 +796,7 @@ async function uploadClip(file){
     status(`Loading "${file.name}"…`);
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
-    status(`Clip from "${file.name}" loaded: track ${t+1}, scene ${sc+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+    status(`Clip from "${file.name}" loaded: track ${t+1}, scene ${sc+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
   }catch(e){ fail(e); }
 }
 /* ───────── генератор барабанов ───────── */
@@ -853,7 +905,7 @@ async function genPut(){
     if(!r.ok) throw new Error(d.message || "Could not write the clip");
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
-    status(`Generated pattern written: track ${g.t+1}, scene ${g.s+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+    status(`Generated pattern written: track ${g.t+1}, scene ${g.s+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
   }catch(e){ fail(e); }
 }
 /* прослушка: сэмплы кита или синтез */
@@ -1000,9 +1052,10 @@ function renderInspectorNow(){
     </div>
     ${soundHTML(side, it)}
     ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
-    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Clips</button></div>
-    ${tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
-    ${tracks.length ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
+    ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
+    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history">History</button></div>
+    ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
+    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
       ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <h3>Camelot</h3>
     ${wheelSVG(cam)}
@@ -1139,7 +1192,7 @@ async function applyOrder(){
       status("Applying changes…");
       const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/edit`, {order, pans, replace:S.replace, key:keyPayload(it)}));
       S.order = null; S.pans = {}; S.key = null; await loadMove();
-      status(res.inPlace ? "Changes written to the project on Move. If it is open on the device, reopen it." : res.replaced ? "Project replaced with the edited version" : `Copy created: "${res.copy}"`);
+      status(res.inPlace ? "Changes written to the project on Move. Leave the project on Move and open it again to see the changes." : res.replaced ? "Project replaced with the edited version" : `Copy created: "${res.copy}"`);
     } else {
       await api("POST", `/api/library/${encodeURIComponent(id)}/edit`, {order, pans, key:keyPayload(it)});
       S.order = null; S.pans = {}; S.key = null; await loadLib(); status("Changes saved in the project on the computer");
@@ -1876,6 +1929,7 @@ insp.addEventListener("click", async e => {
   if(t.id==="actRender") return renderLib(id);
   if(t.dataset.tab){ S.tab = t.dataset.tab; return renderInspector(); }
   const cc = t.closest(".clipcell"); if(cc){ genStop(); S.cell = {t:+cc.dataset.t, s:+cc.dataset.s}; return renderInspector(); }
+  if(t.dataset.restore) return restoreVersion(t.dataset.restore);
   if(t.id==="clipSave") return saveClip();
   if(t.id==="keyEdit"){ S.keyEdit = true; return renderInspector(); }
   if(t.id==="keyDone"){ S.keyEdit = false; if(S.key && !keyPayload(selItem())) S.key = null; return renderInspector(); }
