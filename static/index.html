@@ -1,152 +1,95 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
+<script>try{if(localStorage.getItem("mm-theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}</script>
 <title>Move Manager</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root{
-  color-scheme:dark;
-  --bg:#131416; --panel:#1b1d20; --panel2:#22252a; --line:#2e3238; --line2:#3a3f47;
-  --text:#e8e6e1; --dim:#8b9099; --faint:#5c626b; --accent:#ff7a2b; --ok:#5fd38d; --bad:#ff5d5d;
+  color-scheme:light;
+  --bg:#e2e2de; --panel:#d8d8d4; --panel2:#cdcdc8; --field:#ededea; --line:#c4c4bf; --line2:#b3b3ad;
+  --text:#1a1a19; --dim:#5f5f5a; --faint:#7a7a75; --accent:#2f5d86; --on-accent:#ffffff;
+  --ok:#2f9e5b; --bad:#d93b3b; --sel:rgba(47,93,134,.13); --pick:#2f5d86;
+  --device:#262624; --dev-border:#262624; --dev-line:#3a3a36; --pad:#3c3c39; --pad-empty:#30302e;
+  --dev-text:#ededea; --dev-dim:#9a9a95; --overlay:rgba(226,226,222,.9);
   --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+html[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#121211; --panel:#1b1b1a; --panel2:#242422; --field:#1b1b1a; --line:#2e2e2b; --line2:#3d3d39;
+  --text:#e9e9e6; --dim:#8f8f89; --faint:#6a6a65; --ok:#5fd38d; --bad:#ff5d5d; --sel:rgba(141,176,214,.15); --pick:#8db0d6; --accent:#8db0d6; --on-accent:#0f1720;
+  --device:#1f1f1d; --dev-border:#34342f; --dev-line:#3a3a36; --pad:#363633; --pad-empty:#292927; --overlay:rgba(18,18,17,.9);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden}
 button,input,textarea,select{font:inherit;color:inherit}
-button{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap}
-button:hover{border-color:var(--dim)}
+button{background:transparent;border:1px solid var(--line2);border-radius:4px;padding:5px 10px;cursor:pointer;white-space:nowrap;color:var(--text)}
+button:hover{border-color:var(--text)}
 button:disabled{opacity:.4;cursor:default}
-button.primary{background:var(--accent);border-color:var(--accent);color:#1a0d04;font-weight:600}
+button:disabled:hover{border-color:var(--line2)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
+button.primary:hover{border-color:var(--text)}
 button.danger:hover{border-color:var(--bad);color:var(--bad)}
 button.ghost{background:none;border-color:transparent;color:var(--dim)}
 button.ghost:hover{color:var(--text);border-color:var(--line2)}
-input[type=text],textarea,select{background:#111214;border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
-input:focus,textarea:focus,select:focus,button:focus-visible{outline:1px solid var(--accent);outline-offset:0}
+input[type=text],input[type=number],textarea,select{background:var(--field);border:1px solid var(--line);border-radius:4px;padding:6px 8px;width:100%;color:var(--text)}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:1px solid var(--pick);outline-offset:0}
 textarea{resize:vertical;min-height:54px}
+select{appearance:none;-webkit-appearance:none;padding-right:26px!important;cursor:pointer;
+  background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8a85' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center}
+select option{background:var(--field);color:var(--text)}
 
-header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);flex:none}
-.logo{font:700 13px var(--mono);letter-spacing:.18em}
-.logo b{color:var(--accent)}
-.conn{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:12px}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+header{display:flex;align-items:baseline;gap:16px;padding:12px 16px 10px;border-bottom:1px solid var(--line);flex:none}
+.logo{font-size:16px;font-weight:500;letter-spacing:0;color:var(--text)}
+.conn{display:flex;align-items:center;gap:6px;color:var(--dim);font:11px var(--mono)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
 .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
 .spacer{flex:1}
 header label{color:var(--dim);font-size:12px;display:flex;align-items:center;gap:6px}
-header select{width:auto;padding:4px 6px}
+header select{width:auto;padding:3px 6px}
+#build{font:11px var(--mono);color:var(--faint)}
 
-main{flex:1;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 330px;min-height:0}
-.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
-.pane-head{display:flex;align-items:center;gap:8px;padding:10px 14px;flex:none}
-.pane-head h2{margin:0;font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330px;min-height:0}
+.pane{display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--line)}
+.pane-head{display:flex;align-items:center;gap:8px;padding:0 14px;height:46px;box-sizing:border-box;flex:none;flex-wrap:nowrap;min-width:0;overflow:hidden}
+.pane-head button{padding:3px 8px;flex:none}.pane-head h2,.pane-head .count{flex:none;white-space:nowrap}.pane-head .path{min-width:0;flex:0 1 auto}
+.pane-head h2{margin:0;font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text)}
 .pane-head .count{color:var(--faint);font:11px var(--mono)}
 .pane-head .path{color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
-.grid{flex:1;overflow:auto;padding:4px 14px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start}
-.grid.drop{background:rgba(255,122,43,.06);outline:1px dashed var(--accent);outline-offset:-6px}
-.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;grid-auto-rows:minmax(92px,auto)}
-.pads .tile{min-height:92px;padding:6px 6px 5px;gap:3px;border-top:3px solid var(--pc,var(--line))}
-.pads .tile .name{font-size:11px;line-height:1.25;-webkit-line-clamp:3}
-.pads .tile .bpm{font-size:10px}
-.pads .keyb{font-size:10px;padding:1px 4px}
-.pads .role{font-size:0;height:5px;padding:0}
-.pads .tile .tag{display:none}
-.slot{border:1px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--faint);font:11px var(--mono)}
-.slot.over{border-color:var(--accent);background:rgba(255,122,43,.08)}
-.rowlabel{grid-column:1/-1;color:var(--faint);font-size:11px;padding-top:6px}
-.banner{margin:0 14px 10px;padding:9px 12px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);color:var(--dim);font-size:12px;display:flex;gap:10px;align-items:center}
-.banner.err{border-color:var(--bad)}
-.banner div{flex:1}
-.rec{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
-.rec button{padding:2px 7px;font-size:11px}
-.rec .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
-.rec .rs{font:10px var(--mono);color:var(--faint)}
-.rec.cur .rn{color:var(--accent)}
-.recbtn.on{border-color:var(--bad);color:var(--bad)}
-.gsec{grid-column:1/-1;border:1px solid transparent;border-radius:8px;padding:2px 6px 6px;margin:0 -6px}
-.gsec.over{border-color:var(--accent);background:rgba(255,122,43,.06)}
-.ggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;margin-top:6px;min-height:34px}
-#libGrid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
-#libGrid .tile{min-height:0;padding:6px 7px 6px;gap:3px;border-radius:8px}
-#libGrid .tile .name{font-size:12px;line-height:1.25;-webkit-line-clamp:2}
-#libGrid .tile .scale{display:none}
-#libGrid .tile .bpm{font-size:10px}
-#libGrid .keyb{font-size:10px;padding:1px 4px}
-#libGrid .role{font-size:0;height:4px;padding:0}
-#libGrid .roles{margin-top:2px}
-#libGrid .tile .play{top:auto;bottom:12px;width:22px;height:22px;font-size:10px}
-#libGrid .tile .job{font-size:10px;gap:4px;padding:4px;border-radius:8px}
-#libGrid .ghead{padding-top:6px}
-.ggrid:empty::after{content:"Перетащите сюда проект";color:var(--faint);font-size:11px;align-self:center;padding-left:2px;grid-column:1/-1}
-.ghead .gb{margin-left:auto;display:flex;gap:2px;opacity:0}
-.gsec:hover .gb,.ghead:focus-within .gb{opacity:1}
-.ghead .gb button{padding:1px 7px;font-size:11px;border:none;background:none;color:var(--dim);text-transform:none;letter-spacing:0;font-weight:400}
-.ghead .gb button:hover{color:var(--text)}
-.ghead{display:flex;align-items:center;gap:8px;padding:8px 2px 2px;color:var(--dim);font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
-.ghead .gc{color:var(--faint);font-weight:400}
-.ghead.over{color:var(--accent);border-color:var(--accent)}
-.ghead .ga{margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint)}
-.panbtn{font:10px var(--mono)!important;padding:1px 6px!important;color:var(--dim);min-width:34px}
-.panbtn.on{color:var(--accent);border-color:var(--accent)}
-.tile.multi{outline:2px dashed var(--accent);outline-offset:1px}
-#dragGhost{position:fixed;top:-100px;left:-400px;max-width:180px;padding:5px 10px;border-radius:7px;border:1px solid var(--accent);
-  background:rgba(255,122,43,.18);color:var(--text);font:600 12px -apple-system,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.tile.dragging{opacity:.35}
-.cbar{position:absolute;left:0;right:0;bottom:0;height:4px;display:flex;gap:2px;border-radius:0 0 9px 9px;overflow:hidden;pointer-events:none}
-.cbar span{flex:1;background:rgba(255,255,255,.06);position:relative}
-.cbar span i{position:absolute;left:0;top:0;bottom:0}
-select{appearance:none;-webkit-appearance:none;padding-right:26px!important;cursor:pointer;
-  background:#111214 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b9099' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center}
-select option{background:#1b1d20;color:#e8e6e1}
-#meter{width:100%;height:26px;display:block;margin:6px 0;border-radius:4px;background:#0c0d0e}
-.clipgrid{display:grid;gap:3px;margin-top:2px}
-.clipgrid .rl{font:700 9px var(--mono);color:#111;border-radius:3px;display:flex;align-items:center;justify-content:center}
-.clipgrid .sh{font:10px var(--mono);color:var(--faint);text-align:center}
-.clipcell{height:30px;padding:0;border-radius:4px;background:var(--panel);border:1px solid var(--line);font:9px var(--mono);color:var(--faint);line-height:1.1}
-.clipcell.on{background:#2a3a30;border-color:#3f6b50;color:var(--text)}
-.clipcell.sel{outline:2px solid var(--accent);outline-offset:0}
-.clipacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
-a.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;color:var(--text);text-decoration:none;font-size:13px}
-a.btn:hover{border-color:var(--dim)}
-.keyrow{display:flex;gap:6px}
-.tabs{display:flex;gap:2px;margin:16px 0 8px;border-bottom:1px solid var(--line)}
-.tab{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:4px 10px 6px;font:600 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
-.tab.on{color:var(--text);border-bottom-color:var(--accent)}
-.keyrow select:first-child{width:80px;flex:none}
-.pan[hidden]{display:none}
-.pan{display:flex;align-items:center;gap:6px;margin-top:3px}
-.pan input{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;margin:6px 0;cursor:pointer;
-  background:linear-gradient(to right,var(--line2) 0 var(--lo,50%),var(--accent) var(--lo,50%) var(--hi,50%),var(--line2) var(--hi,50%) 100%)}
-.pan input::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--text);border:2px solid var(--bg)}
-.pan input::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--text);border:2px solid var(--bg)}
-.pan input:focus{outline:none}
-.pan input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--accent)}
-.pan{position:relative}
-.pan::before{content:"";position:absolute;left:calc((100% - 36px)/2);top:3px;width:1px;height:10px;background:var(--faint);pointer-events:none}
-.pan span{font:10px var(--mono);color:var(--dim);width:30px;text-align:right}
-.pan span.on{color:var(--accent)}
-.trk .n{cursor:grab}
+.grid{flex:1;overflow:auto;padding:4px 14px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-content:start}
+.grid,#insp{scrollbar-gutter:stable}   /* полоса прокрутки не отнимает ширину, когда появляется */
+.grid.drop{background:var(--sel);outline:1px dashed var(--pick);outline-offset:-6px}
 .empty{grid-column:1/-1;color:var(--dim);padding:28px 8px;text-align:center}
 .empty button{margin-top:10px}
+.banner{margin:0 14px 10px;padding:9px 12px;border:1px solid var(--line2);border-radius:4px;background:var(--panel);color:var(--dim);font-size:12px;display:flex;gap:10px;align-items:center}
+.banner.err{border-color:var(--bad)}
+.banner div{flex:1}
 
-.tile{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px 8px;cursor:pointer;min-height:104px;display:flex;flex-direction:column;gap:5px;user-select:none;transition:opacity .15s,border-color .15s}
+/* общая плитка проекта */
+.tile{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 9px;cursor:pointer;min-height:96px;display:flex;flex-direction:column;gap:4px;user-select:none;transition:opacity .15s,border-color .15s}
 .tile:hover{border-color:var(--line2)}
-.tile.sel{border-color:var(--accent);background:#33261b;box-shadow:0 0 0 2px var(--accent),0 6px 18px rgba(255,122,43,.22);z-index:1}
+.tile.sel{outline:2px solid var(--pick);outline-offset:0;z-index:1}
 .tile.dim{opacity:.42}
-
 .tile.over{box-shadow:-3px 0 0 var(--accent)}
+.tile.multi{outline:2px dashed var(--pick);outline-offset:1px}
+.tile.dragging{opacity:.35}
 .tile .top{display:flex;align-items:center;gap:6px}
-.keyb{font:700 11px var(--mono);padding:2px 6px;border-radius:5px;color:#111}
+.keyb{font:500 11px var(--mono);padding:1px 5px;border-radius:2px;color:#111}
 .keyb.none{background:var(--panel2);color:var(--faint)}
 .tile .bpm{font:11px var(--mono);color:var(--dim);margin-left:auto}
-.tile .name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.tile .name{font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
 .tile .scale{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.roles{display:flex;gap:3px;margin-top:auto}
-.role{flex:1;font:600 9px var(--mono);text-align:center;padding:2px 0;border-radius:3px;color:#111;overflow:hidden;white-space:nowrap}
+.roles{display:flex;gap:2px;margin-top:auto}
+.role{flex:1;font:500 9px var(--mono);text-align:center;padding:2px 0;border-radius:1px;color:#111;overflow:hidden;white-space:nowrap}
 .tile .tag{position:absolute;right:8px;bottom:26px;font-size:10px;color:var(--faint)}
-.tile .play{position:absolute;right:8px;top:30px;width:26px;height:26px;border-radius:50%;padding:0;display:none;align-items:center;justify-content:center;background:var(--accent);border:none;color:#1a0d04;font-size:11px}
+.tile .play{position:absolute;right:8px;top:30px;width:24px;height:24px;border-radius:50%;padding:0;display:none;align-items:center;justify-content:center;background:var(--accent);border:none;color:var(--on-accent);font-size:10px}
 .tile.sel .play,.tile.playing .play,.tile:hover .play{display:flex}
-.tile .job{position:absolute;inset:0;border-radius:10px;background:rgba(19,20,22,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--dim);padding:10px;text-align:center}
+.tile .job{position:absolute;inset:0;border-radius:6px;background:var(--overlay);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--dim);padding:8px;text-align:center}
+.cbar{position:absolute;left:0;right:0;bottom:0;height:3px;display:flex;pointer-events:none;overflow:hidden;border-radius:0 0 5px 5px}
+.cbar span{flex:1;position:relative}
+.cbar span i{position:absolute;left:0;top:0;bottom:0}
 .bar{width:80%;height:3px;background:var(--line);border-radius:2px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);width:30%}
 .bar.ind i{animation:ind 1.1s infinite linear}
@@ -154,48 +97,183 @@ a.btn:hover{border-color:var(--dim)}
 @media (prefers-reduced-motion:reduce){.bar.ind i{animation:none;width:100%;opacity:.5}}
 .shim{color:var(--faint);font-size:11px}
 
-aside{display:flex;flex-direction:column;min-height:0;overflow:auto;padding:14px}
-aside>*{flex:none}
-aside h3{margin:16px 0 6px;font:600 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-aside h3:first-child{margin-top:0}
-.where{font:10px var(--mono);letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:6px}
-.namein{font-size:15px!important;font-weight:600}
-.facts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
-.fact{font:11px var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--dim)}
-.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.trk{display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;margin-bottom:5px}
-.trk.over{border-color:var(--accent)}
-.trk .n{font:700 11px var(--mono);color:var(--faint);width:26px;white-space:nowrap}
-.trk{cursor:default}
-.trk .r{font:700 9px var(--mono);padding:2px 5px;border-radius:3px;color:#111;min-width:38px;text-align:center}
-.trk .b{min-width:0;flex:1}
-.trk .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trk .p{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trk .mv{display:flex;flex-direction:column}
-.trk .mv button{padding:0 4px;font-size:9px;line-height:11px;border:none;background:none;color:var(--dim)}
-.trk .mv button:hover{color:var(--text)}
-.hint{color:var(--faint);font-size:11px;margin:4px 0}
-.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:4px}
-.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
-.sugg{font-size:12px;margin-top:6px}
-.sugg a{color:var(--text);cursor:pointer;text-decoration:underline dotted}
-.chk{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:12px;margin-top:6px}
-.chk input{width:auto}
+/* Move: сетка пэдов в тёмном корпусе прибора */
+#moveGrid{background:var(--device);border:1px solid var(--dev-border);border-radius:10px;margin:4px 14px 14px;padding:10px;flex:none;max-height:calc(100% - 60px);color:var(--dev-text)}
+#moveGrid .tile{background:var(--pad);border:none;border-radius:5px;color:var(--dev-text)}
+#moveGrid .tile:hover{background:color-mix(in srgb,var(--pad) 85%,#fff)}
+#moveGrid .tile .bpm,#moveGrid .tile .scale{color:var(--dev-dim)}
+#moveGrid .tile .job{background:rgba(30,30,28,.88);color:var(--dev-dim)}
+#moveGrid .empty{color:var(--dev-dim)}
+.grid.cmd{display:block;padding:0 0 18px}
+#moveGrid.cmd{background:none;border:none;border-radius:0;margin:0;padding:0 0 18px;flex:1;max-height:none;color:inherit}
+#moveGrid.cmd .empty{color:var(--faint)}
+.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;grid-auto-rows:minmax(84px,auto)}
+.pads .tile{min-height:84px;padding:5px 6px;gap:3px;border-top:3px solid var(--pc,var(--dev-line))!important}
+.pads .tile .name{font-size:11px;line-height:1.25;-webkit-line-clamp:3}
+.pads .tile .bpm{font-size:10px}
+.pads .keyb{font-size:10px;padding:0 4px}
+.pads .role{font-size:0;height:4px;padding:0}
+.pads .tile .tag{display:none}
+.slot{background:var(--pad-empty);border:1px solid transparent;border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--dev-dim);font:11px var(--mono)}
+.slot.over{border-color:var(--pick);background:var(--sel)}
+.rowlabel{grid-column:1/-1;color:var(--dev-dim);font:11px var(--mono);padding-top:6px;text-transform:uppercase;letter-spacing:.1em}
 
-footer{flex:none;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:44px}
-footer .pl{width:30px;height:30px;border-radius:50%;padding:0}
-footer .ttl{min-width:120px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-footer input[type=range]{flex:1;accent-color:var(--accent)}
-footer .tm{font:11px var(--mono);color:var(--dim);min-width:84px;text-align:right}
-footer .status{color:var(--dim);font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* библиотека: таблица */
+#libGrid,.ggrid{grid-template-columns:minmax(0,1fr);gap:0}
+.ggrid{display:grid;margin-top:0;min-height:30px}
+.ggrid:empty::after{content:"Drop a project here";color:var(--faint);font-size:11px;padding:8px 2px}
+#libGrid .tile.row{display:grid;grid-template-columns:minmax(0,1fr) 46px 44px 64px 26px;grid-template-areas:"n k b r p";align-items:center;column-gap:8px;
+  min-height:0;padding:6px 4px;border:none;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
+#libGrid .tile.row:hover{background:var(--panel)}
+#libGrid .tile.row.sel{outline:none;background:var(--sel);box-shadow:inset 3px 0 0 var(--pick)}
+#libGrid .tile.row.multi{outline:none;background:var(--sel);box-shadow:inset 3px 0 0 var(--pick),inset 0 0 0 1px var(--pick)}
+#libGrid .tile.row .top{display:contents}
+#libGrid .tile.row .keyb{grid-area:k;justify-self:start}
+#libGrid .tile.row .bpm{grid-area:b;margin:0;text-align:right}
+#libGrid .tile.row .name{grid-area:n;-webkit-line-clamp:1;font-size:12px}
+#libGrid .tile.row .scale{display:none}
+#libGrid .tile.row .roles{grid-area:r;margin:0}
+#libGrid .tile.row .role{font-size:0;height:4px;padding:0}
+#libGrid .tile.row .play{grid-area:p;position:static;width:22px;height:22px;display:none}
+#libGrid .tile.row.sel .play,#libGrid .tile.row.playing .play,#libGrid .tile.row:hover .play{display:flex}
+#libGrid .tile.row .tag{display:none}
+#libGrid .tile.row .cbar{left:auto;top:7px;bottom:7px;width:3px;height:auto;flex-direction:column;border-radius:0}
+#libGrid .tile.row .job{flex-direction:row;border-radius:0}
+.gsec{grid-column:1/-1;border:1px solid transparent;padding:0 0 4px}
+.gsec.over{border-color:var(--accent);background:var(--sel)}
+.gsec + .gsec{margin-top:14px}
+.ghead{display:flex;align-items:center;gap:8px;padding:6px 2px 3px;color:var(--text);font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;cursor:pointer;border-bottom:1.5px solid var(--text);user-select:none}
+.ghead .gc{color:var(--faint);font-weight:400}
+.ghead .gb{margin-left:auto;display:flex;gap:2px;opacity:0}
+.gsec:hover .gb,.ghead:focus-within .gb{opacity:1}
+.ghead .gb button{padding:1px 7px;font-size:11px;border:none;background:none;color:var(--dim);text-transform:none;letter-spacing:0}
+.ghead .gb button:hover{color:var(--text)}
+.ghead .ga{margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint)}
+#dragGhost{position:fixed;top:-100px;left:-400px;max-width:180px;padding:5px 10px;border-radius:4px;border:1px solid var(--accent);
+  background:var(--sel);color:var(--text);font:500 12px -apple-system,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+
+/* панель свойств */
+aside{display:flex;flex-direction:column;min-height:0;overflow:auto;padding:18px 14px 14px}
+aside>*{flex:none}
+aside h3{margin:16px 0 6px;font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+aside h3:first-child{margin-top:0}
+.where{font:11px var(--mono);letter-spacing:.12em;color:var(--faint);text-transform:uppercase;margin-bottom:4px}
+.namein{font-size:17px!important;font-weight:500;border-color:transparent!important;background:transparent!important;padding-left:0!important}
+.namein:focus{border-color:var(--line)!important;background:var(--field)!important;padding-left:8px!important}
+.facts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center}
+.facts{gap:8px;margin-top:6px}
+.facts .keyb{background:var(--text)!important;color:var(--bg);font-size:13px;padding:2px 6px}
+.fact{font:500 13px var(--mono);border:1px solid var(--line2);border-radius:3px;padding:1px 6px;color:var(--text);text-transform:uppercase}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.keyrow{display:flex;gap:6px}
+.keyrow select,.keyrow input{height:26px;padding:2px 6px!important;font-size:12px}
+.keyrow select{padding-right:22px!important;background-position:right 7px center}
+.keyrow #keyRoot{width:60px;flex:none}
+.keyrow #keyScale{width:auto;flex:1;min-width:0}
+.keyrow #keyTempo{width:60px!important}
+.tabs{display:flex;gap:2px;margin:16px 0 8px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:4px 10px 6px;font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--text);border-bottom-color:var(--pick)}
+.trkpanel{background:var(--device);border:1px solid var(--dev-border);border-radius:8px;padding:4px 8px;color:var(--dev-text)}
+.trk{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--dev-line);cursor:default}
+.trk:last-child{border-bottom:none}
+.trk.over{box-shadow:inset 0 -2px 0 var(--accent)}
+.trk .n{font:500 11px var(--mono);color:var(--dev-dim);width:26px;white-space:nowrap;cursor:grab}
+.trk .r{font:500 9px var(--mono);padding:2px 5px;border-radius:2px;color:#111;min-width:38px;text-align:center}
+.trk .b{min-width:0;flex:1}
+.trk .t{font:500 11px var(--mono);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dev-text)}
+.trk .p{font-size:11px;color:var(--dev-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pan[hidden]{display:none}
+.pan{display:flex;align-items:center;gap:6px;margin-top:3px;position:relative}
+.pan input{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;margin:6px 0;cursor:pointer;border:none;padding:0;
+  background:linear-gradient(to right,var(--dev-line) 0 var(--lo,50%),var(--accent) var(--lo,50%) var(--hi,50%),var(--dev-line) var(--hi,50%) 100%)}
+.pan input::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--dev-text);border:2px solid var(--device)}
+.pan input::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--dev-text);border:2px solid var(--device)}
+.pan input:focus{outline:none}
+.pan input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--accent)}
+.pan::before{content:"";position:absolute;left:calc((100% - 36px)/2);top:3px;width:1px;height:10px;background:var(--dev-dim);pointer-events:none}
+.pan span{font:10px var(--mono);color:var(--dev-dim);width:30px;text-align:right}
+.pan span.on{color:var(--accent)}
+.clipgrid{display:grid;gap:3px;margin-top:2px}
+.clipgrid .rl{font:500 9px var(--mono);color:#111;border-radius:2px;display:flex;align-items:center;justify-content:center}
+.clipgrid .sh{font:10px var(--mono);color:var(--faint);text-align:center}
+.clipcell{height:30px;padding:0;border-radius:3px;background:var(--panel);border:1px solid var(--line);font:10px var(--mono);color:var(--faint);line-height:1.1}
+.clipcell.on{background:var(--pad);border-color:var(--pad);color:var(--dev-text)}
+.clipcell.sel{outline:2px solid var(--pick);outline-offset:0}
+.genpanel{margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--panel)}
+.genpanel select,.genpanel input[type=range]{width:100%}
+.genrow{display:flex;gap:6px;align-items:center;margin-top:6px}
+.genrow label{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+.genrow .v{font:11px var(--mono);color:var(--text);width:28px;text-align:right}
+#genGrid{background:var(--device);border-radius:6px;padding:6px;margin-top:8px;display:grid;gap:1px;color:var(--dev-dim)}
+#genGrid .gl{font:9px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:4px;align-self:center}
+#genGrid .gc{height:12px;background:var(--pad-empty);border-radius:1px}
+#genGrid .gc.bar{box-shadow:inset 1px 0 0 var(--dev-dim)}
+#genGrid .gc.on{background:var(--accent)}
+.genpanel details{margin-top:8px}
+.genpanel summary{cursor:pointer;font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.gencredit{font-size:10px;color:var(--faint);margin-top:6px}
+.clipacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.rec{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+.rec button{padding:2px 7px;font-size:11px}
+.rec .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.rec .rs{font:10px var(--mono);color:var(--faint)}
+.recbtn.on{border-color:var(--bad);color:var(--bad)}
+#meter{width:100%;height:26px;display:block;margin:6px 0;border-radius:3px;background:var(--device)}
+.hint{color:var(--faint);font-size:11px;margin:4px 0}
+.modes{display:flex;gap:2px;margin-left:6px}.modes button{padding:2px 8px;font-size:11px}.modes button.on{background:var(--sel);color:var(--text);border-color:var(--pick)}
+.modes[hidden]{display:none}
+.pane{position:relative}
+.jobfloat{position:absolute;left:14px;right:14px;bottom:12px;z-index:5;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;background:var(--panel);border:1px solid var(--accent);color:var(--text);font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none}
+.jobfloat[hidden]{display:none}
+.jobfloat .spin{width:10px;height:10px;border:2px solid var(--accent);border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;flex:none}
+.pbar{display:flex;align-items:center;gap:6px;padding:0 14px;height:36px;box-sizing:border-box;margin-bottom:6px;flex:none;flex-wrap:nowrap;min-width:0;overflow:hidden}
+.pbar button{padding:3px 6px;flex:none}.pbar .chk{flex:none;white-space:nowrap}.pbar[hidden],.pbar [hidden]{display:none}
+header .views{display:flex;gap:2px;align-self:center}header .views button{padding:3px 12px}header .views button.on{background:var(--sel);color:var(--text);border-color:var(--pick)}
+.pbar .crumb{font:11px var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:30px;direction:rtl;text-align:left}
+.pbar input[type=search]{flex:0 1 130px;min-width:56px;width:auto}
+.ulrow{display:grid;grid-template-columns:18px minmax(0,1fr) auto 64px;align-items:center;column-gap:8px;padding:6px 14px;border-bottom:1px solid var(--line);cursor:default;font-size:12px}
+.ulrow:hover{background:var(--panel)}.ulrow.sel{background:var(--sel);box-shadow:inset 3px 0 0 var(--pick)}.ulrow.over{box-shadow:inset 0 0 0 1px var(--pick)}
+.ulrow .ic{color:var(--faint);text-align:center}.ulrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ulrow .sub{color:var(--faint);font-size:11px}
+.ulrow .sz{color:var(--faint);font:11px var(--mono);text-align:right}
+.uluse{font:10px var(--mono);padding:1px 6px;border-radius:8px;background:var(--panel);color:var(--dim);white-space:nowrap}.uluse.free{color:var(--faint);border:1px dashed var(--line2);background:none}
+.uluse.many{color:var(--text);background:var(--sel)}
+.ulfolder .nm{color:var(--text)}
+.ulname{font-size:14px;color:var(--text);margin:6px 0;word-break:break-word}
+.uselist{margin:4px 0 8px;padding:0;list-style:none;font-size:12px}.uselist li{padding:2px 0;color:var(--dim)}.uselist b{font-weight:500;color:var(--text)}
+.sugg{display:flex;flex-direction:column;gap:4px;margin:4px 0}.sugg button{text-align:left;white-space:normal}
+.pbar [data-act=reload].busy{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.pbar button.over{border-color:var(--pick);color:var(--text)}
+.swb{font:600 9px var(--mono);padding:0 3px;border-radius:2px;background:var(--text);color:var(--bg)}
+#libGrid .tile.row .swb{grid-area:n;justify-self:end}
+.monbar{display:inline-flex;align-items:center;gap:6px}
+.monbar select{width:auto;max-width:180px;height:26px;padding:2px 22px 2px 6px!important;font-size:12px}
+#monMeter{background:var(--device);border-radius:2px}
+#monBtn.on{color:var(--accent);border-color:var(--accent)}
+.keyedit{margin-top:6px}
+.keyacts{display:flex;justify-content:flex-end;margin-top:4px}
+button.small{padding:1px 8px;font-size:11px}
+.pullbox{display:inline-flex;gap:6px;align-items:center}
+.pullbox select{width:auto;height:28px;padding:2px 22px 2px 6px!important;font-size:12px}
+.keycam{font:500 11px var(--mono);padding:2px 6px;border-radius:2px;color:#111;align-self:center;flex:none}
+.wheel-seg{cursor:pointer}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:4px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:1px;margin-right:4px}
+.chk{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:12px;margin-top:6px}
+.chk input{width:auto;accent-color:var(--accent)}
+.wheel .seg{stroke:var(--bg);stroke-width:1}
+
+footer{flex:none;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:38px}
+footer .status{color:var(--dim);font:11px var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 footer .status.err{color:var(--bad)}
 
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:10}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
-.modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:22px;width:340px}
-.modal h4{margin:0 0 6px;font-size:15px}
+.modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
+.modal h4{margin:0 0 6px;font-size:15px;font-weight:500}
 .modal p{color:var(--dim);margin:0 0 12px}
-.modal input{font:600 22px var(--mono)!important;letter-spacing:.3em;text-align:center}
+.modal input{font:500 22px var(--mono)!important;letter-spacing:.3em;text-align:center}
 .modal .err{color:var(--bad);min-height:18px;margin-top:6px;font-size:12px}
 .modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 @media (max-width:1100px){main{grid-template-columns:1fr 1fr}aside{grid-column:1/-1;border-top:1px solid var(--line);max-height:42vh}}
@@ -203,27 +281,29 @@ footer .status.err{color:var(--bad)}
 </head>
 <body>
 <header>
-  <div class="logo"><b>MOVE</b> MANAGER</div><span id="build" style="font:10px var(--mono);color:var(--faint)" title="Номер сборки программы"></span>
-  <div class="conn"><span class="dot" id="dot"></span><span id="connText">подключение…</span></div>
+  <div class="logo">move manager</div><span id="build" style="font:10px var(--mono);color:var(--faint)" title="App build number"></span>
+  <div class="conn"><span class="dot" id="dot"></span><span id="connText">connecting…</span></div>
+  <nav class="views" role="tablist" aria-label="Section"><button class="ghost on" data-view="projects" title="Projects on Move and on this computer">Projects</button><button class="ghost" data-view="samples" title="Samples: Move library and folders on this computer">Samples</button><button class="ghost" data-view="presets" title="Track presets: Move library and folders on this computer">Presets</button></nav>
   <div class="spacer"></div>
-  <label title="Формат, в котором Move экспортирует звук проекта при переносе на компьютер">Аудио
-    <select id="fmt"><option value="wav">WAV</option><option value="mp3">MP3</option></select></label>
-  <label class="chk" style="margin:0" title="Move экспортирует звук проекта; если экспорт не пройдёт, возьму самую длинную запись этого сета из Recordings"><input type="checkbox" id="withAudio" checked> переносить с аудио</label>
-  <button id="refresh">Обновить</button>
+  <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="ghost" title="Listen to the chosen input through the computer — independent of recording">🎧 Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
+  <button id="themeBtn" class="ghost" title="Switch theme">Dark</button>
+  <button id="refresh">Refresh</button>
 </header>
 
 <main>
   <section class="pane">
-    <div class="pane-head"><h2>Move</h2><span class="count" id="moveCount"></span><div class="spacer"></div>
+    <div class="pane-head"><h2 id="moveTitle">Move</h2><span class="count" id="moveCount"></span><div class="spacer"></div>
 </div>
+    <div class="pbar" data-panel="L" hidden><button class="ghost" data-act="up" title="Up one folder. Drop a file here to put it one level up">↑</button><span class="crumb"></span><input type="search" data-act="q" placeholder="Search" aria-label="Search"><label class="chk" data-only="move" style="margin:0" title="Show only files no project, preset or Schwung slot uses"><input type="checkbox" data-act="unused"> Unused</label><button class="ghost" data-act="newfolder" title="Create a folder here">+ Folder</button><button class="ghost" data-act="upload" data-only="move" title="Upload files from this computer into this folder on Move (or drag them here from Finder)" aria-label="Upload">⤒</button><button data-act="choose" data-only="pc" title="Pick a folder on this computer">Choose…</button><button class="ghost" data-act="reload" title="Read again">↻</button></div>
     <div id="moveBanner"></div>
     <div class="grid" id="moveGrid" data-side="move"></div>
   </section>
   <section class="pane">
-    <div class="pane-head"><h2>Компьютер</h2><span class="count" id="libCount"></span><span class="path" id="libPath"></span><div class="spacer"></div>
-      <button class="ghost" id="importBtn" title="Добавить проекты .ablbundle, которые уже лежат на компьютере">Добавить…</button>
-      <button class="ghost" id="newGroup" title="Создать группу проектов">+ Группа</button>
-      <button id="chooseFolder">Папка…</button></div>
+    <div class="pane-head"><h2 id="libTitle">Computer</h2><span class="count" id="libCount"></span><span class="path" id="libPath"></span><span class="modes" id="rkind" role="group" aria-label="Right panel shows" hidden><button class="ghost on" data-rkind="pc" title="Folders on this computer">Computer</button><button class="ghost" data-rkind="move" title="A second view of the Move library, to move things between its folders">Move</button></span><div class="spacer"></div>
+      <button class="ghost" id="importBtn" title="Add .ablbundle projects that are already on this computer">Add…</button>
+      <button class="ghost" id="newGroup" title="Create a project group">+ Group</button>
+      <button id="chooseFolder">Folder…</button></div>
+    <div class="pbar" data-panel="R" hidden><button class="ghost" data-act="up" title="Up one folder. Drop a file here to put it one level up">↑</button><span class="crumb"></span><input type="search" data-act="q" placeholder="Search" aria-label="Search"><label class="chk" data-only="move" style="margin:0" title="Show only files no project, preset or Schwung slot uses"><input type="checkbox" data-act="unused"> Unused</label><button class="ghost" data-act="newfolder" title="Create a folder here">+ Folder</button><button class="ghost" data-act="upload" data-only="move" title="Upload files from this computer into this folder on Move (or drag them here from Finder)" aria-label="Upload">⤒</button><button data-act="choose" data-only="pc" title="Pick a folder on this computer">Choose…</button><button class="ghost" data-act="reload" title="Read again">↻</button></div>
     <div class="grid" id="libGrid" data-side="lib"></div>
   </section>
   <aside id="insp"></aside>
@@ -234,23 +314,24 @@ footer .status.err{color:var(--bad)}
   <audio id="audio" preload="none"></audio>
   <div id="dragGhost" aria-hidden="true"></div>
   <input type="file" id="bundleFile" accept=".ablbundle,.zip" multiple hidden>
+  <input type="file" id="ulFile" multiple hidden>
   <input type="file" id="clipFile" accept=".mid,.midi,audio/midi" hidden>
   <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" hidden>
 </footer>
 
 <div class="modal" id="auth"><div class="box">
-  <h4>Код подтверждения</h4>
-  <p>Move показывает код на экране. Введите его, чтобы подключиться.</p>
-  <input type="text" id="code" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Код с экрана Move">
+  <h4>Confirmation code</h4>
+  <p>Move shows a code on its screen. Enter it to connect.</p>
+  <input type="text" id="code" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Code from the Move screen">
   <div class="err" id="authErr"></div>
-  <div class="row"><button id="authCancel">Позже</button><button class="primary" id="authOk">Подключить</button></div>
+  <div class="row"><button id="authCancel">Later</button><button class="primary" id="authOk">Connect</button></div>
 </div></div>
 
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, rec:null, multi:[], key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:""};
+const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, rec:null, multi:[], key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:"", view:"projects", pick:null, mv:{samples:{data:null, loading:false, err:"", tok:0}, presets:{data:null, loading:false, err:"", tok:0}}, P:{L:{kind:"move", dir:{}, q:"", unused:false}, R:{kind:"pc", dir:{}, q:"", unused:false, pc:{data:null, loading:false, err:"", tok:0}}}, withAudio:(()=>{ try{ return localStorage.getItem("mm-with-audio")!=="0"; }catch(e){ return true; } })(), audioFormat:"mp3"};
 try{ const g = JSON.parse(localStorage.getItem("mm-groups")||"{}"); S.groups = g.groups||[]; S.collapsed = g.collapsed||{}; S.inputId = localStorage.getItem("mm-input")||""; }catch(e){}
 S.inputChosen = !!S.inputId;
 function saveGroups(){ try{ localStorage.setItem("mm-groups", JSON.stringify({groups:S.groups, collapsed:S.collapsed})); }catch(e){} }
@@ -293,14 +374,14 @@ function compat(a,b){
   if(d===0) return "rel";
   return null;
 }
-const COMPAT_RU = {same:"та же", adj:"соседняя", rel:"параллельная"};
+const COMPAT_RU = {same:"same", adj:"adjacent", rel:"relative"};
 function camDist(a,b){
   if(!a||!b) return 9;
   const d = Math.min((a.num-b.num+12)%12,(b.num-a.num+12)%12);
   return d + (a.letter===b.letter?0:1);
 }
 const camColor = c => c ? `hsl(${(c.num-1)*30} ${c.letter==="A"?"62% 62%":"78% 72%"})` : "";
-const ROLE_COLORS = {Drums:"#ff8a5c",Bass:"#6fa8ff",Pad:"#b79cff",Lead:"#ffd166",Arp:"#7fe0c3",Pluck:"#9be37a",Keys:"#f4a6d7",
+const ROLE_COLORS = {Drums:"#e07070",Bass:"#6fa8ff",Pad:"#b79cff",Lead:"#ffd166",Arp:"#7fe0c3",Pluck:"#9be37a",Keys:"#f4a6d7",
   Strings:"#e0b089",Brass:"#e8c15a",Mallets:"#8fd3f4",Guitar:"#d6a26b",Vocal:"#ff9fb2",FX:"#a0a7b4",Synth:"#c9cdd4",Sampler:"#e6d7b0",Audio:"#d0d0d0"};
 const ROLE_SHORT = {Drums:"DRM",Bass:"BAS",Pad:"PAD",Lead:"LEAD",Arp:"ARP",Pluck:"PLK",Keys:"KEYS",Strings:"STR",Brass:"BRS",Mallets:"MAL",Guitar:"GTR",Vocal:"VOX",FX:"FX",Synth:"SYN",Sampler:"SMP",Audio:"AUD"};
 const KIND_RU = {drift:"Drift",wavetable:"Wavetable",drumRack:"Drum Rack",melodicSampler:"Melodic Sampler",drumCell:"Drum Sampler"};
@@ -312,7 +393,7 @@ async function api(method, url, body){
   let data = {};
   try{ data = await r.json(); }catch(e){}
   if(r.status===401){ showAuth(); const e = new Error("auth"); e.auth = true; throw e; }
-  if(!r.ok){ const e = new Error(data.message || data.error || ("Ошибка "+r.status)); e.offline = data.error==="offline"; throw e; }
+  if(!r.ok){ const e = new Error(data.message || data.error || ("Error "+r.status)); e.offline = data.error==="offline"; throw e; }
   return data;
 }
 function status(msg, err){ const el=$("#status"); el.textContent = msg||""; el.classList.toggle("err", !!err); }
@@ -325,7 +406,7 @@ async function loadMove(){
     S.move = {state:"ok", sets:d.sets, msg:""}; S.ssh = d.ssh || S.ssh;
     render(); analyzeQueue();
   }catch(e){
-    S.move = {state: e.auth?"auth":"offline", sets:[], msg: e.auth?"Нужен код подтверждения с экрана Move.":e.message};
+    S.move = {state: e.auth?"auth":"offline", sets:[], msg: e.auth?"Enter the confirmation code from the Move screen.":e.message};
     render();
   }
 }
@@ -353,32 +434,32 @@ async function loadConfig(){
   try{
     const c = await api("GET","/api/config");
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
-    S.uiStamp = c.uiStamp; $("#fmt").value = c.audioFormat; $("#build").textContent = c.build ? "сборка "+c.build : "";
-    if(c.stale) status("Программа обновилась на диске. Перезапустите её в Терминале: Ctrl+C, затем снова python3 app.py", true);
+    S.uiStamp = c.uiStamp; S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
+    if(c.stale) status("The app was updated on disk. Restart it in Terminal: Ctrl+C, then python3 app.py again", true);
   }catch(e){}
 }
 async function loadRecs(name){
   if(S.recs[name]) return;
   S.recs[name] = {loading:true, list:[]};
   try{ const d = await api("GET","/api/move/recordings?set="+encodeURIComponent(name)); S.recs[name] = {list:d.recordings}; }
-  catch(e){ S.recs[name] = {list:[], error:e.auth?"нужен вход на Move":e.message}; }
+  catch(e){ S.recs[name] = {list:[], error:e.auth?"sign in to Move first":e.message}; }
   renderInspector();
 }
 
 /* ───────── выбор ───────── */
 const items = side => side==="move" ? S.move.sets : S.lib.items;
 const selItem = () => S.sel ? items(S.sel.side).find(x => x.id===S.sel.id) : null;
-function select(side,id){ S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; S.cell = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
+function select(side,id){ pickNone(); genStop(); S.gen = null; S.keyEdit = false; S.inspY = 0; S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; S.cell = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
 
 /* ───────── отрисовка ───────── */
 function tileHTML(side, it, pad){
   const info = it.info, cam = camelot(info), sel = selItem(), selCam = sel ? camelot(sel.info) : null;
   const isSel = S.sel && S.sel.side===side && S.sel.id===it.id;
-  const cls = ["tile"]; if(isSel) cls.push("sel"); if(side==="lib" && S.multi.includes(it.id)) cls.push("multi");
+  const cls = ["tile"]; if(side==="lib" && !pad) cls.push("row"); if(isSel) cls.push("sel"); if(side==="lib" && S.multi.includes(it.id)) cls.push("multi");
  let cbar = "";
   if(sel && !isSel){
-    const kc = selCam ? compat(selCam, cam) : null, kcol = {same:"var(--ok)", adj:"#d9c545", rel:"#57a8e8"}[kc];
-    if(kcol) cbar = `<div class="cbar"><span title="Тональность"><i style="width:100%;background:${kcol}"></i></span></div>`;
+    const kc = selCam ? compat(selCam, cam) : null;                       // подходит — метка в цвете кода на колесе
+    if(kc) cbar = `<div class="cbar"><span title="Key ${cam.code}: ${COMPAT_RU[kc]}"><i style="width:100%;background:${camColor(cam)}"></i></span></div>`;
   }
   if(selCam && !isSel){
     const c = compat(selCam, cam);
@@ -389,19 +470,22 @@ function tileHTML(side, it, pad){
   const roles = (info?.tracks||[]).map(t => `<span class="role" style="background:${ROLE_COLORS[t.role]||"#888"}" title="${esc(t.name)}">${esc(ROLE_SHORT[t.role]||"—")}</span>`).join("");
   const onOther = side==="move" ? S.lib.items.some(x => x.sourceId===it.id || x.name===it.name) : false;
   const pc = pad && PAD_COLORS[it.color] ? ` style="--pc:rgb(${PAD_COLORS[it.color]})"` : "";
-  return `<div class="${cls.join(" ")}" draggable="true" data-side="${side}" data-id="${esc(it.id)}"${side==="lib"?` data-group="${esc(it.group||"")}"`:""}${pad?` data-slot="${it.slot}" title="Пэд ${it.slot+1}: ${esc(it.name)} — ${esc(keyName(info))}"`:""}${pc} tabindex="0">
-    <div class="top">${cam ? `<span class="keyb" style="background:${camColor(cam)}" title="${cam.approx?"Приблизительно: по набору нот лада":"Код Камелота"}">${cam.code}${cam.approx?"≈":""}</span>` : `<span class="keyb none">—</span>`}
-      <span class="bpm">${info?.tempo ? Math.round(info.tempo*10)/10+(pad||side==="lib"?"":" bpm") : ""}</span></div>
+  return `<div class="${cls.join(" ")}" draggable="true" data-side="${side}" data-id="${esc(it.id)}"${side==="lib"?` data-group="${esc(it.group||"")}"`:""}${pad?` data-slot="${it.slot}"`:""}${pc} tabindex="0">
+    <div class="top">${cam ? `<span class="keyb" style="background:${camColor(cam)}" title="${cam.approx?"Approximate: from the scale's note set":"Camelot code"}">${cam.code}${cam.approx?"≈":""}</span>` : `<span class="keyb none">—</span>`}
+      ${(it.schwung || info?.schwung) ? `<span class="swb" title="Uses Schwung${side==="lib" && it.schwung ? " · Schwung state saved with the project" : ""}">S</span>` : ""}<span class="bpm">${info?.tempo ? Math.round(info.tempo*10)/10+(pad||side==="lib"?"":" bpm") : ""}</span></div>
     <div class="name">${esc(it.name)}</div>
-    <div class="scale"${pad&&info?" hidden":""}>${info ? esc(keyName(info)) : (it.failed ? "не удалось прочитать" : `<span class="shim">читаю проект…</span>`)}</div>
+    <div class="scale"${pad&&info?" hidden":""}>${info ? esc(keyName(info)) : (it.failed ? "could not read" : `<span class="shim">reading project…</span>`)}</div>
     <div class="roles">${roles}</div>
-    ${side==="lib" && it.audio ? `<button class="play" data-play="${esc(it.id)}" aria-label="Слушать">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚" : "▶"}</button>` : ""}
-    ${onOther ? `<span class="tag" title="Есть копия на компьютере">⤓</span>` : ""}
+    ${side==="lib" && it.audio ? `<button class="play" data-play="${esc(it.id)}" aria-label="Play">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚" : "▶"}</button>` : ""}
+    ${onOther ? `<span class="tag" title="Copy exists on the computer">⤓</span>` : ""}
     ${cbar}
-    ${job ? `<div class="job"><div>${esc(job.stage||"…")}</div><div class="bar ${job.progress==null?"ind":""}"><i style="${job.progress!=null?`width:${Math.round(job.progress*100)}%`:""}"></i></div>${job.cancellable && job.id ? `<button data-jobcancel="${esc(job.id)}" style="padding:2px 8px;font-size:11px" title="Не ждать экспорт: проект останется без звука">Без звука</button>` : ""}</div>` : ""}
+    ${job ? `<div class="job"><div>${esc(job.stage||"…")}</div><div class="bar ${job.progress==null?"ind":""}"><i style="${job.progress!=null?`width:${Math.round(job.progress*100)}%`:""}"></i></div>${job.cancellable && job.id ? `<button data-jobcancel="${esc(job.id)}" style="padding:2px 8px;font-size:11px" title="Stop waiting for the export: the project stays without audio">No audio</button>` : ""}</div>` : ""}
   </div>`;
 }
 function renderPane(side){
+  $(side==="move" ? "#moveGrid" : "#libGrid").classList.toggle("cmd", isCmd());
+  if(!isCmd()) document.querySelectorAll(".jobfloat").forEach(x => x.hidden = true);
+  if(isCmd()) return renderPanel(side==="move" ? "L" : "R");
   const grid = $(side==="move" ? "#moveGrid" : "#libGrid"), list = items(side);
   const pads = side==="move" && padMode() && S.move.state==="ok";
   grid.classList.toggle("pads", pads);
@@ -411,29 +495,30 @@ function renderPane(side){
     for(const it of list){ if(it.slot!=null && it.slot>=0 && it.slot<32 && !bySlot[it.slot]) bySlot[it.slot] = it; else loose.push(it); }
     html = "";
     for(let r=0;r<4;r++) for(let c=0;c<8;c++){ const idx = (3-r)*8+c; html += bySlot[idx] ? tileHTML("move", bySlot[idx], true) : `<div class="slot" data-slot="${idx}">${idx+1}</div>`; }
-    if(loose.length) html += `<div class="rowlabel">Без пэда</div>` + loose.map(it => tileHTML("move", it)).join("");
+    if(loose.length) html += `<div class="rowlabel">No pad</div>` + loose.map(it => tileHTML("move", it)).join("");
   } else if(side==="lib" && list.length && libGroups().length){
     const sect = (g, label) => { const its = list.filter(x => (x.group||"")===g), col = !!S.collapsed[g];
-      const btns = g ? `<span class="gb"><button data-gren="${esc(g)}" title="Переименовать группу">Переименовать</button><button data-gdis="${esc(g)}" title="Группа исчезнет, её проекты перейдут в «Без группы»">Удалить группу</button></span>` : "";
-      return `<div class="gsec" data-group="${esc(g)}"><div class="ghead" data-ghead="1" data-g="${esc(g)}" title="Щелчок — свернуть или развернуть"><span>${col?"▸":"▾"} ${esc(label)}</span><span class="gc">${its.length}</span>${btns}</div>${col ? "" : `<div class="ggrid">${its.map(it => tileHTML("lib", it)).join("")}</div>`}</div>`; };
-    html = libGroups().map(g => sect(g, g)).join("") + sect("", "Без группы");
+      const btns = g ? `<span class="gb"><button data-gren="${esc(g)}" title="Rename group">Rename</button><button data-gdis="${esc(g)}" title="The group is removed; its projects move to Ungrouped">Delete group</button></span>` : "";
+      return `<div class="gsec" data-group="${esc(g)}"><div class="ghead" data-ghead="1" data-g="${esc(g)}" title="Click to collapse or expand"><span>${col?"▸":"▾"} ${esc(label)}</span><span class="gc">${its.length}</span>${btns}</div>${col ? "" : `<div class="ggrid">${its.map(it => tileHTML("lib", it)).join("")}</div>`}</div>`; };
+    html = libGroups().map(g => sect(g, g)).join("") + sect("", "Ungrouped");
   } else {
     html = list.map(it => tileHTML(side,it)).join("");
     if(side==="move" && S.move.state!=="ok"){
-      html = S.move.state==="loading" ? `<div class="empty">Ищу Move в сети…</div>`
-        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">${S.move.state==="auth"?"Ввести код":"Повторить"}</button></div>`;
+      html = S.move.state==="loading" ? `<div class="empty">Looking for Move on the network…</div>`
+        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">${S.move.state==="auth"?"Enter code":"Retry"}</button></div>`;
     } else if(!list.length){
-      html = `<div class="empty">${side==="move" ? "На Move нет проектов." : "Папка пуста. Перетащите сюда проект с Move."}</div>`;
+      html = `<div class="empty">${side==="move" ? "No projects on Move." : "Folder is empty. Drag a project here from Move."}</div>`;
     }
   }
   if(grid._html !== html){ const top = grid.scrollTop; grid.innerHTML = html; grid._html = html; grid.scrollTop = top; }
-  $(side==="move"?"#moveCount":"#libCount").textContent = list.length ? list.length : "";
+  if(side==="move"){ const c = $("#moveCount"); c.textContent = S.move.state==="ok" ? `${list.length}/32` : ""; c.title = `${list.length} projects on Move · 32 pads`; }
+  else $("#libCount").textContent = list.length ? list.length : "";
   if(side==="move"){
     const b = $("#moveBanner"), job = S.jobs["ssh"];
     if(S.move.state!=="ok" || pads) b.innerHTML = "";
-    else if(job) b.innerHTML = `<div class="banner"><div>${esc(job.stage||"Подключаю…")}</div></div>`;
-    else if(S.ssh.enabled && S.ssh.error) b.innerHTML = `<div class="banner err"><div>Не получилось прочитать пэды: ${esc(S.ssh.error)}</div><button id="sshSetup">Подключить заново</button></div>`;
-    else b.innerHTML = `<div class="banner"><div>Расположение проектов по пэдам и правка проекта без смены пэда требуют SSH-доступа к Move. Программа создаст свой ключ и попросит подтвердить его колесом на устройстве.</div><button class="primary" id="sshSetup">Включить</button></div>`;
+    else if(job) b.innerHTML = `<div class="banner"><div>${esc(job.stage||"Connecting…")}</div></div>`;
+    else if(S.ssh.enabled && S.ssh.error) b.innerHTML = `<div class="banner err"><div>Could not read pads: ${esc(S.ssh.error)}</div><button id="sshSetup">Reconnect</button></div>`;
+    else b.innerHTML = `<div class="banner"><div>Pad layout and editing a project without moving it off its pad need SSH access to Move. The app creates its own key and asks you to confirm it with the wheel on the device.</div><button class="primary" id="sshSetup">Enable</button></div>`;
   }
 }
 function render(){
@@ -441,9 +526,33 @@ function render(){
   $("#libPath").textContent = S.lib.path.split("/").filter(Boolean).slice(-2).join("/"); $("#libPath").title = S.lib.path;
   const ok = S.move.state==="ok";
   $("#dot").className = "dot " + (ok?"ok":S.move.state==="loading"?"":"bad");
-  $("#connText").textContent = ok ? "Move подключён" : S.move.state==="loading" ? "подключение…" : S.move.state==="auth" ? "нужен код" : "Move не в сети";
+  $("#connText").textContent = ok ? "Move connected" : S.move.state==="loading" ? "connecting…" : S.move.state==="auth" ? "code needed" : "Move offline";
 }
 
+function keyForCamelot(code, scale){
+  // та же гамма, если её буква совпадает; иначе натуральный минор (A) или мажор (B)
+  const letter = code.slice(-1), want = c => c && c.code===code;
+  const sc = (scale && camelot({rootNote:0, scale})?.letter===letter) ? scale : (letter==="A" ? "Minor" : "Major");
+  for(let r=0;r<12;r++) if(want(camelot({rootNote:r, scale:sc}))) return {rootNote:r, scale:sc};
+  for(let r=0;r<12;r++) if(want(camelot({rootNote:r, scale:letter==="A"?"Minor":"Major"}))) return {rootNote:r, scale:letter==="A"?"Minor":"Major"};
+  return null;
+}
+const keyEditing = info => !!(info && typeof info.rootNote==="number" && S.keyEdit);
+const keyView = info => S.key && info ? {...info, rootNote:S.key.rootNote, scale:S.key.scale, tempo:isFinite(S.key.tempo)?S.key.tempo:info.tempo} : info;
+function setKeyFromCamelot(code){
+  const it = selItem(); if(!it?.info || typeof it.info.rootNote!=="number") return;
+  const cur = S.key || {rootNote:it.info.rootNote, scale:it.info.scale, tempo:it.info.tempo};
+  const k = keyForCamelot(code, cur.scale); if(!k) return;
+  S.key = {...cur, ...k}; S.keyEdit = true; renderInspector();
+}
+function schwungNote(v){
+  if(!v) return "";
+  if(v==="copied") return " · Schwung state restored";
+  if(v==="exists") return " · Schwung state for this set already exists on Move — not overwritten";
+  if(v==="needs pad control") return " · Schwung state not restored: enable pad control (SSH)";
+  if(v==="set not identified") return " · Schwung state not restored: the new set could not be identified";
+  return " · Schwung state not restored: " + v.replace(/^error: /,"");
+}
 function wheelSVG(selCam){
   const all = [...S.move.sets, ...S.lib.items].map(x => camelot(x.info)).filter(Boolean);
   const cnt = {}; all.forEach(c => cnt[c.code] = (cnt[c.code]||0)+1);
@@ -453,42 +562,42 @@ function wheelSVG(selCam){
     const r0 = L==="B"?64:34, r1 = L==="B"?94:62, a0 = (n-1.5)*Math.PI/6+0.012, a1 = (n-0.5)*Math.PI/6-0.012;
     const [x0,y0]=P(r1,a0),[x1,y1]=P(r1,a1),[x2,y2]=P(r0,a1),[x3,y3]=P(r0,a0);
     const c = {num:n,letter:L}, rel = selCam ? compat(selCam,c) : null;
-    const fill = rel ? camColor(c) : (cnt[n+L] ? "#2f343b" : "#1d2024");
-    const stroke = rel==="same" ? "#fff" : "none";
+    const fill = rel ? camColor(c) : (cnt[n+L] ? "var(--line2)" : "var(--panel2)");
+    const stroke = rel==="same" ? "var(--text)" : "none";
     const [tx,ty] = P((r0+r1)/2,(n-1)*Math.PI/6);
-    out += `<path d="M${x0} ${y0}A${r1} ${r1} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 0 0 ${x3} ${y3}Z" fill="${fill}" stroke="${stroke}" stroke-width="1.5"><title>${n+L}${cnt[n+L]?` — проектов: ${cnt[n+L]}`:""}</title></path>
-      <text x="${tx}" y="${ty+3}" text-anchor="middle" font-size="9" font-family="ui-monospace,Menlo,monospace" font-weight="700" fill="${rel?"#111":cnt[n+L]?"#c9cdd4":"#4b5058"}">${n+L}</text>`;
+    out += `<path class="wheel-seg" data-cam="${n+L}" d="M${x0} ${y0}A${r1} ${r1} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 0 0 ${x3} ${y3}Z" style="fill:${fill};stroke:${stroke}" stroke-width="1.5"><title>${n+L}${cnt[n+L]?` — projects: ${cnt[n+L]}`:""}</title></path>
+      <text pointer-events="none" x="${tx}" y="${ty+3}" text-anchor="middle" font-size="9" font-family="ui-monospace,Menlo,monospace" font-weight="700" style="fill:${rel?"#111":cnt[n+L]?"var(--text)":"var(--faint)"}">${n+L}</text>`;
   }
-  return `<svg viewBox="0 0 200 200" width="190" height="190" style="display:block;margin:4px auto" role="img" aria-label="Колесо Камелота">${out}</svg>`;
+  return `<svg viewBox="0 0 200 200" width="190" height="190" style="display:block;margin:4px auto" role="img" aria-label="Camelot wheel">${out}</svg>`;
 }
 
-const fmtSize = b => b>1048576 ? (b/1048576).toFixed(1)+" МБ" : Math.max(1,Math.round(b/1024))+" КБ";
+const fmtSize = b => b>1048576 ? (b/1048576).toFixed(1)+" MB" : Math.max(1,Math.round(b/1024))+" KB";
 function soundHTML(side, it){
   if(side!=="lib") return "";
   const R = S.rec && S.rec.id===it.id ? S.rec : null;
   const onMove = S.move.state==="ok" && S.move.sets.some(x => x.id===it.sourceId || x.name===it.name);
-  const inputs = `<select id="inputSel" aria-label="Аудиовход для записи" ${R && R.state==="rec"?"disabled":""}><option value="">Вход по умолчанию</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Вход")}</option>`).join("")}</select>`;
+  const inputs = `<select id="inputSel" aria-label="Audio input for recording" ${R && R.state==="rec"?"disabled":""}><option value="">Default input</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Input")}</option>`).join("")}</select>`;
   const panel = R ? `${inputs}
-      <canvas id="meter" width="600" height="52" aria-label="Уровень входящего сигнала"></canvas>
-      <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="monChk" ${R.monitor?"checked":""}> слышать вход (мониторинг) — лучше в наушниках</label>
-      <div class="acts" style="margin:0 0 6px">${R.state==="rec" ? `<button id="recStop" class="recbtn on">■ Остановить и сохранить</button>` : `<button id="recStart" class="primary">● Начать запись</button>`}<button id="recCancel" class="ghost">Отмена</button></div>` : "";
-  return `<h3>Звучание</h3>
-    <div class="hint">${it.audio ? "Звук проекта: "+esc(it.audioSource||it.audio) : "У проекта пока нет звука."}</div>
-    ${it.audioError ? `<div class="hint" style="color:var(--bad)">Последний экспорт не удался: ${esc(it.audioError)}</div>` : ""}
-    ${R ? panel : `<div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move экспортирует звук проекта заново":"Проект должен быть на Move"}">Экспорт с Move</button><button id="actRec">● Записать со входа</button><button id="actAudio">Файл…</button></div>`}`;
+      <canvas id="meter" width="600" height="52" aria-label="Input level"></canvas>
+      <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="monChk" ${R.monitor?"checked":""}> monitor input — use headphones</label>
+      <div class="acts" style="margin:0 0 6px">${R.state==="rec" ? `<button id="recStop" class="recbtn on">■ Stop and save</button>` : `<button id="recStart" class="primary">● Start recording</button>`}<button id="recCancel" class="ghost">Cancel</button></div>` : "";
+  return `<h3>Sound</h3>
+    <div class="hint">${it.audio ? "Project audio: "+esc(it.audioSource||it.audio) : "No audio for this project yet."}</div>
+    ${it.audioError ? `<div class="hint" style="color:var(--bad)">Last export failed: ${esc(it.audioError)}</div>` : ""}
+    ${R ? panel : `<div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move exports the project audio again":"The project must be on Move"}">Export from Move</button><button id="actRec">● Record input</button><button id="actAudio">File…</button></div>`}`;
 }
 function multiHTML(){
   const its = S.multi.map(id => S.lib.items.find(x=>x.id===id)).filter(Boolean);
-  return `<div class="where">на компьютере</div><h3>Выбрано проектов: ${its.length}</h3>
+  return `<div class="where">on computer</div><h3>Projects selected: ${its.length}</h3>
     ${its.map((x,i)=>`<div class="rec"><span class="rs">${i+1}</span><span class="rn">${esc(x.name)}</span><span class="rs">${esc(keyName(x.info))} · ${x.info?.tempo?Math.round(x.info.tempo):"—"}</span></div>`).join("")}
-    <div class="acts"><button class="primary" id="multiPush">← На Move (${its.length})</button><button class="ghost" id="multiClear">Снять выделение</button></div>
-    <div class="hint">Проекты загрузятся по очереди в этом порядке и займут свободные пэды, начиная с первого. Добавлять и убирать проекты из набора — щелчок с зажатой клавишей Cmd.</div>`;
+    <div class="acts"><button class="primary" id="multiPush">← To Move (${its.length})</button><button class="ghost" id="multiClear">Clear selection</button></div>
+    <div class="hint">Projects upload one by one in this order and fill free pads from the first. Cmd-click to add or remove projects.</div>`;
 }
 function clipURL(side, it){ return side==="move" ? `/api/move/sets/${it.id}` : `/api/library/${encodeURIComponent(it.id)}`; }
 function clipsHTML(side, it){
   const info = it.info, grid = info?.clips || [], tracks = info?.tracks || [];
   const scenes = Math.max(0, ...grid.map(r=>r.length));
-  if(!grid.length || !scenes) return `<div class="hint">В проекте нет ячеек для клипов.</div>`;
+  if(!grid.length || !scenes) return `<div class="hint">The project has no clip cells.</div>`;
   const ts = (info.timeSignature||"4/4").split("/"), bar = (+ts[0]||4)*4/(+ts[1]||4);
   let html = `<div class="clipgrid" style="grid-template-columns:38px repeat(${scenes},1fr)"><span></span>`;
   for(let c=0;c<scenes;c++) html += `<span class="sh">${c+1}</span>`;
@@ -498,29 +607,46 @@ function clipsHTML(side, it){
     for(let c=0;c<scenes;c++){
       const cl = row[c], sel = S.cell && S.cell.t===t && S.cell.s===c;
       const bars = cl ? Math.round(cl.length/bar*10)/10 : 0;
-      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""}" data-t="${t}" data-s="${c}" title="Дорожка ${t+1}, сцена ${c+1}${cl?`: нот ${cl.notes}, тактов ${bars}`:": пусто"}">${cl?`${cl.notes}<br>${bars}т`:""}</button>`;
+      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""}" data-t="${t}" data-s="${c}" title="Track ${t+1}, scene ${c+1}${cl?`: ${cl.notes} notes, ${bars} bars`:": empty"}">${cl?`${cl.notes}<br>${bars}b`:""}</button>`;
     }
   });
   html += `</div>`;
-  if(!S.cell) return html + `<div class="hint" style="margin-top:8px">Выберите ячейку: занятую можно сохранить как .mid, в любую можно загрузить .mid. Подпись в ячейке — число нот и длина в тактах.</div>`;
+  if(!S.cell) return html + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.</div>`;
   const {t, s: sc} = S.cell, cl = (grid[t]||[])[sc], tr = tracks[t] || {};
   const noSsh = side==="move" && !padMode(), audioTr = tr.trackKind && tr.trackKind!=="midi";
-  const why = noSsh ? "Загрузка в проект на Move работает при включённом управлении пэдами" : audioTr ? "Это аудиодорожка, MIDI в неё не загрузить" : "";
-  return html + `<div class="clipacts"><span class="hint" style="margin:0">Дорожка ${t+1}, сцена ${sc+1}:</span>
-    ${cl ? `<button id="clipSave">Сохранить .mid</button>` : ""}
-    <button id="clipLoad" ${why?"disabled":""} title="${esc(why||"Ноты из MIDI-файла станут клипом в этой ячейке")}">Загрузить .mid</button></div>
-    ${why ? `<div class="hint">${esc(why)}.</div>` : `<div class="hint">Из файла берутся только ноты; длина клипа округляется до целых тактов.${side==="move"?" Перед записью делается резервная копия проекта.":""}</div>`}`;
+  const why = noSsh ? "Import to Move needs pad control enabled" : audioTr ? "This is an audio track; MIDI cannot go into it" : "";
+  return html + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
+    ${cl ? `<button id="clipSave">Save .mid</button><button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
+    <button id="clipLoad" ${why?"disabled":""} title="${esc(why||"Notes from the MIDI file become the clip in this cell")}">Load .mid</button>
+    <button id="genOpen" ${why||tr.kind!=="drumRack"?"disabled":""} title="${esc(why||(tr.kind!=="drumRack"?"The generator works on Drum Rack tracks":"Generate a drum pattern for this cell"))}">Generate…</button></div>
+    ${S.gen && S.gen.t===t && S.gen.s===sc && S.gen.key===side+":"+it.id ? genHTML() : ""}
+    ${why ? `<div class="hint">${esc(why)}.</div>` : `<div class="hint">Only notes are taken from the file; clip length is rounded up to whole bars.${side==="move"?" The project is backed up before writing.":""}</div>`}`;
+}
+async function deleteClip(){
+  const it = selItem(); if(!it || !S.cell) return; const {side, id} = S.sel, {t, s: sc} = S.cell;
+  if(!confirm(`Delete the clip in track ${t+1}, scene ${sc+1}?${side==="move"?" The project on Move is backed up first.":""}`)) return;
+  try{
+    const r = await fetch(`${clipURL(side,it)}/clip?track=${t}&scene=${sc}`, {method:"DELETE"});
+    const d = await r.json().catch(()=>({}));
+    if(r.status===401){ showAuth(); return; }
+    if(!r.ok) throw new Error(d.message || "Could not delete the clip");
+    genStop();
+    if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
+    else await loadLib();
+    status(`Clip deleted: track ${t+1}, scene ${sc+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+  }catch(e){ fail(e); }
 }
 async function saveClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side} = S.sel, {t, s: sc} = S.cell;
   try{
     const r = await fetch(`${clipURL(side,it)}/clip.mid?track=${t}&scene=${sc}`);
     if(r.status===401){ showAuth(); return; }
-    if(!r.ok){ const d = await r.json().catch(()=>({})); throw new Error(d.message || "Не удалось сохранить клип"); }
+    if(!r.ok){ const d = await r.json().catch(()=>({})); throw new Error(d.message || "Could not save the clip"); }
     const blob = await r.blob(), a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = `${it.name} T${t+1} S${sc+1}.mid`;
+    const cd = r.headers.get("Content-Disposition")||"", m = cd.match(/filename\*=UTF-8''([^;]+)/);
+    a.href = URL.createObjectURL(blob); a.download = m ? decodeURIComponent(m[1]) : `${it.name} T${t+1} S${sc+1}.mid`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    status(`Клип сохранён: ${a.download}`);
+    status(`Clip saved: ${a.download}`);
   }catch(e){ fail(e); }
 }
 async function uploadClip(file){
@@ -530,23 +656,229 @@ async function uploadClip(file){
   try{
     let r = await fetch(url(0), {method:"POST", body});
     if(r.status===409){
-      if(!confirm(`В ячейке (дорожка ${t+1}, сцена ${sc+1}) уже есть клип. Заменить его нотами из «${file.name}»?`)) return;
+      if(!confirm(`The cell (track ${t+1}, scene ${sc+1}) already has a clip. Replace it with notes from "${file.name}"?`)) return;
       r = await fetch(url(1), {method:"POST", body});
     }
     const d = await r.json().catch(()=>({}));
     if(r.status===401){ showAuth(); return; }
-    if(!r.ok) throw new Error(d.message || "Не удалось загрузить клип");
-    status(`Загружаю «${file.name}»…`);
+    if(!r.ok) throw new Error(d.message || "Could not load the clip");
+    status(`Loading "${file.name}"…`);
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
-    status(`Клип из «${file.name}» загружен: дорожка ${t+1}, сцена ${sc+1}${side==="move"?". Если проект открыт на Move, откройте его заново":""}`);
+    status(`Clip from "${file.name}" loaded: track ${t+1}, scene ${sc+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
   }catch(e){ fail(e); }
 }
+/* ───────── генератор барабанов ───────── */
+window.__genSchedulers = 0;
+function genHTML(){
+  const g = S.gen, pats = S.genPats;
+  if(!pats) return `<div class="genpanel" id="gen"><div class="hint" ${g.error?'style="color:var(--bad)"':""}>${esc(g.error||"Loading genres…")}</div></div>`;
+  const GROUP = {builtin:"Genres", mine:"My projects", midi:"MIDI folder"}, sfx = {mine:" (my projects)", midi:" (MIDI folder)"};
+  const gl = pats.genreGroups || pats.genres.map(n => ({name:n, group:"builtin"}));
+  const opts = Object.keys(GROUP).filter(k => gl.some(x=>x.group===k)).map(k => `<optgroup label="${GROUP[k]}">${
+    gl.filter(x=>x.group===k).map(x => `<option value="g:${esc(x.name)}" ${g.genre===x.name?"selected":""}>${esc(x.name.replace(sfx[k]||"\u0000",""))}</option>`).join("")}</optgroup>`).join("");
+  const res = g.result, pads = res?.pads || g.pads || [];
+  let grid = "";
+  if(res){
+    const steps = Math.round(res.length*4), order = ["kick","snare","clap","rim","chh","ohh","tom_low","tom_mid","tom_high","crash","ride","shaker","cowbell","perc"];
+    // как в Ableton: выше нота — выше строка, кик внизу
+    const noteOf = r => Math.min(...res.notes.filter(n => n.role===r).map(n => n.noteNumber));
+    const rows = order.filter(r => res.notes.some(n=>n.role===r)).sort((a,b) => noteOf(b) - noteOf(a) || order.indexOf(b) - order.indexOf(a));
+    const padOf = r => { const n = res.notes.find(x=>x.role===r)?.noteNumber, p = pads.find(x=>x.note===n); return p ? `pad ${n}${p.sample?": "+p.sample.replace(/\.[a-z0-9]+$/i,""):""}` : ""; };
+    const on = {}; res.notes.forEach(n => on[n.role+":"+Math.floor(n.startTime/0.25+1e-6)] = n.velocity);
+    grid = `<div id="genGrid" style="grid-template-columns:44px repeat(${steps},1fr)">` + rows.map(r =>
+      `<span class="gl" data-note="${noteOf(r)}" title="${esc(padOf(r))}">${r.replace("_"," ")}</span>` +
+      Array.from({length:steps}, (_,i) => { const v = on[r+":"+i]; return `<span class="gc ${v?"on":""} ${i%16===0&&i?"bar":""}" ${v?`style="opacity:${(0.35+0.65*v/127).toFixed(2)}"`:""}></span>`; }).join("")).join("") + `</div>`;
+  }
+  return `<div class="genpanel" id="gen">
+    <select id="genSource" aria-label="Genre">${opts}</select>
+    <div class="genrow"><label for="genMut">Mutation</label><input type="range" id="genMut" min="0" max="100" value="${g.mutation}"><span class="v" id="genMutV">${g.mutation}</span></div>
+    <div class="genrow"><button id="genAnother">Another</button><button id="genPlay">${g.playing?"■ Stop":"▶ Play"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"}>Put in cell</button></div>
+    ${g.loading ? `<div class="hint">${esc(g.loading)}</div>` : ""}
+    ${g.error ? `<div class="hint" style="color:var(--bad)">${esc(g.error)}</div>` : g.hint ? `<div class="hint">${esc(g.hint)}</div>` : ""}
+    ${grid}
+    <details id="genMore" ${g.more?"open":""}><summary>More</summary>
+      <div class="genrow"><label for="genBars">Bars</label><select id="genBars">${[1,2,4].map(n=>`<option ${n===g.bars?"selected":""}>${n}</option>`).join("")}</select>
+        <select id="genHalf" title="Half time: the rhythm plays at half speed — at 140 bpm it feels like 70" style="width:auto">${[["","½ time: off"],["all","½ time: all"],["kick","½ time: kick"],["kick+snare","½ time: kick + snare"]].map(([v,l])=>`<option value="${v}" ${(g.half||"")===v?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div class="genrow"><label for="genSwing">Swing</label><input type="range" id="genSwing" min="50" max="75" value="${g.swing}"><span class="v">${g.swing}</span></div>
+      <div class="genrow"><label for="genDeja">Déjà vu</label><input type="range" id="genDeja" min="0" max="100" value="${g.deja}"><span class="v">${g.deja}</span></div>
+      <div class="genrow"><label for="genGhost" title="Quiet snare hits around the main ones">Ghosts</label><input type="range" id="genGhost" min="0" max="100" value="${g.ghosts}"><span class="v">${g.ghosts}</span></div>
+      <div class="genrow"><label for="genEuclid" title="Evenly spread hits on one hat/percussion pad (euclidean rhythm): 0 — off, higher — more hits">Euclid</label><input type="range" id="genEuclid" min="0" max="100" value="${g.euclid}"><span class="v">${g.euclid}</span></div>
+      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "no folder")}</span><button class="ghost small" id="midiFolderBtn">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
+    </details>
+    ${pats.mine && !pats.mine.ready ? `<div class="hint">Reading your projects ${pats.mine.done}/${pats.mine.total}… their genres appear when done.</div>` : ""}
+    <div class="gencredit">${esc(pats.credit)}</div></div>`;
+}
+async function genOpen(){
+  const it = selItem(); if(!it || !S.cell) return;
+  genStop();
+  S.gen = {key:S.sel.side+":"+it.id, t:S.cell.t, s:S.cell.s, genre:S.gen?.genre||"House", pattern:null, mutation:S.gen?.mutation ?? 35,
+           seed:1+Math.floor(Math.random()*1e6), bars:S.gen?.bars||2, swing:S.gen?.swing||50, deja:S.gen?.deja ?? 50,
+           ghosts:(typeof S.gen?.ghosts==="number" ? S.gen.ghosts : 30), euclid:(typeof S.gen?.euclid==="number" ? S.gen.euclid : 30), half:S.gen?.half||"", more:false, result:null, playing:false};
+  if(!S.genPats || !S.genPats.mine?.ready){ renderInspector(); try{ S.genPats = await api("GET","/api/drumgen/patterns"); }catch(e){ S.gen.error = "Could not load genres: "+e.message; return renderInspector(); } }
+  genPollMine();
+  S.gen.loading = "Reading the project's kit…"; renderInspector();
+  await genRun();
+}
+const genSig = r => r ? r.notes.map(n => n.role+":"+n.startTime.toFixed(3)).join("|") : "";
+function genPollMine(){
+  // свои проекты разбираются в фоне; пока не готово — обновляем список жанров, не трогая выбор
+  clearTimeout(S.genPoll);
+  if(!S.gen || S.genPats?.mine?.ready !== false) return;
+  S.genPoll = setTimeout(async () => {
+    try{ S.genPats = await api("GET","/api/drumgen/patterns"); }catch(e){ return; }
+    if(S.gen && !document.querySelector("#gen select:focus")) renderInspector();
+    genPollMine();
+  }, 1500);
+}
+async function setMidiFolder(path){
+  try{ await api("POST","/api/config",{midiFolder:path}); S.genPats = await api("GET","/api/drumgen/patterns"); status(path ? `Learning from MIDI folder: ${path}` : "MIDI folder removed"); renderInspector(); }
+  catch(e){ fail(e); }
+}
+async function chooseMidiFolder(){
+  try{
+    const r = await api("POST","/api/choose-midi-folder");
+    if(r.chosen){ S.genPats = await api("GET","/api/drumgen/patterns"); status(`Learning from MIDI folder: ${r.midiFolder}`); return renderInspector(); }
+  }catch(e){ /* не macOS — спросим путь */ }
+  const p = (prompt("Path to a folder with drum .mid files:", S.genPats?.midiFolder || "") || "").trim();
+  if(p) await setMidiFolder(p);
+}
+async function genRun(another=false){
+  const g = S.gen, it = selItem(); if(!g || !it) return;
+  const ask = () => api("POST","/api/drumgen",{side:S.sel.side, id:it.id, track:g.t, genre:g.genre, pattern:g.pattern, mutation:g.mutation,
+      seed:g.seed, bars:g.bars, half:g.half||false, swing:g.swing, deja_vu:100-g.deja, ghosts:g.ghosts, euclid:g.euclid,      // ручка: 100 — такты разные
+      ...(another && g.result ? {avoid:g.result.pattern} : {}), ...(g.pads ? {pads:g.pads} : {})});
+  try{
+    const before = genSig(g.result);
+    let res = await ask();
+    for(let i=0; another && i<10 && genSig(res)===before; i++){ g.seed = 1+Math.floor(Math.random()*1e6); res = await ask(); }
+    g.hint = another && genSig(res)===before ? "At this Mutation the genre's patterns sound the same. Raise Mutation for new variations." : "";
+    g.result = res; g.pads = res.pads; g.error = null; g.loading = "";
+    genSwitch();
+  }catch(e){ g.error = e.message; g.loading = ""; if(/no longer on Move/.test(e.message)){ genStop(); loadMove(); } }
+  renderInspector();
+}
+async function genPut(){
+  const g = S.gen, it = selItem(); if(!g?.result || !it) return;
+  genStop(); renderInspector();
+  const {side, id} = S.sel, body = JSON.stringify({notes:g.result.notes, length:g.result.length});
+  const url = r => `${clipURL(side,it)}/clip-notes?track=${g.t}&scene=${g.s}&replace=${r}`;
+  try{
+    let r = await fetch(url(0), {method:"POST", body});
+    if(r.status===409){
+      if(!confirm(`The cell (track ${g.t+1}, scene ${g.s+1}) already has a clip. Replace it with the generated pattern?`)) return;
+      r = await fetch(url(1), {method:"POST", body});
+    }
+    const d = await r.json().catch(()=>({}));
+    if(r.status===401){ showAuth(); return; }
+    if(!r.ok) throw new Error(d.message || "Could not write the clip");
+    if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
+    else await loadLib();
+    status(`Generated pattern written: track ${g.t+1}, scene ${g.s+1}${side==="move"?". If the project is open on Move, reopen it":""}`);
+  }catch(e){ fail(e); }
+}
+/* прослушка: сэмплы кита или синтез */
+const GENA = {ctx:null, timer:null, sources:[], loopStart:0, run:0, log:[], played:[]};
+function genCtx(){ if(!GENA.ctx) GENA.ctx = new (window.AudioContext||window.webkitAudioContext)(); return GENA.ctx; }
+/* синтез в духе 808/909 — когда сэмпла пэда нет */
+function genNoise(ctx, dur){ const b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate*dur), ctx.sampleRate), d = b.getChannelData(0); for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1; const s = ctx.createBufferSource(); s.buffer = b; return s; }
+function genSynth(role, t, vel){
+  const ctx = genCtx(), v = Math.max(0.05, vel/127), bus = ctx.createGain(); bus.gain.value = 0.9; bus.connect(ctx.destination);
+  const vca = (peak, attack, decay, dest=bus) => { const gn = ctx.createGain(); gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(peak*v, t+attack); gn.gain.exponentialRampToValueAtTime(0.0001, t+attack+decay); gn.connect(dest); return gn; };
+  const osc = (type, f, dest, dur, f1, tf) => { const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); if(f1) o.frequency.exponentialRampToValueAtTime(f1, t+(tf||dur)); o.connect(dest); o.start(t); o.stop(t+dur+0.02); o._t = t; GENA.sources.push(o); return o; };
+  const noise = (dest, dur, type, freq, q) => { const n = genNoise(ctx, dur+0.02); let node = n; if(type){ const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; if(q) f.Q.value = q; n.connect(f); node = f; } node.connect(dest); n.start(t); n._t = t; GENA.sources.push(n); };
+  const metal = (dest, dur) => {                     // 808-хэт: шесть квадратов, полосовой и высокочастотный фильтры
+    const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 10000; bp.Q.value = 0.8;
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 7000; bp.connect(hp); hp.connect(dest);
+    [205.3, 304.4, 369.6, 522.7, 540, 800].forEach(f => osc("square", f*1.5, bp, dur));
+  };
+  switch(role){
+    case "kick":  osc("sine", 160, vca(1.0, 0.002, 0.45), 0.5, 48, 0.09); noise(vca(0.25, 0.001, 0.012), 0.02, "highpass", 3000); break;
+    case "snare": osc("triangle", 185, vca(0.55, 0.001, 0.09), 0.12, 160); osc("triangle", 330, vca(0.3, 0.001, 0.07), 0.1);
+                  noise(vca(0.7, 0.001, 0.18), 0.22, "bandpass", 3500, 0.7); break;
+    case "clap":  { const gn = ctx.createGain(); gn.connect(bus); gn.gain.setValueAtTime(0.0001, t);
+                    [0, 0.011, 0.022].forEach(d => { gn.gain.setValueAtTime(0.8*v, t+d); gn.gain.exponentialRampToValueAtTime(0.05*v, t+d+0.009); });
+                    gn.gain.setValueAtTime(0.7*v, t+0.032); gn.gain.exponentialRampToValueAtTime(0.0001, t+0.25);
+                    noise(gn, 0.28, "bandpass", 1100, 1.2); break; }
+    case "rim":   osc("square", 1700, vca(0.35, 0.0005, 0.025), 0.04); osc("triangle", 480, vca(0.4, 0.0005, 0.03), 0.04); break;
+    case "chh":   metal(vca(0.45, 0.001, 0.045), 0.06); break;
+    case "ohh":   metal(vca(0.4, 0.001, 0.32), 0.36); break;
+    case "shaker":noise(vca(0.3, 0.012, 0.05), 0.08, "highpass", 6500); break;
+    case "crash": metal(vca(0.3, 0.001, 1.2), 1.25); noise(vca(0.25, 0.001, 1.1), 1.2, "highpass", 5000); break;
+    case "ride":  metal(vca(0.25, 0.001, 0.7), 0.75); osc("sine", 3300, vca(0.08, 0.001, 0.6), 0.7); break;
+    case "cowbell": { const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 800; bp.Q.value = 1.5; bp.connect(vca(0.5, 0.001, 0.22));
+                    osc("square", 540, bp, 0.25); osc("square", 800, bp, 0.25); break; }
+    case "tom_low": case "tom_mid": case "tom_high": { const f = {tom_low:95, tom_mid:135, tom_high:190}[role];
+                    osc("sine", f*1.6, vca(0.8, 0.002, 0.32), 0.36, f, 0.08); noise(vca(0.08, 0.001, 0.03), 0.04, "lowpass", 2000); break; }
+    default:      osc("sine", 420, vca(0.5, 0.001, 0.12), 0.15, 300); noise(vca(0.15, 0.001, 0.05), 0.06, "bandpass", 2500, 2);   // perc / conga
+  }
+}
+function genScheduleLoop(run){
+  const g = S.gen, res = g?.result; if(run !== GENA.run || !g?.playing || !res) return;
+  const ctx = genCtx(), info = selItem()?.info, spb = 60/((info&&info.tempo)||120);
+  const start = Math.max(GENA.loopStart, ctx.currentTime + 0.05);
+  for(const n of res.notes){                       // звук — по роли удара в рисунке, всегда синтез 808
+    genSynth(n.role || "perc", start + n.startTime*spb, n.velocity);
+    GENA.played.push(n.role); if(GENA.played.length > 2000) GENA.played.splice(0, 1000);
+  }
+  GENA.sources = GENA.sources.slice(-1200);
+  GENA.log.push({run, start}); if(GENA.log.length > 200) GENA.log.shift();
+  GENA.curLen = res.length*spb;
+  GENA.loopStart = start + res.length*spb;
+  GENA.timer = setTimeout(() => genScheduleLoop(run), Math.max(0, (GENA.loopStart - ctx.currentTime - 0.15)*1000));
+}
+function genSwitch(){
+  // новый рисунок во время прослушки вступает со следующего шага того же места цикла
+  const g = S.gen, res = g?.result; if(!g?.playing || !res || !GENA.ctx) return;
+  const ctx = GENA.ctx, info = selItem()?.info, spb = 60/((info&&info.tempo)||120), step = spb/4, now = ctx.currentTime;
+  GENA.run++; clearTimeout(GENA.timer); const run = GENA.run;
+  GENA.sources.forEach(s => { if(s._t > now + 0.02){ try{ s.stop(); }catch(e){} } });
+  GENA.sources = GENA.sources.filter(s => !(s._t > now + 0.02));
+  const curStart = GENA.loopStart - (GENA.curLen || 0), newLen = res.length*spb;
+  let k = Math.ceil((now + 0.05 - curStart)/step), start = curStart;
+  if(k*step >= newLen){ start = now + 0.05; k = 0; }
+  let first = Infinity;
+  for(const n of res.notes){
+    const tt = start + n.startTime*spb;
+    if(n.startTime*spb < k*step - 1e-6) continue;
+    genSynth(n.role || "perc", tt, n.velocity); first = Math.min(first, tt);
+    GENA.played.push(n.role);
+  }
+  GENA.log.push({run, start, switch:true, first});
+  GENA.curLen = newLen; GENA.loopStart = start + newLen;
+  GENA.timer = setTimeout(() => genScheduleLoop(run), Math.max(0, (GENA.loopStart - now - 0.15)*1000));
+}
+function genPlay(){
+  const g = S.gen; if(!g?.result) return;
+  if(g.playing){ genStop(); return renderInspector(); }
+  genStop(); const ctx = genCtx(); ctx.resume();
+  g.playing = true; GENA.loopStart = ctx.currentTime + 0.08; window.__genSchedulers = 1;
+  genScheduleLoop(++GENA.run); renderInspector();
+}
+function genStop(){
+  GENA.run++; clearTimeout(GENA.timer); GENA.timer = null; window.__genSchedulers = 0;
+  GENA.sources.forEach(s => { try{ s.stop(); }catch(e){} }); GENA.sources = [];
+  if(S.gen) S.gen.playing = false;
+}
 function renderInspector(){
+  // Перерисовка не сбивает прокрутку: место, куда прокрутил человек, хранится отдельно и возвращается,
+  // даже если панель на миг стала короткой («Reading project…» после записи клипа на Move).
+  const el = $("#insp");
+  if(S.inspY === undefined) S.inspY = el.scrollTop;
+  S.inspRendering = performance.now();
+  renderInspectorNow();
+  el.scrollTop = S.inspY;
+}
+$("#insp").addEventListener("scroll", e => {
+  if(performance.now() - (S.inspRendering||0) < 150) return;   // это прокрутка от перерисовки, а не человека
+  S.inspY = e.target.scrollTop;
+});
+function renderInspectorNow(){
+  if(isCmd()) return cmdInspector();
   const el = $("#insp"), it = selItem();
   if(S.multi.length>1){ el.dataset.key = "multi"; el.innerHTML = multiHTML(); return; }
   if(document.activeElement && el.contains(document.activeElement) && ["TEXTAREA","INPUT"].includes(document.activeElement.tagName) && !["checkbox","range"].includes(document.activeElement.type) && it && el.dataset.key===S.sel.side+":"+S.sel.id) return;
-  if(!it){ el.dataset.key=""; el.innerHTML = `<h3>Проект</h3><div class="hint">Выберите проект слева или справа. Перетаскивание внутри окна меняет порядок, между окнами — переносит проект.</div>`; return; }
+  if(!it){ el.dataset.key=""; el.innerHTML = `<h3>Project</h3><div class="hint">Pick a project on the left or right. Drag within a pane to reorder, between panes to copy.</div>`; return; }
   el.dataset.key = S.sel.side+":"+S.sel.id;
   const side = S.sel.side, info = it.info, cam = camelot(info);
   const tracks = info?.tracks || [];
@@ -555,58 +887,54 @@ function renderInspector(){
   const changed = isChanged(it);
   const trk = order.map((ti,pos) => { const t = tracks[ti];
     const path = [SOURCE_RU[t.source]||t.source, ...t.folders].filter(Boolean).join(" / ");
-    const sub = [path, KIND_RU[t.kind]||t.kind, t.clips?`клипов: ${t.clips}`:"", t.sampleCount?`сэмплов: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
+    const sub = [path, KIND_RU[t.kind]||t.kind, t.clips?`clips: ${t.clips}`:"", t.sampleCount?`samples: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
     const pv = panOf(t);
-    return `<div class="trk" data-pos="${pos}" title="${esc(t.samples?.length?"Сэмплы: "+t.samples.join(", "):"")}">
-      <span class="n" draggable="true" title="Потяните, чтобы переставить">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
+    return `<div class="trk" data-pos="${pos}" title="${esc(t.samples?.length?"Samples: "+t.samples.join(", "):"")}">
+      <span class="n" draggable="true" title="Drag to reorder">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
       <div class="b"><div class="t">${esc(t.preset||t.name)}</div><div class="p" title="${esc(sub)}">${esc(sub)}</div>
 </div></div>`; }).join("");
-  const panRows = order.map((ti,pos) => { const t = tracks[ti], pv = panOf(t);
-    return `<div class="trk"><span class="n" style="cursor:default;width:12px">${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
-      <div class="b"><div class="t">${esc(t.preset||t.name)}</div>
-        <div class="pan"><input type="range" min="-50" max="50" step="1" value="${Math.round(pv*50)}" data-pan="${t.index}" style="${panFill(pv)}" aria-label="Панорама дорожки ${pos+1}" title="Двойной щелчок — в центр"><span class="${Math.round(pv*50)?"on":""}">${panLabel(pv)}</span></div></div></div>`; }).join("");
   // подсказки по Камелоту
   let sugg = "";
   if(cam){
     const up = (cam.num%12)+1, down = ((cam.num+10)%12)+1, other = cam.letter==="A"?"B":"A";
-    sugg = `<div class="hint">Сочетаются: ${cam.code}, ${down+cam.letter}, ${up+cam.letter}, ${cam.num+other}${cam.approx?". Код приблизительный: лад сведён к мажору/минору с тем же набором нот.":""}</div>`;
+    sugg = `<div class="hint">Compatible: ${cam.code}, ${down+cam.letter}, ${up+cam.letter}, ${cam.num+other}${cam.approx?". Approximate code: the scale is mapped to the major/minor with the same notes.":""}</div>`;
   }
   el.innerHTML = `
-    <div class="where">${side==="move"?"на Move"+(it.slot!=null?` · пэд ${it.slot+1}`:""):"на компьютере"}</div>
-    <input type="text" class="namein" id="nameIn" value="${esc(it.name)}" aria-label="Название проекта">
-    <div class="facts">
-      ${cam?`<span class="keyb" style="background:${camColor(cam)}">${cam.code}${cam.approx?"≈":""}</span>`:""}
-      ${info?`<span class="fact">${esc(keyName(info))}</span>`:""}
-      ${info?.tempo?`<span class="fact">${Math.round(info.tempo*10)/10} bpm</span>`:""}
+    <div class="where">${side==="move"?"on Move"+(it.slot!=null?` · pad ${it.slot+1}`:""):"on computer"}</div>
+    <input type="text" class="namein" id="nameIn" value="${esc(it.name)}" aria-label="Project name">
+    ${keyEditing(info) ? `<div class="keyedit"><div class="keyrow">${(() => { const kc = camelot(S.key ? {rootNote:S.key.rootNote, scale:S.key.scale} : info); return kc ? `<span class="keycam" id="keyCam" style="background:${camColor(kc)}" title="Camelot code of this key">${kc.code}${kc.approx?"≈":""}</span>` : ""; })()}<select id="keyRoot" aria-label="Root">${NOTES.map((n,i)=>`<option value="${i}" ${i===(S.key?S.key.rootNote:info.rootNote)?"selected":""}>${n}</option>`).join("")}</select>
+      <select id="keyScale" aria-label="Scale">${knownScales().map(sc=>`<option ${sc===(S.key?S.key.scale:info.scale)?"selected":""}>${esc(sc)}</option>`).join("")}</select>
+      <input type="number" id="keyTempo" min="40" max="300" step="0.1" value="${S.key && isFinite(S.key.tempo) ? S.key.tempo : Math.round((info.tempo||120)*100)/100}" aria-label="Tempo, bpm" title="Tempo, bpm" style="flex:none"></div>
+      <div class="hint">Root and scale set the pad layout; recorded notes stay where they are. ≈ after a Camelot code means it is approximate: the scale is neither major nor minor.</div>
+      <div class="keyacts"><button class="ghost" id="keyDone">Done</button></div></div>` : ""}
+    <div class="facts" ${info && typeof info.rootNote==="number" && !keyEditing(info) ? `title="Double-click to change key, scale and tempo" data-keyedit="1"` : ""}>
+      ${keyEditing(info) ? "" : (() => { const kv = keyView(info), kc = camelot(kv); return `${kc?`<span class="keyb" style="background:${camColor(kc)}">${kc.code}${kc.approx?"≈":""}</span>`:""}
+      ${kv?`<span class="fact">${esc(keyName(kv))}</span>`:""}
+      ${kv?.tempo?`<span class="fact">${Math.round(kv.tempo*10)/10} bpm</span>`:""}${S.key?`<span class="hint" style="margin:0">unsaved</span>`:""}`; })()}
       ${info?.timeSignature?`<span class="fact">${esc(info.timeSignature)}</span>`:""}
+      ${(it.schwung || info?.schwung)?`<span class="fact" title="${side==="lib" ? (it.schwung ? "Schwung state is saved with this project and restored when uploading to Move" : "Uses Schwung presets; no Schwung state saved") : "Uses Schwung; its state is copied when you move the project to the computer (pad control on)"}">SCHWUNG</span>`:""}
     </div>
     <div class="acts">
-      ${side==="move" ? `<button class="primary" id="actPull">На компьютер →</button>` : `<button class="primary" id="actPush">← На Move</button>`}
-      ${side==="lib" && it.audio ? `<button id="actPlay">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚ Пауза":"▶ Слушать"}</button>` : ""}
-      ${side==="lib" ? `<button id="actReveal">Показать в Finder</button>` : ""}
-      <button class="danger" id="actDel">Удалить</button>
+      ${side==="move" ? `<button class="primary" id="actPull">To computer →</button><span id="pullBox" class="pullbox"><label class="chk" style="margin:0" title="Move exports the project audio; if the export fails, the longest recording of this set from Recordings is used"><input type="checkbox" id="withAudio" ${S.withAudio?"checked":""}> with audio</label>${S.withAudio?`<select id="fmt" aria-label="Audio format">${["wav","mp3"].map(f=>`<option value="${f}" ${S.audioFormat===f?"selected":""}>${f.toUpperCase()}</option>`).join("")}</select>`:""}</span>` : `<button class="primary" id="actPush">← To Move</button>`}
+      ${side==="lib" && it.audio ? `<button id="actPlay">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚ Pause":"▶ Play"}</button>` : ""}
+      ${side==="lib" ? `<button id="actReveal">Show in Finder</button>` : ""}
+      <button class="danger" id="actDel">Delete</button>
     </div>
     ${soundHTML(side, it)}
-    ${side==="lib" ? `<h3>Группа</h3><select id="groupSel" aria-label="Группа проекта"><option value="">Без группы</option>${libGroups().map(g=>`<option value="${esc(g)}" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">Новая группа…</option></select>` : ""}
-    ${info && typeof info.rootNote==="number" ? `<h3>Тональность и темп</h3>
-      <div class="keyrow"><select id="keyRoot" aria-label="Тоника">${NOTES.map((n,i)=>`<option value="${i}" ${i===(S.key?S.key.rootNote:info.rootNote)?"selected":""}>${n}</option>`).join("")}</select>
-      <select id="keyScale" aria-label="Лад">${knownScales().map(sc=>`<option ${sc===(S.key?S.key.scale:info.scale)?"selected":""}>${esc(sc)}</option>`).join("")}</select>
-      <input type="number" id="keyTempo" min="40" max="300" step="0.1" value="${S.key && isFinite(S.key.tempo) ? S.key.tempo : Math.round((info.tempo||120)*100)/100}" aria-label="Темп, bpm" title="Темп, bpm" style="width:84px;flex:none;background:#111214;border:1px solid var(--line);border-radius:6px;padding:6px 8px"></div>
-      <div class="hint">Тоника и лад задают раскладку пэдов; записанные ноты остаются на своих местах. Знак ≈ у кода Камелота — код приблизительный: лад не мажор и не минор.</div>` : ""}
-    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Дорожки</button><button class="tab ${S.tab==="pan"?"on":""}" data-tab="pan">Панорамирование</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Клипы</button></div>
-    ${tracks.length ? (S.tab==="pan" ? panRows : S.tab==="clips" ? clipsHTML(side, it) : trk) : `<div class="hint">${info?.error?esc(info.error):"Проект ещё читается…"}</div>`}
-    ${tracks.length ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" ${changed?"":"disabled"}>Применить изменения</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Сбросить</button></div>
-      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "изменить сам проект на Move — пэд и цвет сохранятся (иначе создам копию «_edit»)" : "заменить оригинал — проект переедет на другой пэд (иначе создам копию «_edit»)"}</label>`:""}` : ""}
-    <h3>Камелот</h3>
+    ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
+    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Clips</button></div>
+    ${tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
+    ${tracks.length ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
+      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
+    <h3>Camelot</h3>
     ${wheelSVG(cam)}
-    <div class="hint">Цветная линия внизу плитки показывает, как проект сочетается по тональности с выбранным.</div>
-    <div class="legend"><span><i style="background:var(--ok)"></i>та же</span><span><i style="background:#d9c545"></i>соседняя ±1</span><span><i style="background:#57a8e8"></i>параллельная</span></div>
+    <div class="legend">Compatible keys light up in their wheel colour — on the wheel and as the mark on each project. Click a sector to set that key.</div>
     ${sugg}
-    <h3>Описание</h3>
-    <textarea id="descIn" rows="2" placeholder="Коротко: что это за проект">${esc(it.description)}</textarea>
-    <h3>Заметки</h3>
-    <textarea id="notesIn" rows="5" placeholder="Идеи, что доделать, где играл…">${esc(it.notes)}</textarea>
-    <div class="hint">${side==="move"?"Описание и заметки к проектам на Move хранятся на компьютере, в файле config.json программы; на само устройство не пишутся. При переносе проекта переезжают в его папку.":"Сохраняются в meta.json в папке проекта."}</div>`;
+    <h3>Description</h3>
+    <textarea id="descIn" rows="2" placeholder="In short: what this project is">${esc(it.description)}</textarea>
+    <h3>Notes</h3>
+    <textarea id="notesIn" rows="5" placeholder="Ideas, to-dos, where it was played…">${esc(it.notes)}</textarea>
+    <div class="hint">${side==="move"?"Descriptions and notes for projects on Move are stored on the computer in the app's config.json, not on the device. They move into the project folder when you copy it.":"Saved in meta.json in the project folder."}</div>`;
 }
 
 /* ───────── фоновые задачи ───────── */
@@ -627,19 +955,20 @@ async function runJob(key, startFn){
 async function pull(id, group){
   const it = S.move.sets.find(x=>x.id===id); if(!it) return;
   const ex = S.lib.items.find(x=>x.name===it.name);
-  if(ex && !confirm(`«${it.name}» уже есть на компьютере. Обновить проект и его звук? Описание и заметки сохранятся.`)) return;
-  status(`Переношу «${it.name}» на компьютер…`);
+  if(ex && !confirm(`"${it.name}" is already on the computer. Update the project and its audio? Description and notes are kept.`)) return;
+  status(`Copying "${it.name}" to the computer…`);
   try{
     let seen = false;
-    const res = await runJob("move:"+id, async () => { const j = await api("POST", `/api/move/sets/${id}/pull`, {audio: $("#withAudio").checked, group: group ?? null}); return j; });
+    const res = await runJob("move:"+id, async () => { const j = await api("POST", `/api/move/sets/${id}/pull`, {audio: S.withAudio, group: group ?? null}); return j; });
     await loadLib();
-    status(res.audioError ? `«${it.name}» сохранён без звука: ${res.audioError}` : `«${it.name}» сохранён на компьютере`, !!res.audioError);
+    const sw = res.schwung ? " · Schwung state copied" : "";
+    status(res.audioError ? `"${it.name}" saved without audio: ${res.audioError}${sw}` : `"${it.name}" saved on the computer${sw}`, !!res.audioError);
   }catch(e){ fail(e); await loadLib(); }
 }
 async function renderLib(id){
   const it = S.lib.items.find(x=>x.id===id); if(!it) return;
-  status(`Move экспортирует звук «${it.name}»…`);
-  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/render`)); stopIfPlaying(id); await loadLib(); status("Звук проекта обновлён"); }
+  status(`Move is exporting audio for "${it.name}"…`);
+  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/render`)); stopIfPlaying(id); await loadLib(); status("Project audio updated"); }
   catch(e){ fail(e); await loadLib(); }
 }
 async function setGroup(id, group){
@@ -647,60 +976,60 @@ async function setGroup(id, group){
   catch(e){ fail(e); }
 }
 async function renameGroup(old){
-  const n = (prompt("Новое название группы:", old) ?? "").trim(); if(!n || n===old) return;
+  const n = (prompt("New group name:", old) ?? "").trim(); if(!n || n===old) return;
   try{
     for(const x of S.lib.items.filter(x=>x.group===old)) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:n});
     S.groups = S.groups.filter(g=>g!==old); if(!S.groups.includes(n)) S.groups.push(n);
-    if(S.collapsed[old]){ S.collapsed[n] = true; } delete S.collapsed[old]; saveGroups(); await loadLib(); status(`Группа переименована в «${n}»`);
+    if(S.collapsed[old]){ S.collapsed[n] = true; } delete S.collapsed[old]; saveGroups(); await loadLib(); status(`Group renamed to "${n}"`);
   }catch(e){ fail(e); await loadLib(); }
 }
 async function disbandGroup(g){
   const its = S.lib.items.filter(x=>x.group===g);
-  if(its.length && !confirm(`Удалить группу «${g}»? Её проекты (${its.length}) не удаляются — они перейдут в «Без группы».`)) return;
+  if(its.length && !confirm(`Delete group "${g}"? Its projects (${its.length}) are not deleted — they move to Ungrouped.`)) return;
   try{
     for(const x of its) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:""});
-    S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Группа «${g}» удалена, проекты перенесены в «Без группы»`);
+    S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Group "${g}" deleted, projects moved to Ungrouped`);
   }catch(e){ fail(e); await loadLib(); }
 }
 async function deleteGroup(g){
   const its = S.lib.items.filter(x=>x.group===g);
-  if(its.length && !confirm(`Удалить группу «${g}» вместе с проектами (${its.length})? Проекты переедут в подпапку «_Удалённые».`)) return;
+  if(its.length && !confirm(`Delete group "${g}" with its projects (${its.length})? The projects move to the "_Deleted" subfolder.`)) return;
   try{
     for(const x of its){ stopIfPlaying(x.id); await api("DELETE", `/api/library/${encodeURIComponent(x.id)}`); if(S.sel && S.sel.side==="lib" && S.sel.id===x.id) S.sel = null; }
-    S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Группа «${g}» удалена`);
+    S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Group "${g}" deleted`);
   }catch(e){ fail(e); await loadLib(); }
 }
 async function push(id, slot, replaceId, quiet){
   const it = S.lib.items.find(x=>x.id===id); if(!it) return false;
-  if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !confirm(`На Move уже есть проект «${it.name}». Загрузить ещё один с тем же названием?`)) return false;
-  status(`Загружаю «${it.name}» на Move…`);
-  try{ await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`«${it.name}» загружен на Move`); return true; }
+  if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !confirm(`Move already has a project "${it.name}". Upload another one with the same name?`)) return false;
+  status(`Uploading "${it.name}" to Move…`);
+  try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
   catch(e){ fail(e); await loadMove(); return false; }
 }
 function dropOnMove(id, cell, slot){
   if(!cell || slot==null) return push(id, null);
   if(cell.classList.contains("slot")) return push(id, slot);
   const old = S.move.sets.find(x=>x.id===cell.dataset.id), it = S.lib.items.find(x=>x.id===id); if(!old || !it) return push(id, null);
-  if(!confirm(`Пэд ${slot+1} занят проектом «${old.name}». Уверены, что хотите удалить его с Move и поставить на его место «${it.name}»? Удаление с устройства нельзя отменить.`)) return;
+  if(!confirm(`Pad ${slot+1} holds "${old.name}". Delete it from Move and put "${it.name}" in its place? Deleting from the device cannot be undone.`)) return;
   return push(id, slot, old.id);
 }
 async function deleteSelected(){
   if(S.multi.length>1){
     const its = S.multi.map(id => S.lib.items.find(x=>x.id===id)).filter(Boolean);
-    if(!confirm(`Убрать из папки выбранные проекты (${its.length})? Они переедут в подпапку «_Удалённые».`)) return;
-    try{ for(const x of its){ stopIfPlaying(x.id); await api("DELETE", `/api/library/${encodeURIComponent(x.id)}`); } S.multi = []; S.sel = null; await loadLib(); status(`Перемещено в «_Удалённые»: ${its.length}`); }
+    if(!confirm(`Remove the selected projects (${its.length}) from the folder? They move to the "_Deleted" subfolder.`)) return;
+    try{ for(const x of its){ stopIfPlaying(x.id); await api("DELETE", `/api/library/${encodeURIComponent(x.id)}`); } S.multi = []; S.sel = null; await loadLib(); status(`Moved to "_Deleted": ${its.length}`); }
     catch(err){ fail(err); await loadLib(); }
     return;
   }
   const it = selItem(); if(!it) return; const {side, id} = S.sel;
   try{
     if(side==="move"){
-      if(!confirm(`Удалить «${it.name}» с Move? Это действие нельзя отменить.`)) return;
-      await api("DELETE", `/api/move/sets/${id}`); S.sel = null; await loadMove(); status(`«${it.name}» удалён с Move`);
+      if(!confirm(`Delete "${it.name}" from Move? This cannot be undone.`)) return;
+      await api("DELETE", `/api/move/sets/${id}`); S.sel = null; await loadMove(); status(`"${it.name}" deleted from Move`);
     } else {
-      if(!confirm(`Убрать «${it.name}» из папки? Проект переедет в подпапку «_Удалённые».`)) return;
+      if(!confirm(`Remove "${it.name}" from the folder? The project moves to the "_Deleted" subfolder.`)) return;
       stopIfPlaying(id);
-      await api("DELETE", `/api/library/${encodeURIComponent(id)}`); S.sel = null; await loadLib(); status(`«${it.name}» перемещён в «_Удалённые»`);
+      await api("DELETE", `/api/library/${encodeURIComponent(id)}`); S.sel = null; await loadLib(); status(`"${it.name}" moved to "_Deleted"`);
     }
   }catch(err){ fail(err); }
 }
@@ -708,6 +1037,7 @@ document.addEventListener("keydown", e => {
   if(e.key!=="Backspace" && e.key!=="Delete") return;
   const a = document.activeElement;
   if(a && (["INPUT","TEXTAREA","SELECT"].includes(a.tagName) || a.isContentEditable)) return;   // в полях клавиша стирает текст
+  if(isCmd()){ e.preventDefault(); if((S.picks||[]).length > 1 || S.pick?.type==="folder") ulDeleteMany((S.picks||[]).filter(x => x.kind==="move").map(x => x.path)); else if(S.pick?.kind==="move" && S.pick.type==="file") ulDelete(S.pick.path); return; }
   if(!S.sel && S.multi.length<2) return;
   e.preventDefault(); deleteSelected();
 });
@@ -715,25 +1045,25 @@ async function pushMany(){
   const ids = S.multi.filter(id => S.lib.items.some(x=>x.id===id)); if(!ids.length) return;
   const taken = new Set(S.move.sets.map(x=>x.slot).filter(x=>x!=null));
   const free = padMode() ? [...Array(32).keys()].filter(i=>!taken.has(i)) : [];
-  if(padMode() && free.length < ids.length && !confirm(`На Move свободно пэдов: ${free.length}, а проектов выбрано ${ids.length}. Загрузить только первые ${free.length}?`)) return;
+  if(padMode() && free.length < ids.length && !confirm(`Move has ${free.length} free pads but ${ids.length} projects are selected. Upload only the first ${free.length}?`)) return;
   const todo = padMode() ? ids.slice(0, free.length) : ids;
   let ok = 0;
   for(let i=0;i<todo.length;i++){ if(await push(todo[i], padMode()?free[i]:null, null, true)) ok++; else break; }
-  S.multi = []; render(); status(`Загружено на Move проектов: ${ok} из ${todo.length}`, ok<todo.length);
+  S.multi = []; render(); status(`Uploaded to Move: ${ok} of ${todo.length}`, ok<todo.length);
 }
 async function applyOrder(){
   const it = selItem(); if(!it) return;
   const {side,id} = S.sel, order = S.order, pans = S.pans;
   try{
     if(side==="move"){
-      if(S.replace && !padMode() && !confirm(`Заменить «${it.name}» на Move изменённой версией? Старая версия будет удалена, а проект окажется на другом пэде.`)) return;
-      status("Применяю изменения…");
+      if(S.replace && !padMode() && !confirm(`Replace "${it.name}" on Move with the edited version? The old version is deleted and the project lands on another pad.`)) return;
+      status("Applying changes…");
       const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/edit`, {order, pans, replace:S.replace, key:keyPayload(it)}));
       S.order = null; S.pans = {}; S.key = null; await loadMove();
-      status(res.inPlace ? "Изменения записаны в проект на Move. Если он сейчас открыт на устройстве, откройте его заново." : res.replaced ? "Проект заменён изменённой версией" : `Создана копия «${res.copy}»`);
+      status(res.inPlace ? "Changes written to the project on Move. If it is open on the device, reopen it." : res.replaced ? "Project replaced with the edited version" : `Copy created: "${res.copy}"`);
     } else {
       await api("POST", `/api/library/${encodeURIComponent(id)}/edit`, {order, pans, key:keyPayload(it)});
-      S.order = null; S.pans = {}; S.key = null; await loadLib(); status("Изменения сохранены в проекте на компьютере");
+      S.order = null; S.pans = {}; S.key = null; await loadLib(); status("Changes saved in the project on the computer");
     }
   }catch(e){ fail(e); }
 }
@@ -741,15 +1071,15 @@ async function moveSlot(id, slot){
   const it = S.move.sets.find(x=>x.id===id); if(!it || it.slot===slot) return;
   const other = S.move.sets.find(x=>x.slot===slot && x.id!==id);
   const moves = [{id, slot}];
-  if(other){ if(it.slot==null){ status("Этот пэд занят", true); return; } moves.push({id:other.id, slot:it.slot}); other.slot = it.slot; }
+  if(other){ if(it.slot==null){ status("This pad is taken", true); return; } moves.push({id:other.id, slot:it.slot}); other.slot = it.slot; }
   it.slot = slot; render();
-  try{ await api("POST","/api/move/slots",{moves}); status(other ? `«${it.name}» и «${other.name}» поменялись пэдами` : `«${it.name}» перенесён на пэд ${slot+1}`); }
+  try{ await api("POST","/api/move/slots",{moves}); status(other ? `"${it.name}" and "${other.name}" swapped pads` : `"${it.name}" moved to pad ${slot+1}`); }
   catch(e){ fail(e); }
   await loadMove();
 }
 async function setupSsh(){
-  status("Подключаю управление пэдами…");
-  try{ await runJob("ssh", () => api("POST","/api/ssh/setup")); await loadMove(); status(padMode() ? "Пэды подключены" : "Ключ добавлен, но пэды прочитать не удалось", !padMode()); }
+  status("Enabling pad control…");
+  try{ await runJob("ssh", () => api("POST","/api/ssh/setup")); await loadMove(); status(padMode() ? "Pads connected" : "Key added, but pads could not be read", !padMode()); }
   catch(e){ fail(e); await loadMove(); }
 }
 async function saveOrder(side){ try{ await api("POST","/api/order",{side, ids: items(side).map(x=>x.id)}); }catch(e){ fail(e); } }
@@ -764,13 +1094,13 @@ function autoOrder(side){
   }
   if(side==="move" && padMode()){
     const slotted = out.filter(x=>x.slot!=null), free = slotted.map(x=>x.slot).sort((a,b)=>visPos(a)-visPos(b));
-    if(!confirm(`Переставить ${slotted.length} проектов на пэдах Move по Камелоту, начиная с «${start.name}»?`)) return;
+    if(!confirm(`Rearrange ${slotted.length} projects on Move pads by Camelot, starting from "${start.name}"?`)) return;
     const moves = slotted.map((x,i)=>({id:x.id, slot:free[i]})).filter((m,i)=>slotted[i].slot!==m.slot);
-    api("POST","/api/move/slots",{moves}).then(()=>{ status("Пэды переставлены по Камелоту"); return loadMove(); }).catch(e=>{ fail(e); loadMove(); });
+    api("POST","/api/move/slots",{moves}).then(()=>{ status("Pads rearranged by Camelot"); return loadMove(); }).catch(e=>{ fail(e); loadMove(); });
     return;
   }
   if(side==="move") S.move.sets = out; else S.lib.items = out;
-  render(); saveOrder(side); status("Порядок выстроен по Камелоту, начиная с «"+start.name+"»");
+  render(); saveOrder(side); status("Ordered by Camelot, starting from \""+start.name+"\"");
 }
 
 /* ───────── плеер ───────── */
@@ -779,7 +1109,7 @@ const fmtT = t => isFinite(t) ? Math.floor(t/60)+":"+String(Math.floor(t%60)).pa
 function playSrc(key, src, title){
   if(S.playing===key){ audio.paused ? audio.play() : audio.pause(); return; }
   S.playing = key; audio.src = src;
-  audio.play().catch(e => status("Не удалось воспроизвести: "+e.message, true));
+  audio.play().catch(e => status("Could not play: "+e.message, true));
 }
 function play(id){
   const it = S.lib.items.find(x=>x.id===id); if(!it || !it.audio) return;
@@ -787,18 +1117,59 @@ function play(id){
 }
 const stopIfPlaying = id => { if(S.playing==="lib:"+id){ audio.pause(); audio.removeAttribute("src"); S.playing = null; } };
 async function useRecording(id, name){
-  status(`Скачиваю «${name}» с Move…`);
-  try{ stopIfPlaying(id); await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/audio-from-move`, {name})); await loadLib(); status("Звук проекта обновлён"); }
+  status(`Downloading "${name}" from Move…`);
+  try{ stopIfPlaying(id); await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/audio-from-move`, {name})); await loadLib(); status("Project audio updated"); }
   catch(e){ fail(e); }
 }
 async function uploadAudio(id, blob, ext){
   const r = await fetch(`/api/library/${encodeURIComponent(id)}/audio?ext=${ext}`, {method:"POST", body:blob});
-  const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message||"Не удалось сохранить звук");
+  const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message||"Could not save the audio");
   stopIfPlaying(id); await loadLib();
 }
 async function loadInputs(){
   try{ S.inputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind==="audioinput" && d.deviceId && d.deviceId!=="default"); }catch(e){ S.inputs = []; }
 }
+/* мониторинг входа (Move по USB и т. п.) — отдельно от записи */
+async function monStart(){
+  await monStop();
+  try{
+    const audioC = {echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:2};
+    let dev = ""; try{ dev = localStorage.getItem("mm-mon-input") || ""; }catch(e){}
+    if(dev) audioC.deviceId = {exact:dev};
+    let stream;
+    try{ stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
+    catch(e){ if(!dev) throw e; delete audioC.deviceId; stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
+    await loadInputs();
+    const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+    an.fftSize = 1024; src.connect(an); src.connect(ctx.destination);
+    S.mon = {stream, ctx, an, buf:new Float32Array(1024), frames:0, dev:stream.getAudioTracks()[0]?.getSettings().deviceId || dev};
+    monFillInputs(S.mon.dev);
+    $("#monMeter").hidden = false; $("#monBtn").classList.add("on"); $("#monBtn").textContent = "🎧 Monitoring";
+    requestAnimationFrame(monMeter);
+    status(`Monitoring: ${stream.getAudioTracks()[0]?.label || "default input"}. Use headphones to avoid feedback`);
+  }catch(e){ status("No access to the audio input: "+e.message, true); }
+}
+async function monStop(){
+  const M = S.mon; if(!M) return; S.mon = null;
+  M.stream.getTracks().forEach(t => t.stop()); try{ await M.ctx.close(); }catch(e){}
+  $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "🎧 Monitor";
+}
+function monMeter(){
+  const M = S.mon; if(!M) return;
+  M.an.getFloatTimeDomainData(M.buf); let pk = 0; for(const v of M.buf) pk = Math.max(pk, Math.abs(v));
+  const cv = $("#monMeter"), g = cv.getContext("2d"), x = Math.max(0, Math.min(1, (20*Math.log10(pk||1e-5)+60)/60));
+  g.clearRect(0,0,cv.width,cv.height); g.fillStyle = x>0.9 ? "#ff5d5d" : x>0.75 ? "#d9c545" : "#5fd38d"; g.fillRect(0,0,cv.width*x,cv.height);
+  M.frames++; requestAnimationFrame(monMeter);
+}
+$("#monBtn").onclick = () => S.mon ? monStop() : monStart();
+function monFillInputs(cur){
+  if(cur===undefined){ try{ cur = localStorage.getItem("mm-mon-input") || ""; }catch(e){ cur = ""; } }
+  const list = [{deviceId:"", label:"Default input"}, ...S.inputs];
+  $("#monInput").innerHTML = list.map(d => `<option value="${esc(d.deviceId)}" ${d.deviceId===cur?"selected":""}>${esc(d.label||"Input "+d.deviceId.slice(0,4))}</option>`).join("");
+}
+$("#monInput").onchange = e => { try{ localStorage.setItem("mm-mon-input", e.target.value); }catch(err){} if(S.mon) monStart(); };
+loadInputs().then(() => monFillInputs());
+navigator.mediaDevices?.addEventListener?.("devicechange", () => loadInputs().then(() => monFillInputs(S.mon?.dev)));
 async function recOpen(id){
   await recClose();
   try{
@@ -813,10 +1184,10 @@ async function recOpen(id){
     const an = [0,1].map(ch => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, ch); return a; });
     const mon = ctx.createGain();
     S.rec = {id, stream, ctx, src, an, mon, state:"armed", monitor:false, hold:[0,0], holdAt:[0,0], clip:[0,0], buf:new Float32Array(2048),
-             mono: (stream.getAudioTracks()[0]?.getSettings().channelCount||2) < 2, label: stream.getAudioTracks()[0]?.label || "вход по умолчанию"};
+             mono: (stream.getAudioTracks()[0]?.getSettings().channelCount||2) < 2, label: stream.getAudioTracks()[0]?.label || "default input"};
     renderInspector(); requestAnimationFrame(meterLoop);
-    status(`Вход: ${S.rec.label}. Проверьте уровень и нажмите «Начать запись»`);
-  }catch(e){ status("Нет доступа к аудиовходу: "+e.message, true); }
+    status(`Input: ${S.rec.label}. Check the level and press Start recording`);
+  }catch(e){ status("No access to the audio input: "+e.message, true); }
 }
 async function recClose(){
   const R = S.rec; if(!R) return; S.rec = null;
@@ -830,11 +1201,11 @@ function recStart(){
   rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
   rec.onstop = async () => {
     const save = R.save; await recClose();
-    if(!save){ status("Запись отменена"); return; }
-    try{ await uploadAudio(id, new Blob(chunks, {type:rec.mimeType}), /mp4/.test(rec.mimeType)?"m4a":"webm"); status("Запись сохранена как звук проекта"); }
+    if(!save){ status("Recording cancelled"); return; }
+    try{ await uploadAudio(id, new Blob(chunks, {type:rec.mimeType}), /mp4/.test(rec.mimeType)?"m4a":"webm"); status("Recording saved as project audio"); }
     catch(e){ fail(e); }
   };
-  R.recorder = rec; R.state = "rec"; R.timer = setInterval(() => status(`● Идёт запись (${fmtT((Date.now()-t0)/1000)}) — ${R.label}`), 500);
+  R.recorder = rec; R.state = "rec"; R.timer = setInterval(() => status(`● Recording (${fmtT((Date.now()-t0)/1000)}) — ${R.label}`), 500);
   rec.start(1000); renderInspector();
 }
 function recStop(save){ const R = S.rec; if(!R) return; if(R.state==="rec"){ R.save = save; R.recorder.stop(); } else recClose(); }
@@ -889,7 +1260,7 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
   g.addEventListener("keydown", e => { const t = e.target.closest(".tile"); if(t && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); select(t.dataset.side,t.dataset.id); } });
   g.addEventListener("dragstart", e => { const t = e.target.closest(".tile"); if(!t) return; drag = {side:t.dataset.side, id:t.dataset.id}; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.id);
     // вместо полноразмерной копии плитки — лёгкая полупрозрачная метка, чтобы сетка пэдов под курсором оставалась видна
-    const ghost = $("#dragGhost"); ghost.textContent = t.querySelector(".name")?.textContent || "Проект";
+    const ghost = $("#dragGhost"); ghost.textContent = t.querySelector(".name")?.textContent || "Project";
     e.dataTransfer.setDragImage(ghost, 12, 12); t.classList.add("dragging"); });
   g.addEventListener("dragover", e => { if(!drag) return; e.preventDefault();
     document.querySelectorAll(".tile.over").forEach(x=>x.classList.remove("over"));
@@ -914,24 +1285,498 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
 }
 $("#moveBanner").addEventListener("click", e => { if(e.target.id==="sshSetup") setupSsh(); });
 async function importFiles(files, group){
-  const list = [...files].filter(f => /\.(ablbundle|zip)$/i.test(f.name)); if(!list.length){ status("Нужны файлы .ablbundle", true); return; }
+  const list = [...files].filter(f => /\.(ablbundle|zip)$/i.test(f.name)); if(!list.length){ status(".ablbundle files needed", true); return; }
   let ok = 0;
   for(const f of list){
-    status(`Добавляю «${f.name}»…`);
+    status(`Adding "${f.name}"…`);
     try{ const r = await fetch(`/api/library-import?name=${encodeURIComponent(f.name)}${group?`&group=${encodeURIComponent(group)}`:""}`, {method:"POST", body:f});
-      const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message||"не удалось добавить"); ok++; }
+      const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message||"could not add"); ok++; }
     catch(e){ status(`«${f.name}»: ${e.message}`, true); await loadLib(); return; }
   }
-  await loadLib(); status(`Добавлено проектов: ${ok}`);
+  await loadLib(); status(`Projects added: ${ok}`);
 }
 $("#importBtn").onclick = () => { $("#bundleFile").value = ""; $("#bundleFile").click(); };
 $("#bundleFile").onchange = e => importFiles(e.target.files);
 $("#libGrid").addEventListener("dragover", e => { if(!drag && e.dataTransfer.types.includes("Files")){ e.preventDefault(); $("#libGrid").classList.add("drop"); } });
-$("#libGrid").addEventListener("drop", e => { if(!drag && e.dataTransfer.files.length){ e.preventDefault(); $("#libGrid").classList.remove("drop"); importFiles(e.dataTransfer.files, e.target.closest("[data-group]")?.dataset.group); } });
-$("#newGroup").onclick = () => { const n = (prompt("Название новой группы:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Группа «${n}» создана — перетащите в неё проекты`); };
+$("#libGrid").addEventListener("drop", e => { if(!drag && e.dataTransfer.files.length){ e.preventDefault(); $("#libGrid").classList.remove("drop"); if(isCmd()) return; importFiles(e.dataTransfer.files, e.target.closest("[data-group]")?.dataset.group); } });
+$("#newGroup").onclick = () => { const n = (prompt("New group name:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Group "${n}" created — drag projects into it`); };
 
 /* ───────── события: инспектор ───────── */
 const insp = $("#insp"); let trkDrag = null, saveTimer = null;
+/* ───────── разделы Samples / Presets: две панели, как в коммандере ─────────
+   Слева всегда библиотека на Move, справа — папки компьютера или вторая панель Move.
+   Компьютер ↔ Move — копирование; внутри Move — перенос через план с переписью ссылок; внутри компьютера — обычный перенос. */
+const UL_AUDIO = /\.(wav|aiff?|flac|mp3)$/i;
+const UL_SET = /^Set\s+(\d+)\s+(.*)$/i;
+const ulBase = rel => rel.split("/").pop();
+const ulDir = rel => rel.split("/").slice(0,-1).join("/");
+const ulSize = n => n >= 1048576 ? (n/1048576).toFixed(1)+" MB" : n >= 1024 ? Math.round(n/1024)+" KB" : n+" B";
+const isCmd = () => S.view!=="projects";
+function pickNone(){ S.pick = null; S.picks = []; }
+const picked = (k,t,p) => (S.picks||[]).some(x => x.panel===k && x.type===t && x.path===p);
+const cmode = () => S.view;
+const mvState = () => S.mv[cmode()];
+const mvData = () => mvState()?.data;
+const ulRoot = () => mvData()?.root || (cmode()==="presets" ? "Track Presets" : "Samples");
+const ulFile = rel => mvData()?.files.find(f => f.rel===rel);
+const ulProjects = f => [...new Set((f?.used||[]).filter(u => u.kind==="project").map(u => u.name))];
+const panelOf = grid => grid.id==="moveGrid" ? "L" : "R";
+const gridOf = k => k==="L" ? $("#moveGrid") : $("#libGrid");
+const pdir = k => S.P[k].dir[cmode()] || ulRoot();          // папка Move в панели
+function ulSuggest(f){
+  // «Set 93 Bounce 4 - 100 bpm.wav» → «<проект> - Bounce 4 - 100 bpm.wav»; проект «Set 93» — первым
+  const base = ulBase(f.rel), m = base.match(UL_SET); if(!m) return [];
+  const num = m[1], rest = m[2], same = p => new RegExp(`^Set\\s+${num}$`,"i").test(p.trim());
+  return ulProjects(f).sort((a,b) => (same(b)?1:0) - (same(a)?1:0))
+    .map(p => ({project:p, name:`${p} - ${rest}`})).filter(x => x.name!==base && !x.name.includes("/"));
+}
+function stopLibAudio(){ if(/^(ul|pc):/.test(S.playing||"")){ audio.pause(); audio.removeAttribute("src"); S.playing = null; } }
+function setView(v){
+  if(v===S.view) return;
+  stopLibAudio(); genStop();
+  S.view = v; pickNone();
+  document.querySelectorAll("header [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view===v));
+  const cmd = isCmd();
+  for(const id of ["#importBtn","#newGroup","#chooseFolder","#libPath","#moveBanner"]) $(id).hidden = cmd;
+  document.querySelectorAll(".pbar").forEach(b => b.hidden = !cmd);
+  $("#rkind").hidden = !cmd;
+  $("#moveTitle").textContent = cmd ? `Move · ${v==="presets"?"Presets":"Samples"}` : "Move";
+  if(cmd){
+    if(!mvData()) mvLoad();
+    if(S.P.R.kind==="pc") pcLoad(S.P.R.pc.data?.path || "");
+  }
+  render();
+}
+function setRKind(k){
+  S.P.R.kind = k; if(S.pick?.panel==="R") pickNone();
+  document.querySelectorAll("[data-rkind]").forEach(b => b.classList.toggle("on", b.dataset.rkind===k));
+  if(k==="pc") pcLoad(S.P.R.pc.data?.path || ""); else if(!mvData()) mvLoad();
+  render();
+}
+async function mvLoad(manual, quiet){
+  // quiet — фоновая сверка с Move: без «Reading…» и без сброса того, что уже на экране
+  const m = cmode(), st = S.mv[m]; if(!st) return;
+  const tok = st.tok = (st.tok||0) + 1;               // ответ на устаревший запрос не затирает свежий
+  if(!quiet){ st.loading = true; st.err = ""; render(); }
+  try{
+    const d = await api("GET", `/api/userlib?mode=${m}`);
+    if(tok!==st.tok) return;
+    st.data = d;
+    for(const k of ["L","R"]){ const dir = S.P[k].dir[m]; if(dir && dir!==d.root && !d.folders.includes(dir)) S.P[k].dir[m] = d.root; }
+    const alive = pk => pk.kind!=="move" || (pk.type==="file" ? d.files.some(f => f.rel===pk.path) : d.folders.includes(pk.path));
+    S.picks = (S.picks||[]).filter(alive); if(S.pick && !alive(S.pick)) S.pick = S.picks[S.picks.length-1] || null;
+    if(manual) status(`Library on Move read again: ${d.files.length} files`);
+  }catch(e){ if(tok===st.tok && !quiet) st.err = e.auth ? "Enter the confirmation code from the Move screen." : e.message; }
+  finally{ if(tok===st.tok){ st.loading = false; render(); } }
+}
+async function pcLoad(path, manual, quiet){
+  const st = S.P.R.pc, tok = st.tok = (st.tok||0) + 1;
+  if(!quiet){ st.loading = true; st.err = ""; render(); }
+  try{
+    const d = await api("GET", `/api/fs?mode=${cmode()}&path=${encodeURIComponent(path||"")}`);
+    if(tok!==st.tok) return;
+    st.data = d;
+    if((S.picks||[]).some(x => x.kind==="pc" && pcDir(x.path)!==d.path)) pickNone();
+    if(manual) status(`Folder read again: ${d.files.length} files`);
+  }catch(e){ if(tok===st.tok && !quiet) st.err = e.message; }
+  finally{ if(tok===st.tok){ st.loading = false; render(); } }
+}
+// панели сами сверяются с Move и папкой компьютера: раз в 15 с и при возврате в окно
+function cmdSync(){
+  if(!isCmd() || document.hidden || Object.keys(S.jobs).length) return;
+  const st = mvState(); if(st && st.data && !st.loading && !st.err) mvLoad(false, true);
+  const pc = S.P.R.pc; if(S.P.R.kind==="pc" && pc.data && !pc.loading) pcLoad(pc.data.path, false, true);
+}
+{ let last = Date.now(); setInterval(() => { if(Date.now() - last >= (S.pollMs || 15000)){ last = Date.now(); cmdSync(); } }, 300); }
+window.addEventListener("focus", cmdSync);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) cmdSync(); });
+const pcName = p => p.slice(p.lastIndexOf("/")+1);
+const pcDir = p => { const d = p.slice(0, p.lastIndexOf("/")); return /^[A-Za-z]:$/.test(d) ? d + "/" : (d || "/"); };   // «C:/x.wav» → «C:/»
+function barSet(k, kind, crumb, upOk, busy, cnt){
+  const bar = document.querySelector(`.pbar[data-panel=${k}]`);
+  bar.querySelectorAll("[data-only]").forEach(x => x.hidden = x.dataset.only!==kind);
+  const cr = bar.querySelector(".crumb"); cr.innerHTML = `<span dir="ltr">${esc(crumb)}</span>`; cr.title = crumb;   // длинный путь обрезается слева, конец виден
+  bar.querySelector("[data-act=up]").disabled = !upOk;
+  const r = bar.querySelector("[data-act=reload]"); r.disabled = busy; r.classList.toggle("busy", busy);
+  (k==="L" ? $("#moveCount") : $("#libCount")).textContent = cnt;
+}
+function renderPanel(k){
+  const grid = gridOf(k), P = S.P[k], kind = k==="L" ? "move" : P.kind;
+  grid.classList.remove("pads");
+  if(k==="R") $("#libTitle").textContent = kind==="pc" ? "Computer" : `Move · ${cmode()==="presets"?"Presets":"Samples"}`;
+  let html;
+  const q = P.q.trim().toLowerCase();
+  if(kind==="move"){
+    const st = mvState(), d = st.data, dir = pdir(k);
+    barSet(k, "move", q ? `Search in ${ulRoot()}` : dir, d && dir!==d.root && !q, st.loading, d ? d.files.length : "");
+    if(st.err) html = `<div class="empty">${esc(st.err)}${/SSH/.test(st.err) ? `<br><button class="primary" id="sshSetup">Enable pad control</button>` : `<br><button data-retry="1">Retry</button>`}</div>`;
+    else if(!d) html = `<div class="empty">Reading the library on Move…</div>`;
+    else {
+      const keep = f => !P.unused || !f.used.length;
+      const folders = q ? [] : d.folders.filter(x => ulDir(x)===dir);
+      const files = q ? d.files.filter(f => ulBase(f.rel).toLowerCase().includes(q) && keep(f)) : d.files.filter(f => ulDir(f.rel)===dir && keep(f));
+      const icon = cmode()==="presets" ? "◇" : "♪", on = (t,p) => picked(k,t,p) ? "sel" : "";
+      html = folders.map(x => { const inside = d.files.filter(f => f.rel.startsWith(x+"/")), used = inside.filter(f => f.used.length).length;
+        return `<div class="ulrow ulfolder ${on("folder",x)}" draggable="true" data-ulfolder="${esc(x)}" title="Double-click to open. Drop here to put files into this folder.">
+          <span class="ic">▸</span><span class="nm">${esc(ulBase(x))}</span><span class="uluse ${used?"":"free"}" title="Files inside, including subfolders, that a project, preset or Schwung slot uses">${inside.length ? `${used} of ${inside.length} used` : "empty"}</span><span class="sz"></span></div>`; }).join("")
+        + files.map(f => { const n = f.used.length, proj = ulProjects(f).length;
+        return `<div class="ulrow ${on("file",f.rel)}" draggable="true" data-ulfile="${esc(f.rel)}" title="${esc(n ? "Used in: " + f.used.map(u => u.name).join(", ") : "Nothing uses this file")}">
+          <span class="ic">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚" : icon}</span><span class="nm">${esc(ulBase(f.rel))}${q?`<div class="sub">${esc(ulDir(f.rel))}</div>`:""}</span>
+          <span class="uluse ${n?(proj>1?"many":""):"free"}">${n ? `used in ${n}` : "unused"}</span><span class="sz">${ulSize(f.size)}</span></div>`; }).join("");
+      html = html || `<div class="empty">${q ? "Nothing found." : P.unused ? "No unused files here." : "Empty folder. Drag files here from the other panel or from Finder."}</div>`;
+      if(st.loading) html = `<div class="hint" style="padding:0 14px">Reading…</div>` + html;
+    }
+  } else {
+    const st = P.pc, d = st.data;
+    barSet(k, "pc", d ? d.path : "", d && d.parent, st.loading, d ? d.files.length : "");
+    if(st.err) html = `<div class="empty">${esc(st.err)}<br><button data-act2="choose">Choose folder…</button></div>`;
+    else if(!d) html = `<div class="empty">Opening the folder…</div>`;
+    else {
+      const m = x => !q || x.toLowerCase().includes(q), on = (t,p) => picked(k,t,p) ? "sel" : "";
+      const sep = d.path.endsWith("/") ? "" : "/";
+      html = d.folders.filter(m).map(x => { const p = d.path+sep+x;
+          return `<div class="ulrow ulfolder ${on("folder",p)}" draggable="true" data-pcfolder="${esc(p)}" title="Double-click to open"><span class="ic">▸</span><span class="nm">${esc(x)}</span><span></span><span class="sz"></span></div>`; }).join("")
+        + d.files.filter(f => m(f.name)).map(f => { const p = d.path+sep+f.name;
+          return `<div class="ulrow ${on("file",p)}" draggable="true" data-pcfile="${esc(p)}"><span class="ic">${S.playing==="pc:"+p && !audio.paused ? "❚❚" : (cmode()==="presets"?"◇":"♪")}</span><span class="nm">${esc(f.name)}</span><span></span><span class="sz">${ulSize(f.size)}</span></div>`; }).join("");
+      html = html || `<div class="empty">${q ? "Nothing found." : `No ${cmode()==="presets"?"presets":"audio files"} or folders here.`}</div>`;
+    }
+  }
+  const pane = grid.closest(".pane"); let fl = pane.querySelector(".jobfloat");
+  if(!fl){ fl = document.createElement("div"); fl.className = "jobfloat"; fl.setAttribute("role","status"); pane.appendChild(fl); }
+  const busy = cmdBusyText();
+  fl.hidden = !busy; if(busy) fl.innerHTML = `<span class="spin"></span><span>${esc(busy)}</span>`;
+  if(grid._html !== html){ const top = grid.scrollTop; grid.innerHTML = html; grid._html = html; grid.scrollTop = top; }
+}
+// что сейчас происходит с библиотекой: проверка перед переносом или ход фоновой задачи
+function cmdBusyText(){
+  const j = S.jobs.userlib || S.jobs.xfer;
+  if(j) return (j.stage && j.stage!=="…" ? j.stage : (S.cmdBusy || "Working…")) + (typeof j.progress==="number" ? ` · ${Math.round(j.progress*100)}%` : "");
+  return S.cmdBusy || "";
+}
+function cmdIsBusy(){ return !!(S.cmdBusy || S.jobs.userlib || S.jobs.xfer); }
+function cmdBusyNote(){ status("Wait — the previous operation is still running", true); }
+function cmdInspector(){
+  const pk = S.pick, el = $("#insp");
+  if(!pk){ el.dataset.key = ""; el.innerHTML = `<h3>${cmode()==="presets"?"Presets":"Samples"}</h3><div class="hint">Left: the library on Move. Right: a folder on this computer, or a second view of Move.<br><br>Drag between computer and Move to copy. Drag inside Move to move — every project, preset and Schwung slot that uses the file is updated, and you see the list first. Inside the computer, dragging moves the file.<br><br>Click a file or folder for details, double-click to open or play.</div>`; return; }
+  if((S.picks||[]).length > 1) return multiInspector();
+  if(pk.kind==="move") return pk.type==="file" ? ulInspector(pk.path) : ulFolderInspector(pk.path);
+  const key = "pc:"+pk.path; if(el.dataset.key===key && el.innerHTML) return; el.dataset.key = key;
+  const f = pk.type==="file" ? S.P.R.pc.data?.files.find(x => x.name===pcName(pk.path)) : null;
+  el.innerHTML = `
+    <div class="where">on this computer · ${esc(pcDir(pk.path))}</div>
+    <div class="ulname" data-ren="1" title="Double-click to rename">${pk.type==="folder"?"▸ ":""}${esc(pcName(pk.path))}</div>
+    ${f ? `<div class="facts"><span class="fact">${ulSize(f.size)}</span></div>` : ""}
+    <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚ Pause" : "▶ Play"}</button>` : ""}
+      ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">Show in Finder</button></div>
+    <div class="acts"><button class="primary" id="toMove" ${mvData()?"":"disabled"} title="Copy into the folder open on the left">← Copy to Move</button></div>
+    <div class="hint">Copies into ${esc(pdir("L"))} on Move. Nothing on Move is overwritten: a file with the same name gets “2” added.</div>`;
+}
+function multiInspector(){
+  const el = $("#insp"), list = S.picks, kind = list[0].kind, key = "multi:" + list.map(x => x.path).join("|");
+  if(el.dataset.key===key) return; el.dataset.key = key;
+  const files = kind==="move" ? list.filter(x => x.type==="file").map(x => ulFile(x.path)).filter(Boolean) : [];
+  const size = kind==="move" ? files.reduce((a,f) => a+f.size, 0) : list.reduce((a,x) => a + (S.P.R.pc.data?.files.find(f => f.name===pcName(x.path))?.size || 0), 0);
+  const d = mvData(), insideOf = x => x.type==="folder" ? (d?.files||[]).filter(f => f.rel.startsWith(x.path+"/")) : [ulFile(x.path)].filter(Boolean);
+  const unusedAll = kind==="move" && list.every(x => insideOf(x).every(f => !f.used.length));
+  const pcOk = S.P.R.kind==="pc" && S.P.R.pc.data;
+  el.innerHTML = `
+    <div class="where">${kind==="move" ? "on Move" : "on this computer"}</div>
+    <div class="ulname">${list.length} selected</div>
+    <div class="facts">${size ? `<span class="fact">${ulSize(size)}</span>` : ""}${kind==="move" && files.length ? `<span class="fact">${files.filter(f => f.used.length).length} used</span>` : ""}</div>
+    <div class="acts">${kind==="move" ? (pcOk ? `<button class="primary" id="toPc">Copy to computer →</button>` : "") : `<button class="primary" id="toMove" ${mvData()?"":"disabled"}>← Copy to Move</button>`}
+      ${kind==="move" ? `<button class="danger" id="multiDel" ${unusedAll?"":"disabled"} title="${unusedAll?"Delete these from Move":"Delete works only when nothing selected is used"}">Delete</button>` : ""}</div>
+    <ul class="uselist">${list.slice(0,12).map(x => `<li>${x.type==="folder"?"▸ ":""}${esc(x.kind==="move" ? ulBase(x.path) : pcName(x.path))}</li>`).join("")}${list.length>12?`<li>… and ${list.length-12} more</li>`:""}</ul>
+    <div class="hint">Drag any of them to move or copy them all. Cmd-click adds or removes one, Shift-click selects a range.</div>`;
+}
+function ulInspector(rel){
+  const el = $("#insp"), f = ulFile(rel), key = "ul:"+rel;
+  if(!f){ el.dataset.key = ""; el.innerHTML = `<div class="hint">The file is no longer there.</div>`; return; }
+  if(document.activeElement && el.contains(document.activeElement) && document.activeElement.tagName==="INPUT" && el.dataset.key===key) return;
+  el.dataset.key = key;
+  const base = ulBase(f.rel), sugg = ulSuggest(f), projects = ulProjects(f), d = mvData(), here = ulDir(f.rel);
+  const KIND = {project:"project", preset:"preset", schwung:"Schwung"};
+  const pcOk = S.P.R.kind==="pc" && S.P.R.pc.data;
+  el.innerHTML = `
+    <div class="where">on Move · ${esc(here)}</div>
+    <div class="ulname" data-ren="1" title="Double-click to rename">${esc(base)}</div>
+    <div class="facts"><span class="fact">${ulSize(f.size)}</span></div>
+    <div class="acts">${UL_AUDIO.test(base) ? `<button id="ulPlay">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚ Pause" : "▶ Play"}</button>` : ""}
+      ${pcOk ? `<button class="primary" id="toPc" title="Copy into the folder open on the right">Copy to computer →</button>` : ""}
+      <button class="danger" id="ulDelete" ${f.used.length?"disabled":""} title="${f.used.length?"Used — delete is only for files nothing uses":"Delete this file from Move"}">Delete</button></div>
+    <h3>Used in</h3>
+    ${f.used.length ? `<ul class="uselist">${f.used.map(u => `<li><b>${esc(u.name)}</b> · ${KIND[u.kind]||u.kind}</li>`).join("")}</ul>` : `<div class="hint">No project, preset or Schwung slot uses this file — it can be deleted.</div>`}
+    ${sugg.length ? `<h3>Name by project</h3>${projects.length>1 ? `<div class="hint">Used in ${projects.length} projects — pick the one this sample belongs to.</div>` : ""}
+      <div class="sugg">${sugg.map(x => `<button data-ulsuggest="${esc(x.name)}" title="From project “${esc(x.project)}”">${esc(x.name)}</button>`).join("")}</div>` : ""}
+    <div class="hint">Double-click the name to rename. To move, drag the file onto a folder. Either way every project, preset and Schwung slot that uses it is updated; you see the list first, and a backup of each changed file is saved on the computer.</div>`;
+}
+function ulFolderInspector(rel){
+  const el = $("#insp"), d = mvData(), key = "ulf:"+rel;
+  if(!d || !d.folders.includes(rel)){ el.dataset.key = ""; el.innerHTML = `<div class="hint">The folder is no longer there.</div>`; return; }
+  if(document.activeElement && el.contains(document.activeElement) && document.activeElement.tagName==="INPUT" && el.dataset.key===key) return;
+  el.dataset.key = key;
+  const inside = d.files.filter(f => f.rel.startsWith(rel+"/")), used = inside.filter(f => f.used.length).length;
+  const projects = new Set(inside.flatMap(f => ulProjects(f)));
+  const pcOk = S.P.R.kind==="pc" && S.P.R.pc.data;
+  el.innerHTML = `
+    <div class="where">on Move · ${esc(ulDir(rel))}</div>
+    <div class="ulname" data-ren="1" title="Double-click to rename">▸ ${esc(ulBase(rel))}</div>
+    <div class="facts"><span class="fact">${inside.length} files</span><span class="fact">${used} used</span>${projects.size?`<span class="fact">${projects.size} project${projects.size>1?"s":""}</span>`:""}</div>
+    <div class="acts"><button id="ulFOpen">Open</button>${pcOk ? `<button class="primary" id="toPc" title="Copy into the folder open on the right">Copy to computer →</button>` : ""}
+      <button class="danger" id="ulFDelete" ${used?"disabled":""} title="${used?"Something inside is used — delete works only when nothing inside is used":"Delete this folder and everything inside from Move"}">Delete</button></div>
+    <div class="hint">Double-click the name to rename. Drag the folder onto another folder to move it with everything inside; every project, preset and Schwung slot that uses its files is updated.</div>`;
+}
+async function ulApply(moves, what){
+  const mode = cmode();
+  if(cmdIsBusy()) return cmdBusyNote();
+  try{
+    S.cmdBusy = "Checking which projects use it…"; render();
+    let plan;
+    try{ plan = await api("POST", "/api/userlib/plan", {mode, moves}); } finally { S.cmdBusy = null; render(); }
+    if(plan.conflicts?.length){ status(`Can't do that: "${ulBase(plan.conflicts[0])}" already exists there or the name is not allowed`, true); return false; }
+    const touch = Object.keys(plan.touch||{}), projects = plan.projects||[];
+    const others = touch.filter(p => !/\/Sets\//.test(p)).map(p => p.includes("/schwung/") ? "Schwung state" : ulBase(p));
+    const lines = [...projects.map(p => `• ${p} (project)`), ...[...new Set(others)].map(p => `• ${p}`)];
+    const files = plan.moves.length;
+    const msg = `${what}${files>1?` (${files} files)`:""}\n\n` + (lines.length ? `References will be rewritten in:\n${lines.join("\n")}\n\nA backup of every changed file is saved on the computer first.` : "Nothing uses it, so no project changes. A backup record is saved on the computer.")
+      + (projects.length ? `\n\nIf one of these projects is open on Move, open another project first: Move would save the open one with the old paths.` : "");
+    if(!confirm(msg)) return false;
+    if(plan.moves.some(([o]) => "ul:"+o===S.playing)) stopLibAudio();
+    status(what + "…"); S.cmdBusy = what + "…";
+    try{ await runJob("userlib", () => api("POST", "/api/userlib/apply", {mode, moves})); } finally { S.cmdBusy = null; }
+    const map = Object.fromEntries(plan.moves);
+    for(const [o, n] of moves){                        // выбор и открытые папки едут вместе с переносом
+      for(const x of S.picks||[]) if(x.kind==="move" && (x.path===o || x.path.startsWith(o+"/"))) x.path = n + x.path.slice(o.length);
+      for(const k of ["L","R"]){ const dir = S.P[k].dir[mode]; if(dir && (dir===o || dir.startsWith(o+"/"))) S.P[k].dir[mode] = n + dir.slice(o.length); }
+    }
+    for(const x of S.picks||[]) if(x.kind==="move" && map[x.path]) x.path = map[x.path];
+    await mvLoad();
+    status(`${what} — done${projects.length?`, ${projects.length} project${projects.length>1?"s":""} updated`:""}`);
+    return true;
+  }catch(e){ fail(e); await mvLoad(); return false; }
+}
+function ulRename(rel, name){
+  const f = ulFile(rel); if(!f) return;
+  name = (name||"").trim(); const base = ulBase(rel);
+  if(!name || name===base) return;
+  if(/[\/\\]/.test(name)){ status("A file name can't contain / or \\", true); return; }
+  const ext = base.match(/\.[^.]+$/)?.[0] || "";
+  if(ext && !name.toLowerCase().endsWith(ext.toLowerCase())) name += ext;   // расширение сохраняется
+  ulApply([[rel, ulDir(rel)+"/"+name]], `Rename "${base}" → "${name}"`);
+}
+function ulFolderRename(rel, name){
+  name = (name||"").trim();
+  if(!rel || !name || name===ulBase(rel)) return;
+  if(/[\/\\]/.test(name)){ status("A folder name can't contain / or \\", true); return; }
+  ulApply([[rel, ulDir(rel)+"/"+name]], `Rename folder "${ulBase(rel)}" → "${name}"`);
+}
+function ulMove(rel, dest){
+  if(!rel || !dest || ulDir(rel)===dest || rel===dest || dest.startsWith(rel+"/")) return;
+  ulApply([[rel, dest+"/"+ulBase(rel)]], `Move "${ulBase(rel)}" to ${dest}`);
+}
+async function ulDelete(rel){
+  const f = ulFile(rel); if(!f || f.used.length) return;
+  if(!confirm(`Delete "${ulBase(f.rel)}" from Move?\n\nNothing uses it. The file is removed from the device and can't be restored from Move.`)) return;
+  try{
+    if(S.playing==="ul:"+f.rel) stopLibAudio();
+    await api("POST", "/api/userlib/delete", {mode:cmode(), rels:[f.rel]});
+    pickNone(); await mvLoad(); status(`"${ulBase(f.rel)}" deleted from Move`);
+  }catch(e){ fail(e); }
+}
+async function ulUpload(list, dir){
+  const files = [...list]; if(!files.length || !mvData()) return;
+  let ok = 0;
+  for(const file of files){
+    status(`Uploading "${file.name}" to Move…`);
+    try{
+      const r = await fetch(`/api/userlib/upload?mode=${cmode()}&dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(file.name)}`, {method:"POST", body:file});
+      const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.message || "could not upload");
+      ok++;
+    }catch(e){ status(`"${file.name}": ${e.message}`, true); await mvLoad(); return; }
+  }
+  await mvLoad(); status(`Uploaded to ${dir}: ${ok}`);
+}
+async function transfer(srcs, dest){
+  // srcs: [{kind, path, type}] из одной панели; dest: {kind, dir}
+  if(!Array.isArray(srcs)) srcs = [srcs];
+  if(!srcs.length || !dest || !dest.dir) return;
+  const mode = cmode(), kind = srcs[0].kind, many = srcs.length > 1;
+  const label = many ? `${srcs.length} items` : `"${kind==="move" ? ulBase(srcs[0].path) : pcName(srcs[0].path)}"`;
+  if(cmdIsBusy()) return cmdBusyNote();
+  try{
+    if(kind==="move" && dest.kind==="move"){
+      const moves = srcs.map(x => x.path).filter(r => ulDir(r)!==dest.dir && r!==dest.dir && !dest.dir.startsWith(r+"/")).map(r => [r, dest.dir+"/"+ulBase(r)]);
+      if(!moves.length) return;
+      return ulApply(moves, `Move ${moves.length>1 ? moves.length+" items" : `"${ulBase(moves[0][0])}"`} to ${dest.dir}`);
+    }
+    if(kind==="pc" && dest.kind==="pc"){
+      const list = srcs.map(x => x.path).filter(p => pcDir(p)!==dest.dir && dest.dir!==p && !dest.dir.startsWith(p+"/"));
+      for(const p of list) await api("POST", "/api/fs/move", {src:p, dst:dest.dir});
+      pickNone(); status(`${list.length>1 ? list.length+" items" : `"${pcName(list[0]||"")}"`} moved to ${dest.dir}`); return pcLoad(S.P.R.pc.data?.path || "");
+    }
+    if(kind==="pc"){
+      status(`Copying ${label} to Move…`); S.cmdBusy = `Copying ${label} to Move…`;
+      let r; try{ r = await runJob("xfer", () => api("POST", "/api/xfer/to-move", {mode, paths:srcs.map(x => x.path), dir:dest.dir})); } finally { S.cmdBusy = null; }
+      await mvLoad(); status(`Copied to ${dest.dir} on Move: ${r.copied} file${r.copied===1?"":"s"}${r.skipped?` · skipped ${r.skipped} that aren't ${mode==="presets"?"presets":"audio"}`:""}`);
+    } else {
+      status(`Copying ${label} to the computer…`); S.cmdBusy = `Copying ${label} to the computer…`;
+      let r; try{ r = await runJob("xfer", () => api("POST", "/api/xfer/to-pc", {mode, rels:srcs.map(x => x.path), dir:dest.dir})); } finally { S.cmdBusy = null; }
+      await pcLoad(S.P.R.pc.data?.path || ""); status(`Copied to ${dest.dir}: ${r.copied} file${r.copied===1?"":"s"}`);
+    }
+  }catch(e){ fail(e); }
+}
+function playLib(kind, path){
+  playSrc(kind+":"+path, kind==="ul" ? `/api/userlib/file?mode=${cmode()}&rel=${encodeURIComponent(path)}` : `/api/fs/file?path=${encodeURIComponent(path)}`, kind==="ul" ? ulBase(path) : pcName(path));
+}
+/* шапка разделов и панели инструментов */
+document.querySelectorAll("header [data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+document.querySelectorAll("[data-rkind]").forEach(b => b.onclick = () => setRKind(b.dataset.rkind));
+for(const bar of document.querySelectorAll(".pbar")){
+  const k = bar.dataset.panel;
+  bar.addEventListener("click", async e => {
+    const a = e.target.closest("[data-act]")?.dataset.act; if(!a) return;
+    const P = S.P[k], kind = k==="L" ? "move" : P.kind;
+    if(a==="up"){ if(kind==="move"){ const dir = pdir(k); if(dir!==ulRoot()){ P.dir[cmode()] = ulDir(dir); render(); } } else if(P.pc.data?.parent) pcLoad(P.pc.data.parent); }
+    if(a==="reload") kind==="move" ? mvLoad(true) : pcLoad(P.pc.data?.path || "", true);
+    if(a==="newfolder"){
+      const n = (prompt("New folder name:", "New folder")||"").trim(); if(!n) return;
+      if(/[\/\\]/.test(n)){ status("A folder name can't contain / or \\", true); return; }
+      try{
+        if(kind==="move"){ await api("POST", "/api/userlib/folder", {mode:cmode(), rel:pdir(k)+"/"+n}); await mvLoad(); }
+        else { await api("POST", "/api/fs/mkdir", {parent:P.pc.data.path, name:n}); await pcLoad(P.pc.data.path); }
+        status(`Folder "${n}" created`);
+      }catch(err){ fail(err); }
+    }
+    if(a==="upload"){ S.uploadPanel = k; $("#ulFile").value = ""; $("#ulFile").click(); }
+    if(a==="choose"){ try{ const r = await api("POST", "/api/fs/choose"); if(r.chosen) pcLoad(r.path); }catch(err){ fail(err); } }
+  });
+  bar.querySelector("[data-act=q]").addEventListener("input", e => { S.P[k].q = e.target.value; render(); });
+  bar.querySelector("[data-act=unused]").addEventListener("change", e => { S.P[k].unused = e.target.checked; render(); });
+}
+$("#ulFile").onchange = e => ulUpload(e.target.files, pdir(S.uploadPanel||"L"));
+/* панели: выбор, открытие, перетаскивание */
+{
+  let cdrag = null;
+  const rowInfo = (row, k) => {
+    if(!row) return null;
+    if(row.dataset.ulfile) return {panel:k, kind:"move", type:"file", path:row.dataset.ulfile};
+    if(row.dataset.ulfolder) return {panel:k, kind:"move", type:"folder", path:row.dataset.ulfolder};
+    if(row.dataset.pcfile) return {panel:k, kind:"pc", type:"file", path:row.dataset.pcfile};
+    if(row.dataset.pcfolder) return {panel:k, kind:"pc", type:"folder", path:row.dataset.pcfolder};
+    return null;
+  };
+  const panelKind = k => k==="L" ? "move" : S.P[k].kind;
+  const hereDir = k => panelKind(k)==="move" ? pdir(k) : S.P[k].pc.data?.path;
+  const upDir = k => panelKind(k)==="move" ? (pdir(k)!==ulRoot() ? ulDir(pdir(k)) : null) : S.P[k].pc.data?.parent;
+  // куда бросили: на папку — в неё, на «↑» — уровнем выше, иначе — в открытую папку панели
+  function dropDest(e){
+    const up = e.target.closest?.(".pbar [data-act=up]");
+    if(up){ const k = up.closest(".pbar").dataset.panel, dir = upDir(k); return dir ? {kind:panelKind(k), dir, el:up} : null; }
+    const grid = e.target.closest?.("#moveGrid,#libGrid"); if(!grid) return null;
+    const k = panelOf(grid), row = e.target.closest("[data-ulfolder],[data-pcfolder]");
+    if(row) return {kind:panelKind(k), dir:row.dataset.ulfolder || row.dataset.pcfolder, el:row};
+    return {kind:panelKind(k), dir:hereDir(k), el:grid};
+  }
+  const clearOver = () => document.querySelectorAll(".ulrow.over,.pbar .over,#moveGrid.drop,#libGrid.drop").forEach(x => x.classList.remove("over","drop"));
+  for(const grid of [$("#moveGrid"), $("#libGrid")]){
+    grid.addEventListener("click", e => {
+      if(!isCmd()) return;
+      if(e.target.dataset.retry) return mvLoad(true);
+      if(e.target.dataset.act2==="choose") return document.querySelector(".pbar[data-panel=R] [data-act=choose]").click();
+      const info = rowInfo(e.target.closest(".ulrow"), panelOf(grid)); if(!info) return;
+      const k = panelOf(grid), same = (S.picks||[]).filter(x => x.panel===k);
+      if(e.metaKey || e.ctrlKey){
+        S.picks = picked(k, info.type, info.path) ? same.filter(x => !(x.type===info.type && x.path===info.path)) : [...same, info];
+      } else if(e.shiftKey && S.pick && S.pick.panel===k){
+        const rows = [...grid.querySelectorAll(".ulrow")].map(r => rowInfo(r, k));
+        const a = rows.findIndex(x => x.path===S.pick.path), z = rows.findIndex(x => x.path===info.path);
+        S.picks = a<0 || z<0 ? [info] : rows.slice(Math.min(a,z), Math.max(a,z)+1);
+      } else S.picks = [info];
+      S.pick = S.picks.length ? (picked(k, info.type, info.path) ? info : S.picks[S.picks.length-1]) : null;
+      S.sel = null; S.multi = []; S.inspY = 0; render();
+    });
+    grid.addEventListener("dblclick", e => {
+      if(!isCmd()) return;
+      const k = panelOf(grid), info = rowInfo(e.target.closest(".ulrow"), k); if(!info) return;
+      if(info.type==="folder"){ pickNone(); if(info.kind==="move"){ S.P[k].dir[cmode()] = info.path; render(); } else pcLoad(info.path); return; }
+      if(UL_AUDIO.test(info.path)) playLib(info.kind==="move" ? "ul" : "pc", info.path);
+    });
+    grid.addEventListener("dragstart", e => { if(!isCmd()) return; const info = rowInfo(e.target.closest(".ulrow"), panelOf(grid)); if(!info) return;
+      cdrag = picked(info.panel, info.type, info.path) && S.picks.length > 1 ? S.picks.slice() : [info];
+      e.dataTransfer.effectAllowed = "copyMove"; e.dataTransfer.setData("text/plain", info.path); });
+  }
+  const over = e => { if(!cdrag) return; clearOver(); const d = dropDest(e); if(d && d.dir){ e.preventDefault(); e.dataTransfer.dropEffect = d.kind===cdrag[0].kind ? "move" : "copy"; d.el.classList.add(d.el.matches(".grid") ? "drop" : "over"); } };
+  const drop = e => { if(!cdrag) return; const src = cdrag, d = dropDest(e); cdrag = null; clearOver(); if(d && d.dir){ e.preventDefault(); e.stopPropagation(); transfer(src, d); } };
+  for(const el of [$("#moveGrid"), $("#libGrid"), ...document.querySelectorAll(".pbar [data-act=up]")]){ el.addEventListener("dragover", over); el.addEventListener("drop", drop); }
+  document.addEventListener("dragend", () => { cdrag = null; clearOver(); });
+  // файлы из Finder: на панель Move — загрузка в открытую папку
+  for(const grid of [$("#moveGrid"), $("#libGrid")]){
+    grid.addEventListener("dragover", e => { if(isCmd() && !cdrag && e.dataTransfer.types.includes("Files") && panelKind(panelOf(grid))==="move"){ e.preventDefault(); } });
+    grid.addEventListener("drop", e => { if(isCmd() && !cdrag && e.dataTransfer.files.length && panelKind(panelOf(grid))==="move"){ e.preventDefault(); e.stopPropagation(); const row = e.target.closest("[data-ulfolder]"); ulUpload(e.dataTransfer.files, row ? row.dataset.ulfolder : pdir(panelOf(grid))); } }, true);
+  }
+}
+insp.addEventListener("click", e => {
+  if(!isCmd() || !S.pick) return;
+  const t = e.target, pk = S.pick;
+  const all = S.picks && S.picks.length ? S.picks.slice() : [pk];
+  if(t.id==="toPc" && S.P.R.pc.data) return transfer(all, {kind:"pc", dir:S.P.R.pc.data.path});
+  if(t.id==="toMove") return transfer(all, {kind:"move", dir:pdir("L")});
+  if(t.id==="multiDel") return ulDeleteMany(all.filter(x => x.kind==="move").map(x => x.path));
+  if(pk.kind==="pc"){
+    if(t.id==="pcPlay") return playLib("pc", pk.path);
+    if(t.id==="pcOpen"){ pickNone(); return pcLoad(pk.path); }
+    if(t.id==="pcReveal") return api("POST", "/api/fs/reveal", {path:pk.path}).catch(fail);
+    return;
+  }
+  if(pk.type==="folder"){
+    if(t.id==="ulFDelete") return ulDeleteMany([pk.path]);
+    if(t.id==="ulFOpen"){ S.P[pk.panel].dir[cmode()] = pk.path; pickNone(); render(); return; }
+    return;
+  }
+  if(t.id==="ulPlay") return playLib("ul", pk.path);
+  if(t.id==="ulDelete") return ulDelete(pk.path);
+  if(t.dataset.ulsuggest) return ulRename(pk.path, t.dataset.ulsuggest);
+});
+// переименование: двойной щелчок по имени в карточке → поле; Enter — применить, Esc или уход из поля — отмена
+insp.addEventListener("dblclick", e => {
+  if(!isCmd() || !S.pick || (S.picks||[]).length > 1) return;
+  const n = e.target.closest(".ulname[data-ren]"); if(!n) return;
+  const cur = S.pick.kind==="move" ? ulBase(S.pick.path) : pcName(S.pick.path);
+  n.innerHTML = `<input type="text" id="inlName" value="${esc(cur)}" aria-label="New name" style="width:100%">`;
+  const inp = $("#inlName"); inp.focus();
+  const dot = S.pick.type==="file" ? cur.lastIndexOf(".") : -1; inp.setSelectionRange(0, dot>0 ? dot : cur.length);
+});
+insp.addEventListener("keydown", e => {
+  if(e.target.id!=="inlName" || !S.pick) return;
+  if(e.key==="Escape"){ e.preventDefault(); $("#insp").dataset.key = ""; e.target.blur(); renderInspector(); return; }
+  if(e.key!=="Enter") return;
+  e.preventDefault();
+  const pk = S.pick, name = e.target.value;
+  $("#insp").dataset.key = ""; e.target.blur();
+  if(pk.kind==="move") return pk.type==="file" ? ulRename(pk.path, name) : ulFolderRename(pk.path, name);
+  pcRename(pk, name);
+});
+insp.addEventListener("focusout", e => { if(e.target.id==="inlName"){ $("#insp").dataset.key = ""; setTimeout(() => { if(document.activeElement?.id!=="inlName") renderInspector(); }, 0); } });
+async function pcRename(pk, name){
+  name = (name||"").trim(); const cur = pcName(pk.path);
+  if(!name || name===cur) return renderInspector();
+  if(pk.type==="file"){ const ext = cur.match(/\.[^.]+$/)?.[0] || ""; if(ext && !name.toLowerCase().endsWith(ext.toLowerCase())) name += ext; }
+  try{ const r = await api("POST", "/api/fs/rename", {path:pk.path, name}); pk.path = r.path; status(`Renamed to "${pcName(r.path)}"`); await pcLoad(S.P.R.pc.data?.path || ""); }
+  catch(err){ fail(err); renderInspector(); }
+}
+async function ulDeleteMany(rels){
+  // файлы и папки на Move; только то, чем ничего не пользуется (у папки — всё внутри)
+  const d = mvData(); if(!d || !rels.length) return;
+  const inside = r => d.folders.includes(r) ? d.files.filter(f => f.rel.startsWith(r+"/")) : [ulFile(r)].filter(Boolean);
+  const used = rels.flatMap(inside).filter(f => f.used.length);
+  if(used.length){ status(`"${ulBase(used[0].rel)}" is used — delete works only for things nothing uses`, true); return; }
+  const nFiles = rels.flatMap(inside).length, nFolders = rels.filter(r => d.folders.includes(r)).length;
+  const what = rels.length===1 ? `"${ulBase(rels[0])}"${nFolders ? ` and everything inside (${nFiles} file${nFiles===1?"":"s"})` : ""}` : `${rels.length} items (${nFiles} file${nFiles===1?"":"s"})`;
+  if(!confirm(`Delete ${what} from Move?\n\nNothing uses ${rels.length===1 && !nFolders ? "it" : "them"}. Removed from the device; can't be restored from Move.`)) return;
+  try{ stopLibAudio(); await api("POST", "/api/userlib/delete", {mode:cmode(), rels}); pickNone(); await mvLoad(); status(`Deleted from Move: ${what}`); }
+  catch(e){ fail(e); }
+}
+
+
 function moveTrack(from,to){ const it = selItem(); if(!it) return; const o = S.order || it.info.tracks.map((_,i)=>i); const [m] = o.splice(from,1); o.splice(to,0,m); S.order = o; renderInspector(); }
 insp.addEventListener("click", async e => {
   if(e.target.id==="multiPush") return pushMany();
@@ -952,8 +1797,18 @@ insp.addEventListener("click", async e => {
   if(t.id==="recCancel") return recStop(false);
   if(t.id==="actRender") return renderLib(id);
   if(t.dataset.tab){ S.tab = t.dataset.tab; return renderInspector(); }
-  const cc = t.closest(".clipcell"); if(cc){ S.cell = {t:+cc.dataset.t, s:+cc.dataset.s}; return renderInspector(); }
+  const cc = t.closest(".clipcell"); if(cc){ genStop(); S.cell = {t:+cc.dataset.t, s:+cc.dataset.s}; return renderInspector(); }
   if(t.id==="clipSave") return saveClip();
+  if(t.id==="keyEdit"){ S.keyEdit = true; return renderInspector(); }
+  if(t.id==="keyDone"){ S.keyEdit = false; if(S.key && !keyPayload(selItem())) S.key = null; return renderInspector(); }
+  const seg = t.closest("[data-cam]"); if(seg) return setKeyFromCamelot(seg.dataset.cam);
+  if(t.id==="clipDel") return deleteClip();
+  if(t.id==="genOpen") return genOpen();
+  if(t.id==="genAnother"){ S.gen.seed = 1+Math.floor(Math.random()*1e6); return genRun(true); }
+  if(t.id==="genPlay") return genPlay();
+  if(t.id==="genPut") return genPut();
+  if(t.id==="midiFolderBtn") return chooseMidiFolder();
+  if(t.id==="midiFolderClear") return setMidiFolder("");
   if(t.id==="clipLoad"){ $("#clipFile").value = ""; return $("#clipFile").click(); }
   if(t.dataset.recplay) return playSrc("rec:"+t.dataset.recplay, `/api/move/recordings/${encodeURIComponent(t.dataset.recplay)}/audio`, t.dataset.recplay.replace(/\.wav$/i,""));
   if(t.dataset.recuse) return useRecording(id, t.dataset.recuse);
@@ -961,33 +1816,35 @@ insp.addEventListener("click", async e => {
   if(t.id==="actDel") return deleteSelected();
 });
 insp.addEventListener("change", async e => {
+  const g = S.gen, id = e.target.id;
+  if(g && id==="genHalf"){ g.half = e.target.value || ""; return genRun(); }
+  if(g && id==="genSource"){ g.genre = e.target.value.slice(2); g.pattern = null; return genRun(); }
+  if(g && ["genMut","genSwing","genDeja","genBars","genGhost","genEuclid"].includes(id)){ g[{genMut:"mutation",genSwing:"swing",genDeja:"deja",genBars:"bars",genGhost:"ghosts",genEuclid:"euclid"}[id]] = +e.target.value; return genRun(); }
   if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
   if(e.target.id==="monChk") return setMonitor(e.target.checked);
   if(e.target.id==="inputSel"){ S.inputId = e.target.value; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} if(S.rec && S.rec.state==="armed") recOpen(S.rec.id); return; }
   if(e.target.id==="groupSel"){ const it = selItem(); if(!it || S.sel.side!=="lib") return; let g = e.target.value;
-    if(g==="__new__"){ g = (prompt("Название новой группы:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
+    if(g==="__new__"){ g = (prompt("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
     if(g!==(it.group||"")) setGroup(it.id, g); return; }
   if(e.target.id==="keyRoot" || e.target.id==="keyScale"){ const it = selItem(); if(!it) return;
-    S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat($("#keyTempo").value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return; }
+    S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat($("#keyTempo").value)}; return renderInspector(); }
+  if(e.target.id==="withAudio"){ S.withAudio = e.target.checked; try{ localStorage.setItem("mm-with-audio", S.withAudio?"1":"0"); }catch(err){} return renderInspector(); }
+  if(e.target.id==="fmt"){ S.audioFormat = e.target.value; return api("POST","/api/config",{audioFormat:e.target.value}).catch(fail); }
   if(e.target.id==="nameIn"){
     const it = selItem(), name = e.target.value.trim(); if(!it || !name || name===it.name){ e.target.value = it?.name||""; return; }
     const {side,id} = S.sel;
     try{
       if(side==="move"){ await api("PATCH", `/api/move/sets/${id}`, {name}); e.target.blur(); await loadMove(); }
       else { const r = await api("PATCH", `/api/library/${encodeURIComponent(id)}`, {name}); if(S.playing==="lib:"+id) S.playing = "lib:"+r.id; S.sel = {side, id:r.id}; e.target.blur(); await loadLib(); }
-      status("Переименовано");
+      status("Renamed");
     }catch(err){ fail(err); e.target.value = it.name; }
   }
 });
+insp.addEventListener("dblclick", e => { if(e.target.closest("[data-keyedit]")){ S.keyEdit = true; renderInspector(); } });
 insp.addEventListener("keydown", e => { if((e.target.id==="nameIn" || e.target.id==="groupIn") && e.key==="Enter") e.target.blur(); });
-insp.addEventListener("dblclick", e => { if(e.target.dataset.pan!==undefined){ e.target.value = 0; e.target.dispatchEvent(new Event("input",{bubbles:true})); } });
+insp.addEventListener("toggle", e => { if(e.target.id==="genMore" && S.gen) S.gen.more = e.target.open; }, true);
 insp.addEventListener("input", e => {
-  if(e.target.dataset.pan!==undefined){
-    const it = selItem(); if(!it) return; const ti = +e.target.dataset.pan, v = +e.target.value/50;
-    S.pans[ti] = v; e.target.style.cssText = panFill(v); const lab = e.target.nextElementSibling; lab.textContent = panLabel(v); lab.classList.toggle("on", !!Math.round(v*50));
-    const ch = isChanged(it);
-    $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return;
-  }
+  if(e.target.type==="range" && e.target.id && e.target.id.startsWith("gen")){ const v = e.target.nextElementSibling; if(v) v.textContent = e.target.value; return; }
   if(e.target.id==="keyTempo"){ const it = selItem(); if(!it) return;
     S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat(e.target.value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return; }
   if(e.target.id!=="descIn" && e.target.id!=="notesIn") return;
@@ -995,7 +1852,7 @@ insp.addEventListener("input", e => {
   const field = e.target.id==="descIn" ? "description" : "notes"; it[field] = e.target.value;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try{ await api(side==="move"?"POST":"PATCH", side==="move"?`/api/move/sets/${id}/meta`:`/api/library/${encodeURIComponent(id)}`, {description:it.description, notes:it.notes}); status("Заметки сохранены"); }
+    try{ await api(side==="move"?"POST":"PATCH", side==="move"?`/api/move/sets/${id}/meta`:`/api/library/${encodeURIComponent(id)}`, {description:it.description, notes:it.notes}); status("Notes saved"); }
     catch(err){ fail(err); }
   }, 500);
 });
@@ -1007,20 +1864,29 @@ insp.addEventListener("dragend", () => { trkDrag = null; });
 $("#clipFile").onchange = e => uploadClip(e.target.files[0]);
 $("#audioFile").onchange = async e => {
   const f = e.target.files[0], it = selItem(); if(!f || !it || S.sel.side!=="lib") return;
-  try{ await uploadAudio(it.id, f, f.name.split(".").pop().toLowerCase()); status("Файл прикреплён как звук проекта"); }
+  try{ await uploadAudio(it.id, f, f.name.split(".").pop().toLowerCase()); status("File attached as project audio"); }
   catch(err){ fail(err); }
 };
 
 /* ───────── шапка ───────── */
-$("#fmt").onchange = e => api("POST","/api/config",{audioFormat:e.target.value}).catch(fail);
-$("#refresh").onclick = () => { status(""); S.recs = {}; loadConfig(); loadMove(); loadLib(); };
+
+$("#refresh").onclick = async () => {
+  const btn = $("#refresh"); if(btn.disabled) return;
+  btn.disabled = true; btn.textContent = "Refreshing…"; status("Reading Move and the computer folder…");
+  S.recs = {};
+  const jobs = [loadConfig(), loadMove(), loadLib()];
+  if(isCmd()){ jobs.push(mvLoad()); if(S.P.R.kind==="pc") jobs.push(pcLoad(S.P.R.pc.data?.path || "")); }
+  await Promise.allSettled(jobs);
+  btn.disabled = false; btn.textContent = "Refresh";
+  if(!$("#status").classList.contains("err")) status(`Updated ${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`);
+};
 $("#chooseFolder").onclick = async () => {
   try{
-    status("Выберите папку в открывшемся окне Finder…");
-    const r = await api("POST","/api/choose-folder"); status(r.chosen ? "Папка: "+r.library : ""); await loadLib();
+    status("Choose a folder in the Finder window…");
+    const r = await api("POST","/api/choose-folder"); status(r.chosen ? "Folder: "+r.library : ""); await loadLib();
   }catch(e){
-    const p = prompt("Путь к папке для проектов:", S.lib.path);
-    if(p){ try{ await api("POST","/api/config",{library:p}); await loadLib(); status("Папка: "+p); }catch(err){ fail(err); } }
+    const p = prompt("Path to the projects folder:", S.lib.path);
+    if(p){ try{ await api("POST","/api/config",{library:p}); await loadLib(); status("Folder: "+p); }catch(err){ fail(err); } }
   }
 };
 
@@ -1029,8 +1895,8 @@ let authOpen = false;
 async function showAuth(){
   if(authOpen) return; authOpen = true;
   $("#auth").classList.add("on"); $("#authErr").textContent = ""; $("#code").value = ""; $("#code").focus();
-  try{ const r = await fetch("/api/auth/start",{method:"POST"}); if(!r.ok){ const d = await r.json().catch(()=>({})); $("#authErr").textContent = d.message || "Move не отвечает"; } }
-  catch(e){ $("#authErr").textContent = "Move не отвечает"; }
+  try{ const r = await fetch("/api/auth/start",{method:"POST"}); if(!r.ok){ const d = await r.json().catch(()=>({})); $("#authErr").textContent = d.message || "Move is not responding"; } }
+  catch(e){ $("#authErr").textContent = "Move is not responding"; }
 }
 function hideAuth(){ authOpen = false; $("#auth").classList.remove("on"); }
 async function submitCode(){
@@ -1040,8 +1906,8 @@ async function submitCode(){
     const r = await fetch("/api/auth/code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code})});
     const d = await r.json().catch(()=>({}));
     if(d.ok){ hideAuth(); S.move.state = "loading"; render(); loadMove(); }
-    else { $("#authErr").textContent = d.error || d.message || "Не получилось"; $("#code").value = ""; $("#code").focus(); }
-  }catch(e){ $("#authErr").textContent = "Move не отвечает"; }
+    else { $("#authErr").textContent = d.error || d.message || "Did not work"; $("#code").value = ""; $("#code").focus(); }
+  }catch(e){ $("#authErr").textContent = "Move is not responding"; }
   $("#authOk").disabled = false;
 }
 $("#authOk").onclick = submitCode;
@@ -1049,6 +1915,16 @@ $("#authCancel").onclick = hideAuth;
 $("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); if(e.key==="Escape") hideAuth(); });
 
 render(); loadConfig(); loadLib(); loadMove();
+try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
+
+function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; $("#themeBtn").textContent = d ? "Light" : "Dark"; }
+$("#themeBtn").onclick = () => {
+  const d = document.documentElement.dataset.theme!=="dark";
+  if(d) document.documentElement.dataset.theme = "dark"; else delete document.documentElement.dataset.theme;
+  try{ localStorage.setItem("mm-theme", d ? "dark" : "light"); }catch(e){}
+  themeLabel();
+};
+themeLabel();
 </script>
 </body>
 </html>

@@ -34,8 +34,8 @@ def _loop_bounds(clip):
     return float(region.get("start", 0.0)), float(region.get("end", 0.0))
 
 
-def clip_to_midi(clip, tempo, name=""):
-    """Клип Move → SMF format 0: имя дорожки, темп, размер такта, ноты петли (сдвинутые к её началу)."""
+def clip_to_midi(clip, tempo, name="", instrument=""):
+    """Клип Move → SMF format 0: имя дорожки, инструмент, темп, размер такта, ноты петли (сдвинутые к её началу)."""
     start, end = _loop_bounds(clip)
     length = max(0.0, end - start)
     events = []          # (тик, порядок, байты): note-off раньше note-on на одном тике
@@ -57,10 +57,13 @@ def clip_to_midi(clip, tempo, name=""):
     denom_pow = max(0, lower.bit_length() - 1)
     mpq = int(round(60_000_000 / float(tempo or 120.0)))
     name_b = (name or "").encode("utf-8")[:120]
+    inst_b = (instrument or "").encode("utf-8")[:240]
 
     body = b""
     if name_b:
         body += _vlq(0) + b"\xff\x03" + _vlq(len(name_b)) + name_b
+    if inst_b:
+        body += _vlq(0) + b"\xff\x04" + _vlq(len(inst_b)) + inst_b
     body += _vlq(0) + b"\xff\x51\x03" + mpq.to_bytes(3, "big")
     body += _vlq(0) + b"\xff\x58\x04" + bytes([upper & 0xFF, denom_pow, 24, 8])
     last = 0
@@ -79,13 +82,13 @@ def _read_vlq(data, i):
     n = 0
     for _ in range(4):
         if i >= len(data):
-            raise MidiError("Файл MIDI обрывается посреди события")
+            raise MidiError("MIDI file ends in the middle of an event")
         b = data[i]
         i += 1
         n = (n << 7) | (b & 0x7F)
         if not b & 0x80:
             return n, i
-    raise MidiError("Повреждённый файл MIDI")
+    raise MidiError("Corrupt MIDI file")
 
 
 def _parse_track(data, division):
@@ -97,11 +100,11 @@ def _parse_track(data, division):
         delta, i = _read_vlq(data, i)
         tick += delta
         if i >= len(data):
-            raise MidiError("Файл MIDI обрывается посреди события")
+            raise MidiError("MIDI file ends in the middle of an event")
         b = data[i]
         if b == 0xFF:                                  # мета-событие
             if i + 1 >= len(data):
-                raise MidiError("Повреждённый файл MIDI")
+                raise MidiError("Corrupt MIDI file")
             mtype = data[i + 1]
             ln, i = _read_vlq(data, i + 2)
             i += ln
@@ -116,11 +119,11 @@ def _parse_track(data, division):
             status = b
             i += 1
         elif status is None:
-            raise MidiError("Повреждённый файл MIDI: данные без статуса")
+            raise MidiError("Corrupt MIDI file: data without status")
         kind, ch = status & 0xF0, status & 0x0F
         size = 1 if kind in (0xC0, 0xD0) else 2
         if i + size > len(data):
-            raise MidiError("Файл MIDI обрывается посреди события")
+            raise MidiError("MIDI file ends in the middle of an event")
         params = data[i:i + size]
         i += size
         if kind == 0x90 and params[1] > 0:
@@ -134,15 +137,35 @@ def _parse_track(data, division):
     return notes, unclosed, tick
 
 
+def _no_overlaps(raw, division):
+    """Move не открывает проект, где одна и та же нота наложена сама на себя.
+    Удары одной высоты ближе 1/32 доли друг к другу сливаются в один (громкость — наибольшая),
+    а нота, на которую наезжает следующая той же высоты, обрезается до её начала."""
+    near = max(1, division // 32)
+    merged = []
+    for p, st, e, v in sorted(raw, key=lambda n: (n[0], n[1])):
+        if merged and merged[-1][0] == p and st - merged[-1][1] < near:
+            mp, ms, me, mv = merged[-1]
+            merged[-1] = (mp, ms, max(me, e), max(mv, v))
+        else:
+            merged.append((p, st, e, v))
+    for i in range(len(merged) - 1):
+        p, st, e, v = merged[i]
+        if merged[i + 1][0] == p and merged[i + 1][1] < e:
+            merged[i] = (p, st, merged[i + 1][1], v)
+    merged.sort(key=lambda n: (n[1], n[0]))
+    return merged
+
+
 def midi_to_notes(data):
     """SMF (type 0 или 1) → (ноты в формате Move, длина в долях). Дорожки сливаются в одну."""
     if len(data) < 14 or data[:4] != b"MThd":
-        raise MidiError("Это не MIDI-файл")
+        raise MidiError("Not a MIDI file")
     hlen, fmt, ntracks, division = struct.unpack(">IHHh", data[4:14])
     if fmt not in (0, 1):
-        raise MidiError("Поддерживаются MIDI-файлы формата 0 и 1")
+        raise MidiError("Only MIDI format 0 and 1 are supported")
     if division <= 0:
-        raise MidiError("Неподдерживаемый формат времени в MIDI-файле (SMPTE)")
+        raise MidiError("Unsupported MIDI time format (SMPTE)")
     i = 8 + hlen
     raw, unclosed, last_tick = [], [], 0
     for _ in range(ntracks):
@@ -159,8 +182,8 @@ def midi_to_notes(data):
         last_tick = max(last_tick, tlast)
     raw += [(p, st, last_tick, v) for p, st, v in unclosed]      # незакрытые — до последнего события файла
     if not raw:
-        raise MidiError("В файле нет нот")
-    raw.sort(key=lambda n: (n[1], n[0]))
+        raise MidiError("No notes in the file")
+    raw = _no_overlaps(raw, division)
     notes = [{"noteNumber": p, "startTime": s / division, "duration": max(e - s, 1) / division,
               "velocity": float(v), "offVelocity": 0.0} for p, s, e, v in raw]
     return notes, last_tick / division

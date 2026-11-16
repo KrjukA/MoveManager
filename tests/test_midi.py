@@ -44,6 +44,14 @@ class MidiTests(unittest.TestCase):
         self.assertNotIn("automations", notes[0])
         self.assertEqual(length, 4.0)
 
+    def test_track_and_instrument_names(self):
+        data = clip_to_midi(clip([(36, 0.0, 0.25, 100.0)]), 120.0, "Skanker Bass",
+                            instrument="Drift · User Library / Bass")
+        name, inst = "Skanker Bass".encode(), "Drift · User Library / Bass".encode()
+        self.assertIn(b"\xff\x03" + bytes([len(name)]) + name, data)
+        self.assertIn(b"\xff\x04" + bytes([len(inst)]) + inst, data)
+        self.assertEqual(len(midi_to_notes(data)[0]), 1)
+
     def test_loop_offset(self):
         c = clip([(36, 2.0, 0.5, 100.0), (40, 5.0, 0.5, 100.0)], start=0.0, end=8.0)
         c["region"]["loop"] = {"start": 4.0, "end": 8.0, "isEnabled": True}
@@ -80,6 +88,30 @@ class MidiTests(unittest.TestCase):
         t2 = track([(0, b"\x91\x24\x64"), (PPQ // 2, b"\x81\x24\x00")])
         notes, _ = midi_to_notes(smf([t1, t2], fmt=1))
         self.assertEqual([(n["noteNumber"], n["startTime"]) for n in notes], [(36, 0.0), (60, 1.0)])
+
+    def test_same_pitch_stacked_in_two_tracks_becomes_one_note(self):
+        on, off = b"\x99\x24\x64", b"\x89\x24\x00"
+        loud = b"\x99\x24\x78"
+        t1 = track([(0, on), (120, off)])
+        t2 = track([(0, loud), (120, off)])
+        notes, _ = midi_to_notes(smf([t1, t2], fmt=1))
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["velocity"], 120.0)
+
+    def test_near_simultaneous_same_pitch_is_one_hit(self):
+        on, off = b"\x99\x24\x64", b"\x89\x24\x00"
+        t1 = track([(0, on), (120, off)])
+        t2 = track([(5, on), (120, off)])                # 5 тиков позже — тот же удар
+        notes, _ = midi_to_notes(smf([t1, t2], fmt=1))
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["startTime"], 0.0)
+
+    def test_overlapping_same_pitch_is_cut_at_next_start(self):
+        a_on, a_off = b"\x90\x3c\x64", b"\x80\x3c\x00"
+        t1 = track([(0, a_on), (960, a_off)])            # 0..2 beats
+        t2 = track([(480, a_on), (480, a_off)])          # 1..2 beats
+        notes, _ = midi_to_notes(smf([t1, t2], fmt=1))
+        self.assertEqual([(n["startTime"], n["duration"]) for n in notes], [(0.0, 1.0), (1.0, 1.0)])
 
     def test_no_notes_raises(self):
         with self.assertRaises(MidiError):
