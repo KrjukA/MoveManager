@@ -121,5 +121,88 @@ class ClipOp(unittest.TestCase):
                 clip_op(s, op, a, b)
 
 
+
+import json  # noqa: E402
+import zipfile  # noqa: E402
+
+from tests.test_routes_midi import OID, RouteBase  # noqa: E402
+
+
+class Routes(RouteBase):
+    def setUp(self):
+        super().setUp()
+        with zipfile.ZipFile(self.tmp / "lib" / "Demo" / "Demo.ablbundle", "w") as z:
+            z.writestr("Song.abl", json.dumps(song()))
+            z.writestr("Samples/kick.wav", b"RIFF")
+        self.move_song = song()
+
+    def op(self, where, op, a, b, replace=False):
+        body = json.dumps({"op": op, "from": list(a), "to": list(b), "replace": replace}).encode()
+        return self.req("POST", f"{where}/clip-op", body)
+
+    def test_library_swap(self):
+        s = self.lib_song()[0]
+        clip_op(s, "copy", (0, 0), (3, 1))
+        with zipfile.ZipFile(self.tmp / "lib" / "Demo" / "Demo.ablbundle", "w") as z:
+            z.writestr("Song.abl", json.dumps(s))
+            z.writestr("Samples/kick.wav", b"RIFF")
+        s2 = self.lib_song()[0]
+        s2["tracks"][3]["clipSlots"][1]["clip"]["name"] = "Other"
+        with zipfile.ZipFile(self.tmp / "lib" / "Demo" / "Demo.ablbundle", "w") as z:
+            z.writestr("Song.abl", json.dumps(s2))
+            z.writestr("Samples/kick.wav", b"RIFF")
+        st, _, b = self.op("/api/library/Demo", "swap", (0, 0), (3, 1))
+        self.assertEqual(st, 200, b)
+        s, names = self.lib_song()
+        self.assertEqual(cell(s, 0, 0)["name"], "Other")
+        self.assertEqual(cell(s, 3, 1)["name"], "Lead")
+        self.assertIn("Samples/kick.wav", names)
+
+    def test_library_busy_409(self):
+        st, _, _ = self.op("/api/library/Demo", "copy", (0, 0), (3, 0))
+        self.assertEqual(st, 200)
+        before = self.lib_song()[0]
+        st, _, b = self.op("/api/library/Demo", "copy", (0, 0), (3, 0))
+        self.assertEqual(st, 409)
+        self.assertEqual(json.loads(b)["error"], "busy")
+        self.assertEqual(self.lib_song()[0], before)
+        st, _, _ = self.op("/api/library/Demo", "move", (0, 0), (3, 0), replace=True)
+        self.assertEqual(st, 200)
+        self.assertIsNone(cell(self.lib_song()[0], 0, 0))
+
+    def test_library_rule_400(self):
+        st, _, b = self.op("/api/library/Demo", "copy", (0, 0), (2, 0))
+        self.assertEqual(st, 400)
+        self.assertIn("melodic", json.loads(b)["message"])
+
+    def test_move_single_write_and_backup(self):
+        st, _, b = self.op(f"/api/move/sets/{OID}", "move", (0, 0), (3, 1))
+        self.assertEqual(st, 200, b)
+        job = self.wait_job(b)
+        self.assertEqual(job["status"], "done", job)
+        self.assertEqual(len(self.writes), 1)
+        self.assertIsNone(cell(self.writes[0], 0, 0))
+        self.assertEqual(cell(self.writes[0], 3, 1)["name"], "Lead")
+        self.assertEqual(len(list((self.tmp / "backups").glob("*.abl"))), 1)
+
+    def test_move_busy_and_rule_refused_before_job(self):
+        self.move_song["tracks"][3]["clipSlots"][1]["clip"] = copy.deepcopy(cell(self.move_song, 0, 0))
+        st, _, _ = self.op(f"/api/move/sets/{OID}", "copy", (0, 0), (3, 1))
+        self.assertEqual(st, 409)
+        st, _, _ = self.op(f"/api/move/sets/{OID}", "copy", (0, 0), (2, 0))
+        self.assertEqual(st, 400)
+        self.assertEqual(self.writes, [])
+
+    def test_move_needs_ssh(self):
+        app.ssh_enabled = lambda: False
+        st, _, _ = self.op(f"/api/move/sets/{OID}", "swap", (0, 0), (3, 1))
+        self.assertEqual(st, 400)
+        self.assertEqual(self.writes, [])
+
+    def test_bad_body(self):
+        st, _, _ = self.req("POST", "/api/library/Demo/clip-op", b'{"op":"copy","from":[0],"to":"x"}')
+        self.assertEqual(st, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

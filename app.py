@@ -2258,14 +2258,48 @@ def job_clip_move(oid, track, scene, notes, length):
     return fn
 
 
-def _clip_move(oid, track, scene, notes, length, stage):
-    obj = set_by_id(oid)
-    stage("Reading project on Move")
-    song = ssh_read_song(oid)
+def _backup_song(obj, song):
+    """Резервная копия Song.abl сета с Move перед записью (хранится 5 последних)."""
     backups = backups_dir()
     backups.mkdir(exist_ok=True)
     (backups / f"{safe_name(obj['name'])} {time.strftime('%Y%m%d-%H%M%S')}.abl").write_bytes(dump_song(song))
     prune_backups(backups, safe_name(obj['name']))
+
+
+def job_clip_op(oid, op, src, dst, replace):
+    """Копия/перенос/обмен клипов на Move: одна резервная копия и одна запись проекта."""
+    def fn(stage):
+        stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
+        with target_lock("move:" + oid):
+            obj = set_by_id(oid)
+            stage("Reading project on Move")
+            song = ssh_read_song(oid)
+            _backup_song(obj, song)
+            stage("Writing clips")
+            ssh_write_song(oid, dump_song(clip_op(copy.deepcopy(song), op, src, dst, replace)))
+            with LOCK:
+                INFO_CACHE.pop(oid, None)
+            return {"ok": True}
+    return fn
+
+
+def library_clip_op(folder, op, src, dst, replace):
+    d = lib_dir(folder)
+    bundle = find_file(d, {".ablbundle"})
+    tmp = tmp_path(".ablbundle")
+    try:
+        with target_lock("lib:" + d.name):
+            transform_bundle(bundle, tmp, lambda song: clip_op(song, op, src, dst, replace))
+            shutil.move(str(tmp), bundle)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _clip_move(oid, track, scene, notes, length, stage):
+    obj = set_by_id(oid)
+    stage("Reading project on Move")
+    song = ssh_read_song(oid)
+    _backup_song(obj, song)
     stage("Writing clip" if notes is not None else "Removing clip")
     ssh_write_song(oid, dump_song(put_clip(song, track, scene, notes, length) if notes is not None
                                   else remove_clip(song, track, scene)))
@@ -2407,6 +2441,18 @@ def clip_midi(song, track, scene, project):
                                         info.get("role") or "") if x)
     filename = f"{safe_name(project)} T{track + 1} {safe_name(preset)} S{scene + 1}.mid"
     return clip_to_midi(clip, song.get("tempo") or 120, preset, instrument), filename
+
+
+def clip_op_args(b):
+    """Тело запроса clip-op → (op, (t, s), (t, s), replace)."""
+    try:
+        src, dst = b["from"], b["to"]
+        if len(src) != 2 or len(dst) != 2:
+            raise ValueError
+        return (str(b.get("op") or ""), (int(src[0]), int(src[1])), (int(dst[0]), int(dst[1])),
+                bool(b.get("replace")))
+    except (KeyError, TypeError, ValueError):
+        raise AppError("No cells given")
 
 
 def cell_args(q):
@@ -2629,6 +2675,8 @@ class Handler(BaseHTTPRequestHandler):
         except MoveOffline:
             self.send_json({"error": "offline",
                             "message": "Move is unreachable. Check that it is on and on the same Wi-Fi network."}, 503)
+        except CellBusy as e:
+            self.send_json({"error": "busy", "message": str(e)}, 409)
         except AppError as e:
             self.send_json({"error": "app", "message": str(e)}, 400)
         except (BrokenPipeError, ConnectionResetError):
@@ -2846,6 +2894,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not ssh_enabled():
                     raise AppError("Deleting a clip on Move needs pad control enabled")
                 return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0)))
+            if act == "clip-op" and m == "POST":
+                op, src, dst, replace = clip_op_args(self.body())
+                if not ssh_enabled():
+                    raise AppError("Editing clips on Move needs pad control enabled")
+                clip_op(ssh_read_song(oid), op, src, dst, replace)      # проверка до задачи: 400/409 сразу
+                return self.send_json(start_job("clip", job_clip_op(oid, op, src, dst, replace)))
             if act == "kit":
                 track = int((q.get("track") or ["0"])[0])
                 if m == "POST":
@@ -2917,6 +2971,9 @@ class Handler(BaseHTTPRequestHandler):
             if act == "clip" and m == "DELETE":
                 t, sc = cell_args(q)
                 library_put_clip(folder, t, sc, None, 0)
+                return self.send_json({"ok": True})
+            if act == "clip-op" and m == "POST":
+                library_clip_op(folder, *clip_op_args(self.body()))
                 return self.send_json({"ok": True})
             if act == "kit":
                 track = int((q.get("track") or ["0"])[0])
