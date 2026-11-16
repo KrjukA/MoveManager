@@ -667,7 +667,7 @@ async function clipOp(op, from, to){
 }
 function clipKeys(e){
   /* горячие клавиши вкладки Clips; true — клавиша обработана здесь */
-  if(S.view!=="projects" || S.tab!=="clips" || !S.sel || !S.cell) return false;
+  if(S.view!=="projects" || S.tab!=="clips" || !S.sel || !S.cell || S.multi.length>1) return false;   // несколько проектов — сетка скрыта
   const a = document.activeElement;
   if(a && (["INPUT","TEXTAREA","SELECT"].includes(a.tagName) || a.isContentEditable)) return false;
   const it = selItem(); if(!it?.info?.clips) return false;
