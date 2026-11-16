@@ -1,4 +1,4 @@
-"""Запуск собранного приложения Move Manager: сервер в фоне, браузер и маленькое окно «работает · Open · Quit».
+"""Запуск собранного приложения KRJUK Move Manager: сервер в фоне, браузер и маленькое окно «работает · Open · Quit».
 Второй запуск не поднимает второй сервер — просто открывает браузер с уже работающим."""
 import os
 import socket
@@ -21,9 +21,16 @@ def _window(url, quit_cb):
         root = tk.Tk()
     except Exception:  # noqa: BLE001
         return None
-    root.title("Move Manager")
+    root.title(app.APP_NAME)
     root.resizable(False, False)
-    tk.Label(root, text="Move Manager is running", font=("Helvetica", 14, "bold")).pack(padx=24, pady=(18, 2))
+    try:                                           # значок окна и логотип; без картинок окно всё равно работает
+        root.iconphoto(True, tk.PhotoImage(file=str(app.STATIC_DIR / "favicon.png")))
+        logo = tk.PhotoImage(file=str(app.STATIC_DIR / "logo.png")).subsample(2)
+        tk.Label(root, image=logo).pack(padx=24, pady=(18, 0))
+        root._logo = logo                          # иначе картинку соберёт сборщик мусора
+    except Exception:  # noqa: BLE001
+        pass
+    tk.Label(root, text="Move Manager is running", font=("Helvetica", 14, "bold")).pack(padx=24, pady=(10, 2))
     tk.Label(root, text=f"build {app.BUILD} · {url}", fg="#777").pack(padx=24)
     tk.Label(root, text="Keep this window open while you use the manager.", fg="#777").pack(padx=24, pady=(6, 0))
     row = tk.Frame(root); row.pack(pady=16)
@@ -50,7 +57,7 @@ def main(stop=None):
         if win is not None:
             win.mainloop()
         else:
-            print(f"Move Manager (build {app.BUILD}) running: {url}\nStop with Ctrl+C")
+            print(f"{app.APP_NAME} (build {app.BUILD}) running: {url}\nStop with Ctrl+C")
             (stop or threading.Event()).wait()
     except KeyboardInterrupt:
         pass

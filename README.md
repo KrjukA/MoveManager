@@ -1,13 +1,16 @@
-# Move Manager
+# KRJUK Move Manager
 
-Локальный менеджер проектов Ableton Move: окно в браузере, сервер на Python.
+![KRJUK](static/logo.png)
+
+Локальный менеджер проектов, сэмплов и пресетов для Ableton Move: окно в браузере, сервер на Python.
+Независимый проект, не связан с Ableton.
 
 ## Установка для друзей (Windows и Mac, без Python)
 
 1. Скачай архив для своей системы:
-   - Windows — `Move-Manager-windows.zip`;
-   - Mac с процессором Apple (M1 и новее) — `Move-Manager-mac-apple-silicon.zip`;
-   - Mac с процессором Intel — `Move-Manager-mac-intel.zip`.
+   - Windows — `KRJUK-Move-Manager-windows.zip`;
+   - Mac с процессором Apple (M1 и новее) — `KRJUK-Move-Manager-mac-apple-silicon.zip`;
+   - Mac с процессором Intel — `KRJUK-Move-Manager-mac-intel.zip`.
 2. Распакуй архив куда удобно (например, на Рабочий стол или в «Программы»).
 3. Первый запуск — система предупредит, что программа от неизвестного разработчика (у неё нет платной подписи):
    - **Windows:** «Windows защитила ваш компьютер» → «Подробнее» → «Выполнить в любом случае».
@@ -15,11 +18,11 @@
    - **Mac (macOS 15 и новее):** открой программу двойным щелчком, закрой предупреждение, затем
      «Системные настройки → Конфиденциальность и безопасность» → внизу «Всё равно открыть».
    - **Mac (macOS 14 и старше):** правый щелчок по программе → «Открыть» → «Открыть».
-4. Откроется маленькое окно «Move Manager is running» и браузер с менеджером. Пока пользуешься — окно не закрывай;
+4. Откроется маленькое окно с логотипом и надписью «Move Manager is running» и браузер с менеджером. Пока пользуешься — окно не закрывай;
    «Quit» — выход. Move должен быть включён и в той же Wi-Fi сети.
 
 Свои настройки, вход на Move и SSH-ключ программа хранит в папке пользователя:
-Windows — `%APPDATA%\Move Manager`, Mac — `~/Library/Application Support/Move Manager`.
+Windows — `%APPDATA%\KRJUK Move Manager`, Mac — `~/Library/Application Support/KRJUK Move Manager`.
 
 ### Как выпустить новую версию (для the author)
 

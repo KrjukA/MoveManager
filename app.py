@@ -33,6 +33,7 @@ from midi import MidiError, _no_overlaps, clip_to_midi, midi_to_notes
 
 APP_DIR = Path(__file__).resolve().parent
 FROZEN = bool(getattr(sys, "frozen", False))       # собранное приложение (PyInstaller)
+APP_NAME = "KRJUK Move Manager"
 
 
 def user_data_dir(frozen, platform, env, home):
@@ -41,9 +42,9 @@ def user_data_dir(frozen, platform, env, home):
     if not frozen:
         return APP_DIR
     if platform.startswith("win"):
-        return Path(env.get("APPDATA") or (Path(home) / "AppData" / "Roaming")) / "Move Manager"
+        return Path(env.get("APPDATA") or (Path(home) / "AppData" / "Roaming")) / APP_NAME
     if platform == "darwin":
-        return Path(home) / "Library" / "Application Support" / "Move Manager"
+        return Path(home) / "Library" / "Application Support" / APP_NAME
     return Path(env.get("XDG_DATA_HOME") or (Path(home) / ".local" / "share")) / "move-manager"
 
 
@@ -65,7 +66,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "49"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "50"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -2598,6 +2599,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if m in ("GET", "HEAD") and path in ("/", "/index.html"):
             return self.send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+        if m in ("GET", "HEAD") and len(seg) == 2 and seg[0] == "static" and re.fullmatch(r"[a-z0-9_-]+\.png", seg[1]):
+            f = STATIC_DIR / seg[1]                 # картинки интерфейса (логотип, значок); только .png из static
+            if f.is_file():
+                return self.send_file(f, "image/png")
         if not seg or seg[0] != "api":
             return self.send_json({"error": "not found"}, 404)
         seg = seg[1:]
@@ -2931,7 +2936,7 @@ def make_server():
 
 def main():
     srv, url = make_server()
-    print(f"Move Manager (build {BUILD}) running: {url}\nStop with Ctrl+C")
+    print(f"{APP_NAME} (build {BUILD}) running: {url}\nStop with Ctrl+C")
     if not os.environ.get("MOVE_MANAGER_NO_BROWSER"):
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
