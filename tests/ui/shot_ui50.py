@@ -19,7 +19,7 @@ with sync_playwright() as p:
         fav = pg.evaluate("document.querySelector('link[rel=icon]')?.href || ''")
         check(f"{theme}: значок вкладки", fav.endswith("/static/favicon.png"))
         check(f"{theme}: нет ошибок", not errs)
-        pg.screenshot(path=f"/mnt/user-data/outputs/brand_{theme}.png", clip={"x":0,"y":0,"width":1440,"height":110})
+        pg.screenshot(path=f"/tmp/brand_{theme}.png", clip={"x":0,"y":0,"width":1440,"height":110})
         pg.close()
     b.close()
 sys.exit(0 if ok else 1)

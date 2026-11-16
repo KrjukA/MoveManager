@@ -1,0 +1,3 @@
+#!/bin/bash
+# getfattr --only-values -n NAME FILE
+f="$4/.xattr_$3"; [ -f "$f" ] && cat "$f" || exit 1
