@@ -1132,7 +1132,7 @@ function renderInspectorNow(){
       <button class="danger" id="actDel">Delete</button>
     </div>
     ${soundHTML(side, it)}
-    ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
+    ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" translate="no" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
     ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
     <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
@@ -1737,7 +1737,7 @@ function ulInspector(rel){
       ${pcOk ? `<button class="primary" id="toPc" title="Copy into the folder open on the right">Copy to computer →</button>` : ""}
       <button class="danger" id="ulDelete" ${f.used.length?"disabled":""} title="${f.used.length?"Used — delete is only for files nothing uses":"Delete this file from Move"}">Delete</button></div>
     <h3>Used in</h3>
-    ${f.used.length ? `<ul class="uselist">${f.used.map(u => `<li><b>${esc(u.name)}</b> · ${KIND[u.kind]||u.kind}</li>`).join("")}</ul>` : `<div class="hint">No project, preset or Schwung slot uses this file — it can be deleted.</div>`}
+    ${f.used.length ? `<ul class="uselist">${f.used.map(u => `<li><b translate="no">${esc(u.name)}</b> · ${KIND[u.kind]||u.kind}</li>`).join("")}</ul>` : `<div class="hint">No project, preset or Schwung slot uses this file — it can be deleted.</div>`}
     ${sugg.length ? `<h3>Name by project</h3>${projects.length>1 ? `<div class="hint">Used in ${projects.length} projects — pick the one this sample belongs to.</div>` : ""}
       <div class="sugg">${sugg.map(x => `<button data-ulsuggest="${esc(x.name)}" title="From project “${esc(x.project)}”">${esc(x.name)}</button>`).join("")}</div>` : ""}
     <div class="hint">Double-click the name to rename. To move, drag the file onto a folder. Either way every project, preset and Schwung slot that uses it is updated; you see the list first, and a backup of each changed file is saved on the computer.</div>`;
