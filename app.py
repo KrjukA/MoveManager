@@ -705,12 +705,36 @@ def ssh_enabled():
     return bool(CFG.get("ssh_enabled"))
 
 
+def _win_short_path(path):
+    """Короткое имя папки Windows (8.3), например C:\\Users\\D0B0~1; не вышло — пусто."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, 1024)
+        return buf.value if 0 < n < 1024 else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def ssh_safe_path(path, platform=None, short=None):
+    """Путь для ssh/ssh-keygen. Старый OpenSSH в Windows 10 может не открыть путь с кириллицей
+    (C:\\Users\\Иван\\…) — тогда даём короткое латинское имя папки; файла может ещё не быть, поэтому берём папку."""
+    s = str(path)
+    if (platform or sys.platform) != "win32" or s.isascii():
+        return s
+    sep = "\\" if "\\" in s else "/"
+    parent, _, name = s.rpartition(sep)
+    sp = (short or _win_short_path)(parent)
+    return sp + sep + name if sp and sp.isascii() else s
+
+
 def ssh_cmd():
     if os.environ.get("MOVE_SSH_CMD"):
         return shlex.split(os.environ["MOVE_SSH_CMD"])
     host = urlparse(CFG["move_url"]).hostname or "move.local"
-    return ["ssh", "-i", str(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-            "-o", "StrictHostKeyChecking=accept-new", "-o", f'UserKnownHostsFile="{Path(KNOWN_HOSTS).as_posix()}"',
+    known = Path(ssh_safe_path(KNOWN_HOSTS)).as_posix()
+    return ["ssh", "-i", ssh_safe_path(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new", "-o", f'UserKnownHostsFile="{known}"',
             "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", f"ableton@{host}"]
 
 
@@ -1648,7 +1672,7 @@ def ensure_ssh_key():
     if not SSH_KEY.exists() or not pub_path.exists():
         Path(SSH_KEY).parent.mkdir(parents=True, exist_ok=True)
         try:
-            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", str(SSH_KEY)],
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", ssh_safe_path(SSH_KEY)],
                            check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except FileNotFoundError:
             raise AppError(NO_SSH_MSG)
