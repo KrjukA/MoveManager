@@ -308,6 +308,7 @@ footer .status.err{color:var(--bad)}
 .menu[hidden]{display:none}
 .menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px;white-space:nowrap}
 .menu button:hover{background:var(--sel)}
+#libPath{display:none!important}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -341,10 +342,10 @@ footer .status.err{color:var(--bad)}
     <div class="grid" id="moveGrid" data-side="move"></div>
   </section>
   <section class="pane">
-    <div class="pane-head"><h2 id="libTitle">Computer</h2><span class="count" id="libCount"></span><span class="path" id="libPath"></span><span class="modes" id="rkind" role="group" aria-label="Right panel shows" hidden><button class="ghost on" data-rkind="pc" title="Folders on this computer">Computer</button><button class="ghost" data-rkind="move" title="A second view of the Move library, to move things between its folders">Move</button></span><div class="spacer"></div>
-      <button class="ghost" id="newGroup" title="Create a project group">+ Group</button>
-      <span class="addwrap" id="addWrap"><button id="addMenuBtn" title="Add projects or choose the library folder" aria-haspopup="menu">+</button>
+    <div class="pane-head"><h2 id="libTitle">Computer</h2><span class="count" id="libCount"></span><span class="path" id="libPath" hidden></span><span class="modes" id="rkind" role="group" aria-label="Right panel shows" hidden><button class="ghost on" data-rkind="pc" title="Folders on this computer">Computer</button><button class="ghost" data-rkind="move" title="A second view of the Move library, to move things between its folders">Move</button></span><div class="spacer"></div>
+      <span class="addwrap" id="addWrap"><button id="addMenuBtn" title="Add projects, a group, or choose the library folder" aria-haspopup="menu">+</button>
         <span class="menu" id="addMenu" role="menu" hidden>
+          <button id="newGroup" role="menuitem" title="Create a project group">New group…</button>
           <button id="importBtn" role="menuitem" title="Add .ablbundle projects that are already on this computer">Add projects (.ablbundle)…</button>
           <button id="chooseFolder" role="menuitem" title="Pick which folder on this computer holds your Move projects">Choose library folder…</button>
         </span></span></div>
@@ -590,6 +591,7 @@ function renderPane(side){
 function render(){
   renderPane("move"); renderPane("lib"); renderInspector();
   $("#libPath").textContent = S.lib.path.split("/").filter(Boolean).slice(-2).join("/"); $("#libPath").title = S.lib.path;
+  $("#chooseFolder").title = "Library folder: " + S.lib.path;          // путь виден в подсказке пункта меню
   const ok = S.move.state==="ok";
   $("#dot").className = "dot " + (ok?"ok":S.move.state==="loading"?"":"bad");
   $("#connText").textContent = ok ? "Move connected" : S.move.state==="loading" ? "connecting…" : S.move.state==="auth" ? "code needed" : "Move offline";
@@ -1610,7 +1612,7 @@ function setView(v){
   S.view = v; pickNone();
   document.querySelectorAll("header [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view===v));
   const cmd = isCmd();
-  for(const id of ["#addWrap","#newGroup","#libPath","#moveBanner"]) $(id).hidden = cmd;
+  for(const id of ["#addWrap","#moveBanner"]) $(id).hidden = cmd;
   document.querySelectorAll(".pbar").forEach(b => b.hidden = !cmd);
   $("#rkind").hidden = !cmd;
   $("#moveTitle").textContent = cmd ? `Move · ${v==="presets"?"Presets":"Samples"}` : "Move";
