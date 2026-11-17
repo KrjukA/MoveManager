@@ -1198,7 +1198,7 @@ function dropOnMove(id, cell, slot){
   if(!cell || slot==null) return push(id, null);
   if(cell.classList.contains("slot")) return push(id, slot);
   const old = S.move.sets.find(x=>x.id===cell.dataset.id), it = S.lib.items.find(x=>x.id===id); if(!old || !it) return push(id, null);
-  if(!confirm(`Pad ${slot+1} holds "${old.name}". Delete it from Move and put "${it.name}" in its place? Deleting from the device cannot be undone.`)) return;
+  if(!confirm(`Pad ${slot+1} holds "${old.name}". Delete it from Move and put "${it.name}" in its place? A copy of "${old.name}" is saved first to the "_Deleted" folder on the computer.`)) return;
   return push(id, slot, old.id);
 }
 async function deleteSelected(){
@@ -1212,7 +1212,7 @@ async function deleteSelected(){
   const it = selItem(); if(!it) return; const {side, id} = S.sel;
   try{
     if(side==="move"){
-      if(!confirm(`Delete "${it.name}" from Move? This cannot be undone.`)) return;
+      if(!confirm(`Delete "${it.name}" from Move? A copy is saved first to the "_Deleted" folder on the computer.`)) return;
       await api("DELETE", `/api/move/sets/${id}`); S.sel = null; await loadMove(); status(`"${it.name}" deleted from Move`);
     } else {
       if(!confirm(`Remove "${it.name}" from the folder? The project moves to the "_Deleted" subfolder.`)) return;

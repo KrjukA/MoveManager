@@ -1882,9 +1882,12 @@ def job_push(folder, slot=None, replace_id=None):
             # старый проект удаляем только после того, как новый однозначно найден на устройстве
             if len(created) != 1:
                 raise AppError("The new project was uploaded but could not be identified — the old one was kept")
+            stage("Saving a copy of the previous project")
+            backup_move_set(replace_id)
             stage("Removing the previous project from the pad")
             MOVE.delete(replace_id)
-            history.move_history(history_dir("move", replace_id), history_dir("move", created[0]))   # тот же проект на пэде
+            if read_json(d / "meta.json", {}).get("sourceId") == replace_id:     # тот же проект вернулся на свой пэд
+                history.move_history(history_dir("move", replace_id), history_dir("move", created[0]))
             with LOCK:
                 CFG.setdefault("move_meta", {}).pop(replace_id, None)
                 INFO_CACHE.pop(replace_id, None)
@@ -1927,7 +1930,7 @@ def job_edit_move(oid, order, pans, replace, key=None):
                     INFO_CACHE.pop(oid, None)
                 return {"inPlace": True}
         before = {o["objectId"] for o in MOVE.list_sets()}
-        src, dst = tmp_path(".ablbundle"), tmp_path(".ablbundle")
+        src, dst, orig = tmp_path(".ablbundle"), tmp_path(".ablbundle"), tmp_path(".ablbundle")
         new_name = f"{obj['name']}_edit"
         try:
             stage("Downloading project")
@@ -1936,6 +1939,8 @@ def job_edit_move(oid, order, pans, replace, key=None):
             edit_bundle(src, dst, order, pans, key)
             with zipfile.ZipFile(src) as z:              # версия до правки — запишем, когда новый сет опознан
                 before_bytes = z.read(find_song_entry(z))
+            if replace:
+                shutil.copyfile(src, orig)                 # оригинал целиком — в «_Deleted» перед удалением с Move
             stage("Uploading to Move")
             MOVE.upload(dst, f"{new_name}.ablbundle")
         finally:
@@ -1944,11 +1949,17 @@ def job_edit_move(oid, order, pans, replace, key=None):
         if replace:
             created = [o for o in MOVE.list_sets() if o["objectId"] not in before]
             if len(created) != 1:
+                orig.unlink(missing_ok=True)
                 raise AppError("The new version was uploaded but could not be identified — the original was kept")
             new_oid = created[0]["objectId"]
             # история — к новому сету до удаления и переименования: сбой там не оставит её у удалённого ID
             history.move_history(history_dir("move", oid), history_dir("move", new_oid))
             _save_version(history_dir("move", new_oid), before_bytes, edit_action(order, pans, key))
+            stage("Saving a copy of the original")
+            try:
+                backup_move_set(oid, orig)
+            finally:
+                orig.unlink(missing_ok=True)
             stage("Replacing the original")
             MOVE.delete(oid)
             MOVE.rename(new_oid, obj["name"])
@@ -2864,6 +2875,34 @@ def rename_library(folder, new_name):
     return new_name
 
 
+def backup_move_set(oid, bundle=None):
+    """Копия сета с Move в «_Deleted» библиотеки на компьютере — перед любым удалением с девайса.
+    bundle — уже скачанный бандл (иначе скачиваем). Не вышло — AppError, и удалять нельзя."""
+    obj = set_by_id(oid)
+    name = safe_name(obj.get("name") or "Project")
+    d = None
+    try:
+        trash = lib_root() / "_Deleted"
+        trash.mkdir(parents=True, exist_ok=True)
+        d = trash / f"{name} (deleted from Move {time.strftime('%Y%m%d-%H%M%S')})"
+        k = 2
+        while d.exists():
+            d, k = trash / f"{name} (deleted from Move {time.strftime('%Y%m%d-%H%M%S')} {k})", k + 1
+        d.mkdir()
+        target = d / f"{name}.ablbundle"
+        if bundle is not None:
+            shutil.copyfile(bundle, target)
+        else:
+            MOVE.download(oid, target)
+        write_json(d / "meta.json", {"sourceId": oid, "savedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                     "notes": "Copy saved before the project was deleted from Move."})
+        return d
+    except (OSError, AppError, MoveOffline, requests.exceptions.RequestException) as e:
+        if d is not None:
+            shutil.rmtree(d, ignore_errors=True)
+        raise AppError(f"Could not save a copy of \"{name}\" before deleting it from Move, so nothing was deleted: {e}")
+
+
 def trash_library(folder):
     d = lib_dir(folder)
     trash = d.parent / "_Deleted"
@@ -3408,8 +3447,11 @@ class Handler(BaseHTTPRequestHandler):
                 MOVE.rename(oid, safe_name(self.body().get("name")))
                 return self.send_json({"ok": True})
             if act is None and m == "DELETE":
+                kept = backup_move_set(oid)                  # копия в «_Deleted» на компьютере, иначе не удаляем
                 MOVE.delete(oid)
-                return self.send_json({"ok": True})
+                with LOCK:
+                    INFO_CACHE.pop(oid, None)
+                return self.send_json({"ok": True, "backup": kept.name})
 
         # ── библиотека
         if seg == ["library-import"] and m == "POST":

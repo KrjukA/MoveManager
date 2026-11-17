@@ -171,11 +171,52 @@ class Hooks(RouteBase):
         self.assertEqual(history.list_versions(app.history_dir("lib", "Fresh")), [])
 
     def test_push_replace_moves_history(self):
+        # сборка 55: история переезжает, только если проект на компьютере пришёл с этого сета (sourceId)
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
         history.save_version(app.history_dir("move", OID), b"{}", "old")
         app.ssh_enabled = lambda: False
         app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
         self.assertEqual([v["action"] for v in self.mv(NEW)], ["old"])
         self.assertEqual(self.mv(OID), [])
+
+    def test_push_onto_other_project_keeps_its_history(self):
+        history.save_version(app.history_dir("move", OID), b"{}", "old")
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)      # другой проект на занятый пэд
+        self.assertEqual(self.mv(NEW), [])
+
+    def deleted(self):
+        trash = self.tmp / "lib" / "_Deleted"
+        return sorted(p.name for p in trash.rglob("*.ablbundle")) if trash.exists() else []
+
+    def test_push_replace_backs_up_deleted_project(self):
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
+        self.assertEqual(self.deleted(), ["Live Set.ablbundle"])
+        self.assertNotIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_backup_failure_blocks_delete(self):
+        def boom(oid, dest, progress=None):
+            raise app.MoveOffline("Wi-Fi gone")
+        app.MOVE.download = boom
+        app.ssh_enabled = lambda: False
+        with self.assertRaises(app.AppError):
+            app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
+        self.assertIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+        st, _, b = self.req("DELETE", f"/api/move/sets/{OID}")
+        self.assertNotEqual(st, 200)
+        self.assertIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_delete_route_backs_up(self):
+        st, _, b = self.req("DELETE", f"/api/move/sets/{OID}")
+        self.assertEqual(st, 200, b)
+        self.assertEqual(self.deleted(), ["Live Set.ablbundle"])
+        self.assertNotIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_no_ssh_edit_replace_backs_up_original(self):
+        app.ssh_enabled = lambda: False
+        app.job_edit_move(OID, None, {"0": 0.3}, True)(lambda *a, **k: None)
+        self.assertEqual(self.deleted(), ["Live Set.ablbundle"])
 
     def test_no_ssh_edit_replace_moves_history(self):
         app.ssh_enabled = lambda: False
