@@ -646,6 +646,16 @@ function clipsHTML(side, it){
     ${S.gen && S.gen.t===t && S.gen.s===sc && S.gen.key===side+":"+it.id ? genHTML() : ""}
     ${why ? `<div class="hint">${esc(why)}.</div>` : `<div class="hint">Only notes are taken from the file; clip length is rounded up to whole bars.${side==="move"?" The project is backed up before writing.":""}</div>`}`;
 }
+/* Проект на Move мог измениться на самом девайсе (Move сам сохраняет открытый проект) —
+   при ошибке действия с клипами перечитываем его и объясняем, а не оставляем старую картинку */
+async function moveFailed(side, id, e){
+  if(side!=="move" || e.auth){ fail(e); return; }
+  const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; }
+  await loadMove();
+  const stale = /Cell is empty|Cell is occupied|already have a clip|no longer/i.test(e.message||"");
+  status(stale ? "The project on Move was changed on the device (Move saves an open project on its own), so this cell no longer matches. The view was refreshed — check it and try again. Leave the project on Move while editing it here."
+               : (e.message||"Something went wrong") + " The view was refreshed.", true);
+}
 /* ───────── копия, перенос, обмен клипов (сборка 51) ───────── */
 let clipDrag = null;                                   // {t, s} клипа, который сейчас тащат
 function clipBufHere(side, it){ const b = S.clipBuf; return b && b.key===side+":"+it.id ? b : null; }
@@ -678,7 +688,7 @@ async function clipOp(op, from, to){
     S.cell = {t:to.t, s:to.s}; renderInspector();
     status(`${verb}: track ${from.t+1}, scene ${from.s+1} → track ${to.t+1}, scene ${to.s+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
     return true;
-  }catch(e){ fail(e); return false; }
+  }catch(e){ await moveFailed(side, id, e); return false; }
 }
 function clipKeys(e){
   /* горячие клавиши вкладки Clips; true — клавиша обработана здесь */
@@ -810,7 +820,7 @@ async function deleteClip(){
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
     status(`Clip deleted: track ${t+1}, scene ${sc+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
-  }catch(e){ fail(e); }
+  }catch(e){ await moveFailed(side, id, e); }
 }
 async function saveClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side} = S.sel, {t, s: sc} = S.cell;

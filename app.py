@@ -473,6 +473,8 @@ class Move:
         return CFG["move_url"].rstrip("/")
 
     def req(self, method, path, timeout=20, **kw):
+        if os.environ.get("MOVE_MANAGER_TESTING") and urlparse(self.base).hostname not in ("127.0.0.1", "localhost"):
+            raise MoveOffline("Tests must not reach a real Move over HTTP")
         headers = kw.pop("headers", {})
         headers.setdefault("Referer", self.base + "/data/Sets")
         try:
@@ -832,6 +834,8 @@ def ssh_run(script, data=None, timeout=40):
 
 def _ssh_run(script, data=None, timeout=40):
     cmd = ssh_cmd()
+    if os.environ.get("MOVE_MANAGER_TESTING") and Path(cmd[0]).name == "ssh":     # из тестов — только подменённый SSH
+        raise SshError("Tests must not reach a real Move over SSH")
     if data is None:
         return _SSH.run(cmd, script, timeout)
     try:                                          # с данными на stdin — отдельное соединение

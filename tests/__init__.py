@@ -9,6 +9,9 @@ import os
 import sys
 import tempfile
 
+# тесты никогда не ходят на настоящий Move: app.py откажет в SSH без подмены и в HTTP не на localhost
+os.environ["MOVE_MANAGER_TESTING"] = "1"
+
 if sys.platform == "darwin":
     gnubins = [f"{p}/libexec/gnubin" for p in ("/opt/homebrew/opt/gnu-tar", "/opt/homebrew/opt/coreutils",
                                                 "/opt/homebrew/opt/findutils", "/usr/local/opt/gnu-tar",
