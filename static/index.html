@@ -297,10 +297,12 @@ footer .status{color:var(--dim);font:11px var(--mono);max-width:100%;overflow:hi
 footer .status.err{color:var(--bad)}
 
 .empty .addr{display:flex;gap:6px;justify-content:center;margin:10px auto 4px;max-width:320px}.empty .addr input{flex:1;min-width:0}
-#themeBtn[data-to="light"]{background:#ededea;color:#1a1a19;border-color:#cfcfca}
-#themeBtn[data-to="light"]:hover{background:#ffffff}
-#themeBtn[data-to="dark"]{background:#262624;color:#ededea;border-color:#262624}
-#themeBtn[data-to="dark"]:hover{background:#3a3a36}
+header button.hb{height:26px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:none;border-color:var(--line2);color:var(--dim)}
+header button.hb:hover{color:var(--text);border-color:var(--text)}
+#themeBtn::before,#monBtn::before{content:"";width:8px;height:8px;border-radius:50%;flex:none}
+#themeBtn[data-to="light"]::before{background:#ededea;border:1px solid #cfcfca}
+#themeBtn[data-to="dark"]::before{background:#262624;border:1px solid #5a5a55}
+#monBtn::before{background:var(--faint)}#monBtn.on::before{background:var(--accent)}
 #monInput{max-width:150px;text-overflow:ellipsis}
 .addwrap{position:relative;display:inline-flex}
 #addMenuBtn{min-width:30px;font-weight:600}
@@ -309,9 +311,9 @@ footer .status.err{color:var(--bad)}
 .menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px;white-space:nowrap}
 .menu button:hover{background:var(--sel)}
 #libPath{display:none!important}
-.mini.lv i{background:color-mix(in srgb,var(--lc) calc(var(--on,0) * 75%),var(--line))!important;transition:none}
-#moveGrid .mini.lv i{background:color-mix(in srgb,var(--lc) calc(var(--on,0) * 80%),rgba(255,255,255,.07))!important}
-.mini.lv i.c,#moveGrid .mini.lv i.c{background:color-mix(in srgb,var(--lc) calc(45% + var(--on,0) * 55%),transparent)!important;box-shadow:0 0 calc(var(--on,0) * 5px) var(--lc)}
+.mini.lv i:not(.c){background:color-mix(in srgb,var(--lc) calc(var(--on,0) * 75%),var(--line))!important;transition:none}
+#moveGrid .mini.lv i:not(.c){background:color-mix(in srgb,var(--lc) calc(var(--on,0) * 80%),rgba(255,255,255,.07))!important}
+.mini.lv i.c{transform:translateY(calc(var(--on,0) * -3px));transition:none}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -329,11 +331,11 @@ footer .status.err{color:var(--bad)}
   <div class="conn"><span class="dot" id="dot"></span><span id="connText">connecting…</span></div>
   <nav class="views" role="tablist" aria-label="Section"><button class="ghost on" data-view="projects" title="Projects on Move and on this computer">Projects</button><button class="ghost" data-view="samples" title="Samples: Move library and folders on this computer">Samples</button><button class="ghost" data-view="presets" title="Track presets: Move library and folders on this computer">Presets</button></nav>
   <div class="spacer"></div>
-  <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="ghost" title="Listen to the chosen input through the computer — independent of recording">🎧 Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
-  <button id="langBtn" class="ghost" title="Language">RU</button>
-  <button id="themeBtn" class="ghost" title="Switch theme">Dark</button>
-  <button id="reportBtn" class="ghost" title="Something went wrong? Save a short report to send to the author">Report</button>
-  <button id="refresh">Refresh</button>
+  <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="hb" title="Listen to the chosen input through the computer — independent of recording">Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
+  <button id="langBtn" class="hb" title="Language">RU</button>
+  <button id="themeBtn" class="hb" title="Switch theme">Dark</button>
+  <button id="reportBtn" class="hb" title="Something went wrong? Save a short report to send to the author">Report</button>
+  <button id="refresh" class="hb">Refresh</button>
 </header>
 
 <main>
@@ -1407,7 +1409,7 @@ async function monStart(){
     an.fftSize = 1024; src.connect(an); src.connect(ctx.destination);
     S.mon = {stream, ctx, an, buf:new Float32Array(1024), frames:0, dev:stream.getAudioTracks()[0]?.getSettings().deviceId || dev};
     monFillInputs(S.mon.dev);
-    $("#monMeter").hidden = false; $("#monBtn").classList.add("on"); $("#monBtn").textContent = "🎧 Monitoring";
+    $("#monMeter").hidden = false; $("#monBtn").classList.add("on"); $("#monBtn").textContent = "Monitoring";
     requestAnimationFrame(monMeter);
     status(`Monitoring: ${stream.getAudioTracks()[0]?.label || "default input"}. Use headphones to avoid feedback`);
   }catch(e){ status("No access to the audio input: "+e.message, true); }
@@ -1415,7 +1417,7 @@ async function monStart(){
 async function monStop(){
   const M = S.mon; if(!M) return; S.mon = null;
   M.stream.getTracks().forEach(t => t.stop()); try{ await M.ctx.close(); }catch(e){}
-  $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "🎧 Monitor";
+  $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "Monitor";
   levelStop();
 }
 function monMeter(){
