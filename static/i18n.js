@@ -203,6 +203,22 @@ exact: {
     "Тоника и лад задают раскладку Pads; записанные ноты остаются на месте. ≈ после кода Camelot значит, что он приблизительный: лад не мажор и не минор.",
   "Delete this file from Move": "Удалить этот файл с Move", "Delete this folder and everything inside from Move": "Удалить эту папку со всем содержимым с Move",
   "Something inside is used — delete works only when nothing inside is used": "Что-то внутри используется — удалить можно, только если внутри ничего не используется",
+  // правая панель: кнопки и заголовки (the author, 17.11: переводить; кроме .mid и Generate)
+  "on computer": "на компьютере", "on Move": "на Move", "To computer →": "На компьютер →", "← To Move": "← На Move", "with audio": "со звуком",
+  "Show in Finder": "Показать в Finder", "Delete": "Удалить", "Group": "Группа", "Description": "Описание", "Notes": "Заметки",
+  "Tracks": "Треки", "Clips": "Клипы", "History": "История", "Apply changes": "Применить", "Reset": "Сбросить", "Restore": "Вернуть",
+  "Delete clip": "Удалить Clip", "Add loops…": "Добавить Loops…", "Export from Move": "Экспорт с Move", "Record input": "Записать вход",
+  "● Record input": "● Записать вход", "File…": "Файл…", "Sound": "Звук", "Project": "Проект", "Open": "Открыть",
+  "Copy to computer →": "Копировать на компьютер →", "← Copy to Move": "← Копировать на Move", "Copy to Move": "Копировать на Move",
+  "Name by project": "Назвать по проекту", "Used in": "Где используется", "Root": "Тоника", "Scale": "Лад", "Done": "Готово",
+  "Tempo, bpm": "Темп, bpm", "▶ Play": "▶ Слушать", "❚❚ Pause": "❚❚ Пауза", "Play": "Слушать", "No audio": "Без звука",
+  "● Start recording": "● Начать запись", "Start recording": "Начать запись", "■ Stop and save": "■ Остановить и сохранить", "Stop": "Стоп",
+  "Cancel": "Отмена", "Clear selection": "Снять выделение", "Choose…": "Выбрать…", "Change…": "Изменить…",
+  "Stop using this folder": "Не использовать эту папку", "Project group": "Группа проекта", "Audio format": "Формат звука", "Rename": "Переименовать",
+  // генератор: кнопки и ручки переводятся
+  "Genre": "Жанр", "Genres": "Жанры", "Bars": "Такты", "Swing": "Свинг", "Mutation": "Мутация", "Ghosts": "Гоуст-ноты", "Euclid": "Евклид",
+  "Another": "Ещё вариант", "Put in cell": "Положить в ячейку", "■ Stop": "■ Стоп", "▶ Play pattern": "▶ Слушать паттерн",
+  "½ time: off": "Халфтайм: выкл.", "½ time: all": "Халфтайм: всё", "½ time: kick": "Халфтайм: бочка", "½ time: kick + snare": "Халфтайм: бочка + снейр",
   "Empty folder. Drag files here from the other panel or from Finder.": "Пустая папка. Перетащите сюда файлы из другой панели или из Finder."
 },
 patterns: [

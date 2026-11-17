@@ -57,10 +57,15 @@ class Translate(unittest.TestCase):
 
     def test_buttons_and_tabs_stay_english(self):
         # the author (17.11): короткие кнопки, вкладки и заголовки — по-английски; переводятся описания и сообщения
-        labels = ["Projects", "Samples", "Presets", "Refresh", "Report", "Tracks", "Clips", "History", "Restore",
-                  "Delete clip", "Add loops…", "To computer →", "← To Move", "Enable pad control", "Cancel",
-                  "Save report", "Report a problem", "Default input", "Swing", "Mutation"]
+        # the author (17.11): шапка остаётся английской; кнопки .mid и Generate — тоже
+        labels = ["Projects", "Samples", "Presets", "Refresh", "Report", "Enable pad control", "Save report",
+                  "Report a problem", "Default input", "Save .mid", "Load .mid", "Generate…"]
         self.assertEqual(translate(labels), labels)
+
+    def test_panel_and_generator_controls_are_russian(self):
+        got = translate(["Description", "Notes", "To computer →", "← To Move", "Open", "Copy to computer →", "Tracks", "Clips",
+                         "History", "Restore", "Genre", "Mutation", "Put in cell", "on computer"])
+        self.assertEqual([g for g in got if not CYR.search(g)], [])
 
     def test_descriptions_are_russian_with_english_terms(self):
         r = translate(["Looking for Move on the network…", "Deleting a clip on Move needs pad control enabled",
