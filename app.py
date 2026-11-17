@@ -71,7 +71,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "57"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "58"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.1"       # версия для друзей (релиз v1.1); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}

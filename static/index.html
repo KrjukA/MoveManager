@@ -309,6 +309,8 @@ footer .status.err{color:var(--bad)}
 .menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px;white-space:nowrap}
 .menu button:hover{background:var(--sel)}
 #libPath{display:none!important}
+#moveGrid.pads.eqon [data-slot]{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--eqc,transparent) calc(var(--eq,0) * 58%),transparent)}
+#moveGrid.pads.eqon [data-slot].eqpk{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--eqc) calc(var(--eq,0) * 58% + 14%),transparent),inset 0 3px 0 var(--eqc)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -1413,13 +1415,51 @@ async function monStop(){
   const M = S.mon; if(!M) return; S.mon = null;
   M.stream.getTracks().forEach(t => t.stop()); try{ await M.ctx.close(); }catch(e){}
   $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "🎧 Monitor";
+  padEQClear();
 }
 function monMeter(){
   const M = S.mon; if(!M) return;
   M.an.getFloatTimeDomainData(M.buf); let pk = 0; for(const v of M.buf) pk = Math.max(pk, Math.abs(v));
   const cv = $("#monMeter"), g = cv.getContext("2d"), x = Math.max(0, Math.min(1, (20*Math.log10(pk||1e-5)+60)/60));
   g.clearRect(0,0,cv.width,cv.height); g.fillStyle = x>0.9 ? "#ff5d5d" : x>0.75 ? "#d9c545" : "#5fd38d"; g.fillRect(0,0,cv.width*x,cv.height);
+  padEQ(M);
   M.frames++; requestAnimationFrame(monMeter);
+}
+/* эквалайзер на пэдах Move, пока включён Monitor (сборка 58): 8 колонок — 8 полос от баса к верху,
+   пэды загораются снизу вверх по громкости полосы; быстрое нарастание, медленный спад, падающие пики */
+const EQ_COLORS = [1, 2, 3, 7, 10, 13, 17, 18].map(i => `rgb(${PAD_COLORS[i]})`);
+const EQ = {lvl: new Float32Array(8), peak: new Float32Array(8), freq: null};
+const EQ_CALM = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+function padEQ(M){
+  const grid = document.querySelector("#moveGrid.pads");
+  if(!grid || S.view !== "projects"){ if(grid) padEQClear(); return; }
+  const an = M.an, bins = an.frequencyBinCount;
+  if(!EQ.freq || EQ.freq.length !== bins) EQ.freq = new Float32Array(bins);
+  an.getFloatFrequencyData(EQ.freq);
+  const hz = M.ctx.sampleRate / an.fftSize;
+  for(let b=0; b<8; b++){
+    const lo = 40 * Math.pow(400, b/8), hi = 40 * Math.pow(400, (b+1)/8);      // 40 Гц … 16 кГц, по октавам
+    let db = -Infinity;
+    for(let k=Math.max(1, Math.floor(lo/hz)); k<=Math.min(bins-1, Math.ceil(hi/hz)); k++) db = Math.max(db, EQ.freq[k]);
+    const v = Math.max(0, Math.min(1, (db + 85) / 60));
+    EQ.lvl[b] = v > EQ.lvl[b] ? v : EQ.lvl[b] * 0.86 + v * 0.14;
+    EQ.peak[b] = Math.max(EQ.lvl[b], EQ.peak[b] - 0.01);
+  }
+  grid.classList.add("eqon");
+  for(const el of grid.querySelectorAll("[data-slot]")){
+    const slot = +el.dataset.slot, c = slot % 8, r = Math.floor(slot / 8);     // r: 0 — нижний ряд
+    const a = Math.max(0, Math.min(1, EQ.lvl[c] * 4 - r));
+    const pk = !EQ_CALM && EQ.peak[c] > 0.06 && Math.min(3, Math.floor(EQ.peak[c] * 4)) === r;
+    el.style.setProperty("--eq", (EQ_CALM ? a * 0.5 : a).toFixed(2));
+    el.style.setProperty("--eqc", EQ_COLORS[c]);
+    el.classList.toggle("eqpk", pk);
+  }
+}
+function padEQClear(){
+  EQ.lvl.fill(0); EQ.peak.fill(0);
+  const grid = document.querySelector("#moveGrid"); if(!grid) return;
+  grid.classList.remove("eqon");
+  grid.querySelectorAll("[data-slot]").forEach(el => { el.style.removeProperty("--eq"); el.classList.remove("eqpk"); });
 }
 $("#monBtn").onclick = () => S.mon ? monStop() : monStart();
 function monFillInputs(cur){
