@@ -1,6 +1,7 @@
 """Исправления после финальной проверки библиотеки сэмплов."""
 import json
 import os
+import shlex
 import stat
 import tempfile
 import time
@@ -18,7 +19,7 @@ class Fixes(Base):
         fake = bindir / "ls"
         fake.write_text("#!/bin/sh\n/bin/ls \"$@\" | LC_ALL=C sed 's/[\\x80-\\xff]/?/g'\n")
         fake.chmod(0o755)
-        os.environ["MOVE_SSH_CMD"] = f"env PATH={bindir}:/usr/bin:/bin sh -c"
+        os.environ["MOVE_SSH_CMD"] = f"env PATH={shlex.quote(str(bindir) + ':' + os.environ['PATH'])} sh -c"   # GNU-утилиты остаются (Mac)
         (self.lib / "Samples/Кик.wav").write_bytes(b"RIFFk")
         s = self.lib / "Sets" / "22222222-2222-3333-4444-555555555555" / "Медленный"; s.mkdir(parents=True)
         (s / "Song.abl").write_text(json.dumps({"a": "ableton:/user-library/Samples/Other/unused.wav",
