@@ -277,7 +277,7 @@ header .views{display:flex;gap:2px;align-self:center}header .views button{paddin
 #libGrid .tile.row .swb{grid-area:n;justify-self:end}
 .monbar{display:inline-flex;align-items:center;gap:6px}
 .monbar select{width:auto;max-width:180px;height:26px;padding:2px 22px 2px 6px!important;font-size:12px}
-#monMeter{background:var(--device);border-radius:2px}
+#monMeter{color:var(--text);image-rendering:pixelated}
 #monBtn.on{color:var(--accent);border-color:var(--accent)}
 .keyedit{margin-top:6px}
 .keyacts{display:flex;justify-content:flex-end;margin-top:4px}
@@ -309,8 +309,9 @@ footer .status.err{color:var(--bad)}
 .menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px;white-space:nowrap}
 .menu button:hover{background:var(--sel)}
 #libPath{display:none!important}
-#moveGrid.pads.eqon [data-slot]{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--eqc,transparent) calc(var(--eq,0) * 58%),transparent)}
-#moveGrid.pads.eqon [data-slot].eqpk{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--eqc) calc(var(--eq,0) * 58% + 14%),transparent),inset 0 3px 0 var(--eqc)}
+.mini.lv i{background:color-mix(in srgb,var(--lc) calc(var(--on,0) * 75%),var(--line))!important;transition:none}
+#moveGrid .mini.lv i{background:color-mix(in srgb,var(--lc) calc(var(--on,0) * 80%),rgba(255,255,255,.07))!important}
+.mini.lv i.c,#moveGrid .mini.lv i.c{background:color-mix(in srgb,var(--lc) calc(45% + var(--on,0) * 55%),transparent)!important;box-shadow:0 0 calc(var(--on,0) * 5px) var(--lc)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -514,7 +515,7 @@ function trackColor(t){ return PAD_COLORS[t?.color] ? `rgb(${PAD_COLORS[t.color]
 function miniHTML(info){
   const g = info.clips, tr = info.tracks || [], sc = Math.max(1, ...g.map(r => r.length));
   let cells = "";
-  g.forEach((row, t) => { const c = trackColor(tr[t]); for(let s=0;s<sc;s++) cells += row[s] ? `<i style="background:${c}"></i>` : "<i></i>"; });
+  g.forEach((row, t) => { const c = trackColor(tr[t]); for(let s=0;s<sc;s++) cells += row[s] ? `<i class="c" style="background:${c}"></i>` : "<i></i>"; });
   return `<div class="mini" style="--sc:${sc}" aria-hidden="true">${cells}</div>`;
 }
 function tileHTML(side, it, pad){
@@ -1415,52 +1416,64 @@ async function monStop(){
   const M = S.mon; if(!M) return; S.mon = null;
   M.stream.getTracks().forEach(t => t.stop()); try{ await M.ctx.close(); }catch(e){}
   $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "🎧 Monitor";
-  padEQClear();
+  levelStop();
 }
 function monMeter(){
   const M = S.mon; if(!M) return;
-  M.an.getFloatTimeDomainData(M.buf); let pk = 0; for(const v of M.buf) pk = Math.max(pk, Math.abs(v));
-  const cv = $("#monMeter"), g = cv.getContext("2d"), x = Math.max(0, Math.min(1, (20*Math.log10(pk||1e-5)+60)/60));
-  g.clearRect(0,0,cv.width,cv.height); g.fillStyle = x>0.9 ? "#ff5d5d" : x>0.75 ? "#d9c545" : "#5fd38d"; g.fillRect(0,0,cv.width*x,cv.height);
-  padEQ(M);
+  M.an.getFloatTimeDomainData(M.buf);
+  let pk = 0, sq = 0; for(const v of M.buf){ const a = Math.abs(v); if(a > pk) pk = a; sq += v*v; }
+  const peakDb = 20*Math.log10(pk || 1e-5), rmsDb = 10*Math.log10(sq/M.buf.length || 1e-10);
+  pixelMeter(Math.max(0, Math.min(1, (peakDb + 60) / 60)), pk >= 0.99);
+  miniLevel(rmsDb);
   M.frames++; requestAnimationFrame(monMeter);
 }
-/* эквалайзер на пэдах Move, пока включён Monitor (сборка 58): 8 колонок — 8 полос от баса к верху,
-   пэды загораются снизу вверх по громкости полосы; быстрое нарастание, медленный спад, падающие пики */
-const EQ_COLORS = [1, 2, 3, 7, 10, 13, 17, 18].map(i => `rgb(${PAD_COLORS[i]})`);
-const EQ = {lvl: new Float32Array(8), peak: new Float32Array(8), freq: null};
-const EQ_CALM = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-function padEQ(M){
-  const grid = document.querySelector("#moveGrid.pads");
-  if(!grid || S.view !== "projects"){ if(grid) padEQClear(); return; }
-  const an = M.an, bins = an.frequencyBinCount;
-  if(!EQ.freq || EQ.freq.length !== bins) EQ.freq = new Float32Array(bins);
-  an.getFloatFrequencyData(EQ.freq);
-  const hz = M.ctx.sampleRate / an.fftSize;
-  for(let b=0; b<8; b++){
-    const lo = 40 * Math.pow(400, b/8), hi = 40 * Math.pow(400, (b+1)/8);      // 40 Гц … 16 кГц, по октавам
-    let db = -Infinity;
-    for(let k=Math.max(1, Math.floor(lo/hz)); k<=Math.min(bins-1, Math.ceil(hi/hz)); k++) db = Math.max(db, EQ.freq[k]);
-    const v = Math.max(0, Math.min(1, (db + 85) / 60));
-    EQ.lvl[b] = v > EQ.lvl[b] ? v : EQ.lvl[b] * 0.86 + v * 0.14;
-    EQ.peak[b] = Math.max(EQ.lvl[b], EQ.peak[b] - 0.01);
-  }
-  grid.classList.add("eqon");
-  for(const el of grid.querySelectorAll("[data-slot]")){
-    const slot = +el.dataset.slot, c = slot % 8, r = Math.floor(slot / 8);     // r: 0 — нижний ряд
-    const a = Math.max(0, Math.min(1, EQ.lvl[c] * 4 - r));
-    const pk = !EQ_CALM && EQ.peak[c] > 0.06 && Math.min(3, Math.floor(EQ.peak[c] * 4)) === r;
-    el.style.setProperty("--eq", (EQ_CALM ? a * 0.5 : a).toFixed(2));
-    el.style.setProperty("--eqc", EQ_COLORS[c]);
-    el.classList.toggle("eqpk", pk);
+/* пиксельный индикатор уровня у Monitor (сборка 58): клетки из «пикселей», плотность штриховки — громкость */
+const BAYER = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+const PM = {lvl: 0, peak: 0, hold: 0};
+function pixelMeter(x, clip){
+  const cv = $("#monMeter"), g = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const W = 96, H = 12, P = 2, CELLS = 12, CW = W / CELLS;
+  if(cv.width !== W*dpr){ cv.width = W*dpr; cv.height = H*dpr; cv.style.width = W+"px"; cv.style.height = H+"px"; }
+  PM.lvl = x > PM.lvl ? x : PM.lvl*0.9 + x*0.1;
+  if(PM.lvl >= PM.peak){ PM.peak = PM.lvl; PM.hold = 40; } else if(PM.hold > 0) PM.hold--; else PM.peak = Math.max(PM.lvl, PM.peak - 0.006);
+  const css = getComputedStyle(cv), ink = clip ? "#ff5d5d" : (css.color || "#ededea");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H); g.fillStyle = ink;
+  const n = PM.lvl * CELLS, pkCell = Math.min(CELLS-1, Math.floor(PM.peak * CELLS));
+  for(let c=0; c<CELLS; c++){
+    let d = Math.max(0, Math.min(1, n - c));                       // плотность клетки: 1 — сплошная, дробь — штриховка
+    if(c === pkCell && PM.peak > 0.03) d = Math.max(d, 0.25);       // пик — лёгкая штриховка
+    const t = Math.round(d * 16);
+    for(let y=0; y<H/P; y++) for(let xx=0; xx<(CW-P)/P; xx++)
+      if(BAYER[y%4][xx%4] < t) g.fillRect(c*CW + xx*P, y*P, P-0.4, P-0.4);
   }
 }
-function padEQClear(){
-  EQ.lvl.fill(0); EQ.peak.fill(0);
-  const grid = document.querySelector("#moveGrid"); if(!grid) return;
-  grid.classList.remove("eqon");
-  grid.querySelectorAll("[data-slot]").forEach(el => { el.style.removeProperty("--eq"); el.classList.remove("eqpk"); });
+/* мини-сетка выбранного проекта «играет» под вход (сборка 58): колонки загораются слева направо по громкости,
+   цветом треков. Автоуровень: громкость меряется относительно недавнего диапазона, поэтому и громкий,
+   и тихий сигнал раскладываются на все 8 клеток и показывают динамику */
+const AG = {hist: new Float32Array(180), i: 0, n: 0, sm: -60, v: 0, el: null};   // 180 кадров ≈ 3 с
+function miniLevel(db){
+  if(!isFinite(db)) db = -100;
+  AG.sm = db > AG.sm ? AG.sm + (db - AG.sm) * 0.5 : AG.sm + (db - AG.sm) * 0.2;          // лёгкое сглаживание
+  AG.hist[AG.i] = AG.sm; AG.i = (AG.i + 1) % AG.hist.length; AG.n = Math.min(AG.n + 1, AG.hist.length);
+  let lo = Infinity, hi = -Infinity;
+  for(let k=0; k<AG.n; k++){ const v = AG.hist[k]; if(v < lo) lo = v; if(v > hi) hi = v; }
+  if(hi - lo < 6){ const m = (hi + lo) / 2; lo = m - 3; hi = m + 3; }                  // ровный сигнал — не дёргаться
+  if(hi < -70){ AG.v *= 0.85; }                                                          // тишина — гаснет
+  else { const x = (AG.sm - lo) / (hi - lo); AG.v = x > AG.v ? AG.v + (x - AG.v) * 0.6 : AG.v * 0.82 + x * 0.18; }
+  const it = selItem(), mini = it && S.sel && document.querySelector(`.tile[data-side="${S.sel.side}"][data-id="${CSS.escape(S.sel.id)}"] .mini`);
+  if(AG.el && AG.el !== mini) levelClear(AG.el);
+  AG.el = mini || null;
+  if(!mini || !it.info?.clips) return;
+  const tr = it.info.tracks || [], sc = +getComputedStyle(mini).getPropertyValue("--sc") || 8, cells = mini.children, n = AG.v * sc;
+  mini.classList.add("lv");
+  for(let k=0; k<cells.length; k++){
+    const t = Math.floor(k / sc), s = k % sc, on = Math.max(0, Math.min(1, n - s)), el = cells[k];
+    el.style.setProperty("--lc", trackColor(tr[t]));
+    el.style.setProperty("--on", on.toFixed(2));
+  }
 }
+function levelClear(mini){ mini.classList.remove("lv"); for(const el of mini.children){ el.style.removeProperty("--on"); el.style.removeProperty("--lc"); } }
+function levelStop(){ if(AG.el) levelClear(AG.el); AG.el = null; AG.v = 0; AG.n = 0; AG.i = 0; PM.lvl = PM.peak = 0; }
 $("#monBtn").onclick = () => S.mon ? monStop() : monStart();
 function monFillInputs(cur){
   if(cur===undefined){ try{ cur = localStorage.getItem("mm-mon-input") || ""; }catch(e){ cur = ""; } }
