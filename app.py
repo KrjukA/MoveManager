@@ -69,7 +69,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "52"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "53"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
