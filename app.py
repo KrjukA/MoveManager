@@ -11,11 +11,13 @@ import json
 import math
 import mimetypes
 import os
+import platform
 import re
 import shlex
 import shutil
 import subprocess
 import tarfile
+import traceback
 import sys
 import threading
 import time
@@ -69,7 +71,8 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "54"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "57"          # номер сборки: виден в шапке программы и в журнале экспорта
+VERSION = "1.1"       # версия для друзей (релиз v1.1); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -702,12 +705,36 @@ def ssh_enabled():
     return bool(CFG.get("ssh_enabled"))
 
 
+def _win_short_path(path):
+    """Короткое имя папки Windows (8.3), например C:\\Users\\D0B0~1; не вышло — пусто."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, 1024)
+        return buf.value if 0 < n < 1024 else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def ssh_safe_path(path, platform=None, short=None):
+    """Путь для ssh/ssh-keygen. Старый OpenSSH в Windows 10 может не открыть путь с кириллицей
+    (C:\\Users\\Иван\\…) — тогда даём короткое латинское имя папки; файла может ещё не быть, поэтому берём папку."""
+    s = str(path)
+    if (platform or sys.platform) != "win32" or s.isascii():
+        return s
+    sep = "\\" if "\\" in s else "/"
+    parent, _, name = s.rpartition(sep)
+    sp = (short or _win_short_path)(parent)
+    return sp + sep + name if sp and sp.isascii() else s
+
+
 def ssh_cmd():
     if os.environ.get("MOVE_SSH_CMD"):
         return shlex.split(os.environ["MOVE_SSH_CMD"])
     host = urlparse(CFG["move_url"]).hostname or "move.local"
-    return ["ssh", "-i", str(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-            "-o", "StrictHostKeyChecking=accept-new", "-o", f'UserKnownHostsFile="{Path(KNOWN_HOSTS).as_posix()}"',
+    known = Path(ssh_safe_path(KNOWN_HOSTS)).as_posix()
+    return ["ssh", "-i", ssh_safe_path(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new", "-o", f'UserKnownHostsFile="{known}"',
             "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", f"ableton@{host}"]
 
 
@@ -1452,7 +1479,8 @@ def ssh_read_song(oid):
 
 
 def ssh_write_song(oid, payload):
-    ssh_run(f'set -e; f=$(ls {set_dir(oid)}/*/Song.abl | head -n 1); [ -n "$f" ]; '
+    # путь — перебором в оболочке, не через ls: BusyBox ls печатает «?» вместо кириллицы («Песня» → «??????????»)
+    ssh_run(f'set -e; f=; for x in {set_dir(oid)}/*/Song.abl; do [ -f "$x" ] && {{ f="$x"; break; }}; done; [ -n "$f" ]; '
             f'cat > "$f.tmp"; mv "$f.tmp" "$f"; {REFRESH}', data=payload, timeout=90)
 
 
@@ -1644,7 +1672,7 @@ def ensure_ssh_key():
     if not SSH_KEY.exists() or not pub_path.exists():
         Path(SSH_KEY).parent.mkdir(parents=True, exist_ok=True)
         try:
-            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", str(SSH_KEY)],
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "move-manager", "-f", ssh_safe_path(SSH_KEY)],
                            check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except FileNotFoundError:
             raise AppError(NO_SSH_MSG)
@@ -1708,6 +1736,92 @@ def reveal(path, select=False):
 JOBS = {}
 
 
+def log_error(title, exc):
+    """Ошибка с полным следом (traceback) в cache/errors.log — чтобы разбирать отчёты друзей."""
+    try:
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip()
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        f = CACHE_DIR / "errors.log"
+        if f.exists() and f.stat().st_size > 600_000:
+            f.write_text(f.read_text("utf-8", "replace")[-300_000:], "utf-8")
+        with f.open("a", encoding="utf-8") as h:
+            h.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [build {BUILD}] {title}: {exc}\n{tb}\n---\n")
+    except OSError:
+        pass
+
+
+REPORT_DIR = Path.home() / "Desktop"
+
+
+def normalize_move_url(value):
+    """Адрес Move от человека: «192.168.1.23», «move.local», «http://…/…» → «http://хост». Только имя или IP."""
+    s = str(value or "").strip()
+    if not s:
+        return "http://move.local"
+    host = urlparse(s if "://" in s else "http://" + s)
+    try:
+        host.port                                    # «192.168.1.5:abc» → ошибка
+    except ValueError:
+        raise AppError("Enter Move's address like 192.168.1.23 or move.local")
+    if host.netloc.count(":") > 1:                   # IPv6 без скобок: «fe80::1»
+        raise AppError("Enter Move's address like 192.168.1.23 or move.local")
+    name = host.hostname or ""
+    if host.username or host.password or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]{0,252}", name) \
+            or s.startswith("-") or any(c in s for c in " ;$`|&<>'\""):
+        raise AppError("Enter Move's address like 192.168.1.23 or move.local")
+    return "http://" + name.lower()
+
+
+def build_report(text):
+    """Текст отчёта: что написал человек, сборка, система, состояние подключения, последние ошибки.
+    Без cookies, ключей и паролей; домашняя папка заменена на «~»."""
+    def tail(name, chars):
+        f = CACHE_DIR / name
+        try:
+            return f.read_text("utf-8", "replace")[-chars:] if f.exists() else "(empty)"
+        except OSError:
+            return "(could not read)"
+    lines = [
+        f"{APP_NAME} — problem report",
+        f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Version: {VERSION} · Build: {BUILD}",
+        f"System: {platform.platform()} · Python {platform.python_version()} · {'app' if FROZEN else 'source'}",
+        f"Move address: {CFG.get('move_url')}",
+        f"Signed in to Move: {'yes' if CFG.get('cookies') else 'no'} · pad control (SSH): {'on' if ssh_enabled() else 'off'}",
+        f"Library folder: {CFG.get('library')}",
+        f"Data folder: {DATA_DIR}",
+        "",
+        "What happened:",
+        (str(text or "").strip() or "(no description)"),
+        "",
+        "Recent errors (cache/errors.log):",
+        tail("errors.log", 20_000),
+        "",
+        "Slow Move commands (cache/ssh-timing.log):",
+        tail("ssh-timing.log", 3_000),
+    ]
+    rep = "\n".join(lines) + "\n"
+    home = str(Path.home())
+    if home and home != "/":
+        rep = rep.replace(home, "~")
+    for v in (CFG.get("cookies") or {}).values():   # на всякий случай: значения входа не попадают никуда
+        if v:
+            rep = rep.replace(str(v), "[hidden]")
+    return rep
+
+
+def save_report(text):
+    folder = REPORT_DIR
+    try:
+        folder.mkdir(exist_ok=True)                  # Рабочий стол; если его нет — папка данных программы
+    except OSError:
+        folder = DATA_DIR
+        folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{APP_NAME} report {time.strftime('%Y-%m-%d %H-%M-%S')}.txt"
+    path.write_text(build_report(text), "utf-8")
+    return path
+
+
 def log_line(name, text):
     """Короткий журнал в cache/: ошибки задач и медленные команды к Move — чтобы разбирать сбои по факту."""
     try:
@@ -1744,7 +1858,7 @@ def start_job(title, fn):
         except MoveOffline:
             job.update(status="error", error="Move is unreachable. Check that it is on and on the same network.")
         except Exception as e:  # noqa: BLE001
-            log_line("errors.log", f"{title}: {e}")
+            log_error(title, e)
             job.update(status="error", error=str(e))
 
     threading.Thread(target=run, daemon=True).start()
@@ -1787,7 +1901,12 @@ def job_pull(oid, with_audio, group=None):
         obj = set_by_id(oid)
         name = safe_name(obj["name"])
         root = lib_root()
-        d = root / name
+        d, k = root / name, 2
+        # папка с тем же именем, но от другого проекта (или своя, без sourceId) — не трогаем: «Имя 2», «Имя 3»…
+        while d.exists() and (any(d.glob("*.ablbundle")) or not d.is_dir()) \
+                and read_json(d / "meta.json", {}).get("sourceId") != oid:
+            d, k = root / f"{name} {k}", k + 1
+        name = d.name
         d.mkdir(exist_ok=True)
         stage("Downloading project")
         tmp = tmp_path(".ablbundle")
@@ -1881,9 +2000,12 @@ def job_push(folder, slot=None, replace_id=None):
             # старый проект удаляем только после того, как новый однозначно найден на устройстве
             if len(created) != 1:
                 raise AppError("The new project was uploaded but could not be identified — the old one was kept")
+            stage("Saving a copy of the previous project")
+            backup_move_set(replace_id)
             stage("Removing the previous project from the pad")
             MOVE.delete(replace_id)
-            history.move_history(history_dir("move", replace_id), history_dir("move", created[0]))   # тот же проект на пэде
+            if read_json(d / "meta.json", {}).get("sourceId") == replace_id:     # тот же проект вернулся на свой пэд
+                history.move_history(history_dir("move", replace_id), history_dir("move", created[0]))
             with LOCK:
                 CFG.setdefault("move_meta", {}).pop(replace_id, None)
                 INFO_CACHE.pop(replace_id, None)
@@ -1907,6 +2029,10 @@ def job_push(folder, slot=None, replace_id=None):
                     schwung = schwung_restore(created[0], state.read_bytes())
                 except (SshError, AppError, tarfile.TarError) as e:
                     schwung = f"error: {e}"
+        if len(created) == 1:                    # проект на компьютере теперь «родом» с нового сета, если не с другого живого
+            src_id = read_json(d / "meta.json", {}).get("sourceId")
+            if not src_id or src_id == replace_id or src_id not in {o["objectId"] for o in MOVE.list_sets()}:
+                update_meta(d, sourceId=created[0])
         return {"name": d.name, "slot": placed, "replaced": bool(replace_id), "schwung": schwung}
     return fn
 
@@ -1926,7 +2052,7 @@ def job_edit_move(oid, order, pans, replace, key=None):
                     INFO_CACHE.pop(oid, None)
                 return {"inPlace": True}
         before = {o["objectId"] for o in MOVE.list_sets()}
-        src, dst = tmp_path(".ablbundle"), tmp_path(".ablbundle")
+        src, dst, orig = tmp_path(".ablbundle"), tmp_path(".ablbundle"), tmp_path(".ablbundle")
         new_name = f"{obj['name']}_edit"
         try:
             stage("Downloading project")
@@ -1935,22 +2061,34 @@ def job_edit_move(oid, order, pans, replace, key=None):
             edit_bundle(src, dst, order, pans, key)
             with zipfile.ZipFile(src) as z:              # версия до правки — запишем, когда новый сет опознан
                 before_bytes = z.read(find_song_entry(z))
+            if replace:
+                shutil.copyfile(src, orig)                 # оригинал целиком — в «_Deleted» перед удалением с Move
             stage("Uploading to Move")
             MOVE.upload(dst, f"{new_name}.ablbundle")
+        except BaseException:
+            orig.unlink(missing_ok=True)
+            raise
         finally:
             src.unlink(missing_ok=True)
             dst.unlink(missing_ok=True)
         if replace:
             created = [o for o in MOVE.list_sets() if o["objectId"] not in before]
             if len(created) != 1:
+                orig.unlink(missing_ok=True)
                 raise AppError("The new version was uploaded but could not be identified — the original was kept")
             new_oid = created[0]["objectId"]
+            stage("Saving a copy of the original")
+            try:
+                backup_move_set(oid, orig)               # не вышло — оригинал и его история остаются как были
+            finally:
+                orig.unlink(missing_ok=True)
             # история — к новому сету до удаления и переименования: сбой там не оставит её у удалённого ID
             history.move_history(history_dir("move", oid), history_dir("move", new_oid))
             _save_version(history_dir("move", new_oid), before_bytes, edit_action(order, pans, key))
             stage("Replacing the original")
             MOVE.delete(oid)
             MOVE.rename(new_oid, obj["name"])
+            remap_library_source(oid, new_oid)
             with LOCK:
                 meta = CFG.setdefault("move_meta", {})
                 if oid in meta:
@@ -2863,6 +3001,44 @@ def rename_library(folder, new_name):
     return new_name
 
 
+def remap_library_source(old, new):
+    """Сет на Move получил новый ID (замена без SSH) — проекты на компьютере «родом» с него помнят новый."""
+    try:
+        for d in lib_root().iterdir():
+            if d.is_dir() and not d.name.startswith((".", "_")) and read_json(d / "meta.json", {}).get("sourceId") == old:
+                update_meta(d, sourceId=new)
+    except OSError:
+        pass
+
+
+def backup_move_set(oid, bundle=None):
+    """Копия сета с Move в «_Deleted» библиотеки на компьютере — перед любым удалением с девайса.
+    bundle — уже скачанный бандл (иначе скачиваем). Не вышло — AppError, и удалять нельзя."""
+    obj = set_by_id(oid)
+    name = safe_name(obj.get("name") or "Project")
+    d = None
+    try:
+        trash = lib_root() / "_Deleted"
+        trash.mkdir(parents=True, exist_ok=True)
+        d = trash / f"{name} (deleted from Move {time.strftime('%Y%m%d-%H%M%S')})"
+        k = 2
+        while d.exists():
+            d, k = trash / f"{name} (deleted from Move {time.strftime('%Y%m%d-%H%M%S')} {k})", k + 1
+        d.mkdir()
+        target = d / f"{name}.ablbundle"
+        if bundle is not None:
+            shutil.copyfile(bundle, target)
+        else:
+            MOVE.download(oid, target)
+        write_json(d / "meta.json", {"sourceId": oid, "savedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                     "notes": "Copy saved before the project was deleted from Move."})
+        return d
+    except (OSError, AppError, MoveOffline, requests.exceptions.RequestException) as e:
+        if d is not None:
+            shutil.rmtree(d, ignore_errors=True)
+        raise AppError(f"Could not save a copy of \"{name}\" before deleting it from Move, so nothing was deleted: {e}")
+
+
 def trash_library(folder):
     d = lib_dir(folder)
     trash = d.parent / "_Deleted"
@@ -3131,6 +3307,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:  # noqa: BLE001
+            log_error(f"{self.command} {urlparse(self.path).path}", e)
             self.send_json({"error": "app", "message": f"Internal error: {e}"}, 500)
         finally:
             # ответ отправлен, а тело запроса так и не прочитано — его байты сломали бы следующий запрос
@@ -3146,15 +3323,24 @@ class Handler(BaseHTTPRequestHandler):
 
         if m in ("GET", "HEAD") and path in ("/", "/index.html"):
             return self.send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
-        if m in ("GET", "HEAD") and len(seg) == 2 and seg[0] == "static" and re.fullmatch(r"[a-z0-9_-]+\.png", seg[1]):
-            f = STATIC_DIR / seg[1]                 # картинки интерфейса (логотип, значок); только .png из static
+        if m in ("GET", "HEAD") and len(seg) == 2 and seg[0] == "static" and re.fullmatch(r"[a-z0-9_-]+\.(png|js)", seg[1]):
+            f = STATIC_DIR / seg[1]                 # картинки интерфейса и скрипт переводов; только из static
             if f.is_file():
-                return self.send_file(f, "image/png")
+                return self.send_file(f, "image/png" if f.suffix == ".png" else "text/javascript; charset=utf-8")
         if not seg or seg[0] != "api":
             return self.send_json({"error": "not found"}, 404)
         seg = seg[1:]
 
         # ── настройки
+        if seg == ["report"] and m == "POST":
+            b = self.body()
+            path = save_report(str(b.get("text") or "")[:5000])
+            if b.get("reveal"):
+                try:
+                    reveal(path, select=True)
+                except Exception:  # noqa: BLE001  — открыть папку не вышло: файл всё равно сохранён
+                    pass
+            return self.send_json({"ok": True, "path": str(path), "name": path.name})
         if seg == ["config"] and m == "GET":
             return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),
@@ -3172,8 +3358,11 @@ class Handler(BaseHTTPRequestHandler):
                 CFG["library"] = str(p)
             if b.get("audioFormat") in ("wav", "mp3"):
                 CFG["audio_format"] = b["audioFormat"]
-            if b.get("moveUrl"):
-                CFG["move_url"] = str(b["moveUrl"]).rstrip("/")
+            if "moveUrl" in b:
+                new_url = normalize_move_url(b["moveUrl"])
+                if new_url != CFG.get("move_url"):
+                    CFG["move_url"] = new_url
+                    ssh_session_reset()                  # SSH-соединение было к старому адресу
             if "midiFolder" in b:
                 mf = str(b["midiFolder"] or "").strip()
                 if mf and not Path(mf).expanduser().is_dir():
@@ -3407,8 +3596,15 @@ class Handler(BaseHTTPRequestHandler):
                 MOVE.rename(oid, safe_name(self.body().get("name")))
                 return self.send_json({"ok": True})
             if act is None and m == "DELETE":
-                MOVE.delete(oid)
-                return self.send_json({"ok": True})
+                def fn(stage):                               # задача: скачивание копии бывает долгим
+                    stage("Saving a copy to the computer before deleting")
+                    kept = backup_move_set(oid)              # копия в «_Deleted» на компьютере, иначе не удаляем
+                    stage("Deleting from Move")
+                    MOVE.delete(oid)
+                    with LOCK:
+                        INFO_CACHE.pop(oid, None)
+                    return {"ok": True, "backup": kept.name}
+                return self.send_json(start_job("delete", fn))
 
         # ── библиотека
         if seg == ["library-import"] and m == "POST":

@@ -157,6 +157,7 @@ class Hooks(RouteBase):
     # ── перенос и смена ID ──
     def test_pull_into_existing_folder_saves_version(self):
         app.MOVE.sets[0]["name"] = "Demo"
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))   # тот же проект
         before = self.lib_song()[0]
         app.ssh_enabled = lambda: False
         app.job_pull(OID, False)(lambda *a, **k: None)
@@ -171,11 +172,53 @@ class Hooks(RouteBase):
         self.assertEqual(history.list_versions(app.history_dir("lib", "Fresh")), [])
 
     def test_push_replace_moves_history(self):
+        # сборка 55: история переезжает, только если проект на компьютере пришёл с этого сета (sourceId)
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
         history.save_version(app.history_dir("move", OID), b"{}", "old")
         app.ssh_enabled = lambda: False
         app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
         self.assertEqual([v["action"] for v in self.mv(NEW)], ["old"])
         self.assertEqual(self.mv(OID), [])
+
+    def test_push_onto_other_project_keeps_its_history(self):
+        history.save_version(app.history_dir("move", OID), b"{}", "old")
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)      # другой проект на занятый пэд
+        self.assertEqual(self.mv(NEW), [])
+
+    def deleted(self):
+        trash = self.tmp / "lib" / "_Deleted"
+        return sorted(p.name for p in trash.rglob("*.ablbundle")) if trash.exists() else []
+
+    def test_push_replace_backs_up_deleted_project(self):
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
+        self.assertEqual(self.deleted(), ["Live Set.ablbundle"])
+        self.assertNotIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_backup_failure_blocks_delete(self):
+        def boom(oid, dest, progress=None):
+            raise app.MoveOffline("Wi-Fi gone")
+        app.MOVE.download = boom
+        app.ssh_enabled = lambda: False
+        with self.assertRaises(app.AppError):
+            app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
+        self.assertIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+        st, _, b = self.req("DELETE", f"/api/move/sets/{OID}")
+        self.assertEqual(self.wait_job(b)["status"], "error")
+        self.assertIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_delete_route_backs_up(self):
+        st, _, b = self.req("DELETE", f"/api/move/sets/{OID}")
+        self.assertEqual(st, 200, b)
+        self.assertEqual(self.wait_job(b)["status"], "done")
+        self.assertEqual(self.deleted(), ["Live Set.ablbundle"])
+        self.assertNotIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_no_ssh_edit_replace_backs_up_original(self):
+        app.ssh_enabled = lambda: False
+        app.job_edit_move(OID, None, {"0": 0.3}, True)(lambda *a, **k: None)
+        self.assertEqual(self.deleted(), ["Live Set.ablbundle"])
 
     def test_no_ssh_edit_replace_moves_history(self):
         app.ssh_enabled = lambda: False
@@ -218,3 +261,69 @@ class Hooks(RouteBase):
     def test_history_dir_validates(self):
         with self.assertRaises(app.AppError):
             app.history_dir("move", "../../etc")
+
+
+class PullNames(Hooks):
+    """Сборка 55: «To computer →» не затирает другой проект с тем же именем."""
+    def run_pull(self, name):
+        app.MOVE.sets[0]["name"] = name
+        app.ssh_enabled = lambda: False
+        app.job_pull(OID, False)(lambda *a, **k: None)
+
+    def test_same_source_updates_folder(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
+        self.run_pull("Demo")
+        self.assertFalse((self.tmp / "lib" / "Demo 2").exists())
+        self.assertEqual(self.lib()[0]["action"], "Replaced by copy from Move")
+
+    def test_other_project_same_name_gets_new_folder(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": "ffffffff-2222-3333-4444-555555555555"}))
+        before = (self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes()
+        self.run_pull("Demo")
+        self.assertEqual((self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes(), before)
+        self.assertTrue(list((self.tmp / "lib" / "Demo 2").glob("*.ablbundle")))
+        self.assertEqual(json.loads((self.tmp / "lib" / "Demo 2" / "meta.json").read_text())["sourceId"], OID)
+
+    def test_local_project_without_source_is_not_overwritten(self):
+        before = (self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes()
+        self.run_pull("Demo")
+        self.assertEqual((self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes(), before)
+        self.assertTrue((self.tmp / "lib" / "Demo 2").exists())
+
+
+class SourceFollows(Hooks):
+    """Сборка 55 (рецензия): проект с компьютера после «← To Move» помнит новый сет."""
+    def meta(self):
+        return json.loads((self.tmp / "lib" / "Demo" / "meta.json").read_text())
+
+    def test_push_back_to_own_pad_updates_source(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo", replace_id=OID)(lambda *a, **k: None)
+        self.assertEqual(self.meta()["sourceId"], NEW)
+
+    def test_local_project_pushed_gets_source(self):
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo")(lambda *a, **k: None)
+        self.assertEqual(self.meta()["sourceId"], NEW)
+
+    def test_copy_of_other_existing_set_keeps_source(self):
+        other = "eeeeeeee-2222-3333-4444-555555555555"
+        app.MOVE.sets.append({"objectId": other, "name": "X", "lastModifiedDateTime": "1"})
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": other}))
+        app.ssh_enabled = lambda: False
+        app.job_push("Demo")(lambda *a, **k: None)
+        self.assertEqual(self.meta()["sourceId"], other)
+
+    def test_no_ssh_edit_remaps_library_source(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
+        app.ssh_enabled = lambda: False
+        app.job_edit_move(OID, None, {"0": 0.3}, True)(lambda *a, **k: None)
+        self.assertEqual(self.meta()["sourceId"], NEW)
+
+    def test_delete_route_is_a_job(self):
+        st, _, b = self.req("DELETE", f"/api/move/sets/{OID}")
+        self.assertEqual(st, 200, b)
+        job = self.wait_job(b)
+        self.assertEqual(job["status"], "done", job)
+        self.assertNotIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])

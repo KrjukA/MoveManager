@@ -42,7 +42,8 @@ select{appearance:none;-webkit-appearance:none;padding-right:26px!important;curs
   background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8a85' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center}
 select option{background:var(--field);color:var(--text)}
 
-header{display:flex;align-items:baseline;gap:16px;padding:12px 16px 10px;border-bottom:1px solid var(--line);flex:none}
+header{display:flex;align-items:baseline;gap:16px;padding:12px 16px 10px;border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap;row-gap:8px}
+@media (max-width:1240px){header{gap:10px}}
 .logo{font-size:16px;font-weight:500;letter-spacing:0;color:var(--text);display:flex;align-items:center;gap:8px;align-self:center}
 .logo img{height:22px;width:auto;display:block}
 .conn{display:flex;align-items:center;gap:6px;color:var(--dim);font:11px var(--mono)}
@@ -102,6 +103,9 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 /* Move: сетка пэдов в тёмном корпусе прибора */
 #moveGrid{background:var(--device);border:1px solid var(--dev-border);border-radius:10px;margin:4px 14px 14px;padding:10px;flex:none;max-height:calc(100% - 60px);color:var(--dev-text)}
 #moveGrid .tile{background:var(--pad);border:none;border-radius:5px;color:var(--dev-text)}
+#moveGrid .empty button,#moveGrid .empty input{color:var(--dev-text);background:var(--pad);border-color:var(--dev-line)}
+#moveGrid .empty input::placeholder{color:var(--dev-dim)}
+#moveGrid .empty .hint{color:var(--dev-dim)}
 #moveGrid .tile:hover{background:color-mix(in srgb,var(--pad) 85%,#fff)}
 #moveGrid .tile .bpm,#moveGrid .tile .scale{color:var(--dev-dim)}
 #moveGrid .tile .job{background:rgba(30,30,28,.88);color:var(--dev-dim)}
@@ -109,13 +113,25 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 .grid.cmd{display:block;padding:0 0 18px}
 #moveGrid.cmd{background:none;border:none;border-radius:0;margin:0;padding:0 0 18px;flex:1;max-height:none;color:inherit}
 #moveGrid.cmd .empty{color:var(--faint)}
-.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;grid-auto-rows:minmax(84px,auto)}
-.pads .tile{min-height:84px;padding:5px 6px;gap:3px;border-top:3px solid var(--pc,var(--dev-line))!important}
+.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;grid-auto-rows:minmax(100px,auto)}
+.pads .tile{min-height:100px;padding:5px 6px;gap:3px;border-top:3px solid var(--pc,var(--dev-line))!important}
 .pads .tile .name{font-size:11px;line-height:1.25;-webkit-line-clamp:3}
 .pads .tile .bpm{font-size:10px}
 .pads .keyb{font-size:10px;padding:0 4px}
 .pads .role{font-size:0;height:4px;padding:0}
 .pads .tile .tag{display:none}
+.mini{display:grid;grid-template-columns:repeat(var(--sc,8),minmax(0,1fr));gap:1px;margin-top:auto}
+.mini i{display:block;aspect-ratio:1;border-radius:1px;background:var(--line)}
+#moveGrid .mini i{background:rgba(255,255,255,.07)}
+.pads .tile{display:flex;flex-direction:column;gap:3px}
+.pads .tile .top{order:2;gap:4px}
+.pads .tile .name{order:1;-webkit-line-clamp:2}
+.pads .tile .top .bpm{margin-left:0}
+.pads .tile .mini{order:3;margin-top:auto;gap:2px}
+.pads .tile .mini i{aspect-ratio:auto;height:9px;border-radius:2px}
+.pads .tile .keyb{font-size:9px;padding:0 3px}
+.pads .tile .top .bpm{font-size:9px}
+.pads .tile .scale,.pads .tile .roles{display:none}
 .slot{background:var(--pad-empty);border:1px solid transparent;border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--dev-dim);font:11px var(--mono)}
 .slot.over{border-color:var(--pick);background:var(--sel)}
 .rowlabel{grid-column:1/-1;color:var(--dev-dim);font:11px var(--mono);padding-top:6px;text-transform:uppercase;letter-spacing:.1em}
@@ -135,6 +151,7 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 #libGrid .tile.row .name{grid-area:n;-webkit-line-clamp:1;font-size:12px}
 #libGrid .tile.row .scale{display:none}
 #libGrid .tile.row .roles{grid-area:r;margin:0}
+#libGrid .tile.row .mini{grid-area:r;margin:0;width:56px}
 #libGrid .tile.row .role{font-size:0;height:4px;padding:0}
 #libGrid .tile.row .play{grid-area:p;position:static;width:22px;height:22px;display:none}
 #libGrid .tile.row.sel .play,#libGrid .tile.row.playing .play,#libGrid .tile.row:hover .play{display:flex}
@@ -279,6 +296,19 @@ footer{flex:none;border-top:1px solid var(--line);display:flex;align-items:cente
 footer .status{color:var(--dim);font:11px var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 footer .status.err{color:var(--bad)}
 
+.empty .addr{display:flex;gap:6px;justify-content:center;margin:10px auto 4px;max-width:320px}.empty .addr input{flex:1;min-width:0}
+#themeBtn[data-to="light"]{background:#ededea;color:#1a1a19;border-color:#cfcfca}
+#themeBtn[data-to="light"]:hover{background:#ffffff}
+#themeBtn[data-to="dark"]{background:#262624;color:#ededea;border-color:#262624}
+#themeBtn[data-to="dark"]:hover{background:#3a3a36}
+#monInput{max-width:150px;text-overflow:ellipsis}
+.addwrap{position:relative;display:inline-flex}
+#addMenuBtn{min-width:30px;font-weight:600}
+.menu{position:fixed;z-index:30;display:flex;flex-direction:column;min-width:220px;padding:4px;background:var(--bg);border:1px solid var(--line2);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.menu[hidden]{display:none}
+.menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px;white-space:nowrap}
+.menu button:hover{background:var(--sel)}
+#libPath{display:none!important}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -297,7 +327,9 @@ footer .status.err{color:var(--bad)}
   <nav class="views" role="tablist" aria-label="Section"><button class="ghost on" data-view="projects" title="Projects on Move and on this computer">Projects</button><button class="ghost" data-view="samples" title="Samples: Move library and folders on this computer">Samples</button><button class="ghost" data-view="presets" title="Track presets: Move library and folders on this computer">Presets</button></nav>
   <div class="spacer"></div>
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="ghost" title="Listen to the chosen input through the computer — independent of recording">🎧 Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
+  <button id="langBtn" class="ghost" title="Language">RU</button>
   <button id="themeBtn" class="ghost" title="Switch theme">Dark</button>
+  <button id="reportBtn" class="ghost" title="Something went wrong? Save a short report to send to the author">Report</button>
   <button id="refresh">Refresh</button>
 </header>
 
@@ -310,10 +342,13 @@ footer .status.err{color:var(--bad)}
     <div class="grid" id="moveGrid" data-side="move"></div>
   </section>
   <section class="pane">
-    <div class="pane-head"><h2 id="libTitle">Computer</h2><span class="count" id="libCount"></span><span class="path" id="libPath"></span><span class="modes" id="rkind" role="group" aria-label="Right panel shows" hidden><button class="ghost on" data-rkind="pc" title="Folders on this computer">Computer</button><button class="ghost" data-rkind="move" title="A second view of the Move library, to move things between its folders">Move</button></span><div class="spacer"></div>
-      <button class="ghost" id="importBtn" title="Add .ablbundle projects that are already on this computer">Add…</button>
-      <button class="ghost" id="newGroup" title="Create a project group">+ Group</button>
-      <button id="chooseFolder">Folder…</button></div>
+    <div class="pane-head"><h2 id="libTitle">Computer</h2><span class="count" id="libCount"></span><span class="path" id="libPath" hidden></span><span class="modes" id="rkind" role="group" aria-label="Right panel shows" hidden><button class="ghost on" data-rkind="pc" title="Folders on this computer">Computer</button><button class="ghost" data-rkind="move" title="A second view of the Move library, to move things between its folders">Move</button></span><div class="spacer"></div>
+      <span class="addwrap" id="addWrap"><button id="addMenuBtn" title="Add projects, a group, or choose the library folder" aria-haspopup="menu">+</button>
+        <span class="menu" id="addMenu" role="menu" hidden>
+          <button id="newGroup" role="menuitem" title="Create a project group">New group…</button>
+          <button id="importBtn" role="menuitem" title="Add .ablbundle projects that are already on this computer">Add projects (.ablbundle)…</button>
+          <button id="chooseFolder" role="menuitem" title="Pick which folder on this computer holds your Move projects">Choose library folder…</button>
+        </span></span></div>
     <div class="pbar" data-panel="R" hidden><button class="ghost" data-act="up" title="Up one folder. Drop a file here to put it one level up">↑</button><span class="crumb"></span><input type="search" data-act="q" placeholder="Search" aria-label="Search"><label class="chk" data-only="move" style="margin:0" title="Show only files no project, preset or Schwung slot uses"><input type="checkbox" data-act="unused"> Unused</label><button class="ghost" data-act="newfolder" title="Create a folder here">+ Folder</button><button class="ghost" data-act="upload" data-only="move" title="Upload files from this computer into this folder on Move (or drag them here from Finder)" aria-label="Upload">⤒</button><button data-act="choose" data-only="pc" title="Pick a folder on this computer">Choose…</button><button class="ghost" data-act="reload" title="Read again">↻</button></div>
     <div class="grid" id="libGrid" data-side="lib"></div>
   </section>
@@ -331,6 +366,13 @@ footer .status.err{color:var(--bad)}
   <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" hidden>
 </footer>
 
+<div class="modal" id="report"><div class="box">
+  <h4>Report a problem</h4>
+  <p>What did you do, and what went wrong? A report file is saved to your Desktop — send it to the author. It contains this text, the app version, your system and recent errors; no passwords or keys.</p>
+  <textarea id="reportText" rows="5" maxlength="5000" placeholder="E.g. I dragged two loops onto track 2 of “My Song” and got an error…" aria-label="What happened"></textarea>
+  <div class="err" id="reportErr"></div>
+  <div class="row"><button id="reportCancel">Cancel</button><button class="primary" id="reportOk">Save report</button></div>
+</div></div>
 <div class="modal" id="auth"><div class="box">
   <h4>Confirmation code</h4>
   <p>Move shows a code on its screen. Enter it to connect.</p>
@@ -339,6 +381,7 @@ footer .status.err{color:var(--bad)}
   <div class="row"><button id="authCancel">Later</button><button class="primary" id="authOk">Connect</button></div>
 </div></div>
 
+<script src="/static/i18n.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
@@ -446,7 +489,7 @@ async function loadConfig(){
   try{
     const c = await api("GET","/api/config");
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
-    S.uiStamp = c.uiStamp; S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
+    S.uiStamp = c.uiStamp; S.cfg = c; S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
     if(c.stale) status("The app was updated on disk. Restart it in Terminal: Ctrl+C, then python3 app.py again", true);
   }catch(e){}
 }
@@ -464,6 +507,14 @@ const selItem = () => S.sel ? items(S.sel.side).find(x => x.id===S.sel.id) : nul
 function select(side,id){ pickNone(); genStop(); S.gen = null; S.keyEdit = false; S.inspY = 0; S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; S.cell = null; S.clipBuf = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
 
 /* ───────── отрисовка ───────── */
+/* мини-сетка клипов проекта: строки — треки, колонки — сцены; занятый слот — в цвете трека (сборка 57) */
+function trackColor(t){ return PAD_COLORS[t?.color] ? `rgb(${PAD_COLORS[t.color]})` : (ROLE_COLORS[t?.role] || "#9a9a95"); }
+function miniHTML(info){
+  const g = info.clips, tr = info.tracks || [], sc = Math.max(1, ...g.map(r => r.length));
+  let cells = "";
+  g.forEach((row, t) => { const c = trackColor(tr[t]); for(let s=0;s<sc;s++) cells += row[s] ? `<i style="background:${c}"></i>` : "<i></i>"; });
+  return `<div class="mini" style="--sc:${sc}" aria-hidden="true">${cells}</div>`;
+}
 function tileHTML(side, it, pad){
   const info = it.info, cam = camelot(info), sel = selItem(), selCam = sel ? camelot(sel.info) : null;
   const isSel = S.sel && S.sel.side===side && S.sel.id===it.id;
@@ -487,7 +538,7 @@ function tileHTML(side, it, pad){
       ${(it.schwung || info?.schwung) ? `<span class="swb" title="Uses Schwung${side==="lib" && it.schwung ? " · Schwung state saved with the project" : ""}">S</span>` : ""}<span class="bpm">${info?.tempo ? Math.round(info.tempo*10)/10+(pad||side==="lib"?"":" bpm") : ""}</span></div>
     <div class="name">${esc(it.name)}</div>
     <div class="scale"${pad&&info?" hidden":""}>${info ? esc(keyName(info)) : (it.failed ? "could not read" : `<span class="shim">reading project…</span>`)}</div>
-    <div class="roles">${roles}</div>
+    ${info?.clips?.length ? miniHTML(info) : `<div class="roles">${roles}</div>`}
     ${side==="lib" && it.audio ? `<button class="play" data-play="${esc(it.id)}" aria-label="Play">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚" : "▶"}</button>` : ""}
     ${onOther ? `<span class="tag" title="Copy exists on the computer">⤓</span>` : ""}
     ${cbar}
@@ -517,7 +568,11 @@ function renderPane(side){
     html = list.map(it => tileHTML(side,it)).join("");
     if(side==="move" && S.move.state!=="ok"){
       html = S.move.state==="loading" ? `<div class="empty">Looking for Move on the network…</div>`
-        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">${S.move.state==="auth"?"Enter code":"Retry"}</button></div>`;
+        : S.move.state==="auth" ? `<div class="empty">${esc(S.move.msg)}<br><button id="retry">Enter code</button></div>`
+        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">Retry</button>
+            <div class="addr"><input id="moveAddr" type="text" spellcheck="false" placeholder="move.local or 192.168.1.23" value="${esc(S.moveAddrDraft ?? (S.cfg?.moveUrl||"").replace(/^https?:\/\//,""))}" aria-label="Move address">
+            <button id="moveAddrSet">Connect</button></div>
+            <div class="hint">If Move isn't found by name, type its IP address — on Move: Settings → Wi-Fi.${/Mac/.test(navigator.platform) ? " On a Mac also allow the app in System Settings → Privacy & Security → Local Network." : ""}</div></div>`;
     } else if(!list.length){
       html = `<div class="empty">${side==="move" ? "No projects on Move." : "Folder is empty. Drag a project here from Move."}</div>`;
     }
@@ -536,6 +591,7 @@ function renderPane(side){
 function render(){
   renderPane("move"); renderPane("lib"); renderInspector();
   $("#libPath").textContent = S.lib.path.split("/").filter(Boolean).slice(-2).join("/"); $("#libPath").title = S.lib.path;
+  $("#chooseFolder").title = "Library folder: " + S.lib.path;          // путь виден в подсказке пункта меню
   const ok = S.move.state==="ok";
   $("#dot").className = "dot " + (ok?"ok":S.move.state==="loading"?"":"bad");
   $("#connText").textContent = ok ? "Move connected" : S.move.state==="loading" ? "connecting…" : S.move.state==="auth" ? "code needed" : "Move offline";
@@ -588,7 +644,7 @@ function soundHTML(side, it){
   if(side!=="lib") return "";
   const R = S.rec && S.rec.id===it.id ? S.rec : null;
   const onMove = S.move.state==="ok" && S.move.sets.some(x => x.id===it.sourceId || x.name===it.name);
-  const inputs = `<select id="inputSel" aria-label="Audio input for recording" ${R && R.state==="rec"?"disabled":""}><option value="">Default input</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Input")}</option>`).join("")}</select>`;
+  const inputs = `<select id="inputSel" aria-label="Audio input for recording" ${R && R.state==="rec"?"disabled":""}><option value="">Default input</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Input")}</option>`).join("")}${S.inputs.length?"":`<option value="__ask">Show all inputs… (allow access)</option>`}</select>`;
   const panel = R ? `${inputs}
       <canvas id="meter" width="600" height="52" aria-label="Input level"></canvas>
       <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="monChk" ${R.monitor?"checked":""}> monitor input — use headphones</label>
@@ -879,7 +935,7 @@ function genHTML(){
   return `<div class="genpanel" id="gen">
     <select id="genSource" aria-label="Genre">${opts}</select>
     <div class="genrow"><label for="genMut">Mutation</label><input type="range" id="genMut" min="0" max="100" value="${g.mutation}"><span class="v" id="genMutV">${g.mutation}</span></div>
-    <div class="genrow"><button id="genAnother">Another</button><button id="genPlay">${g.playing?"■ Stop":"▶ Play"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"}>Put in cell</button></div>
+    <div class="genrow"><button id="genAnother">Another</button><button id="genPlay" class="icon" title="${g.playing?"Stop":"Play"}" aria-label="${g.playing?"Stop":"Play"}">${g.playing?"■":"▶"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"}>Put in cell</button></div>
     ${g.loading ? `<div class="hint">${esc(g.loading)}</div>` : ""}
     ${g.error ? `<div class="hint" style="color:var(--bad)">${esc(g.error)}</div>` : g.hint ? `<div class="hint">${esc(g.hint)}</div>` : ""}
     ${grid}
@@ -890,7 +946,7 @@ function genHTML(){
       <div class="genrow"><label for="genDeja">Déjà vu</label><input type="range" id="genDeja" min="0" max="100" value="${g.deja}"><span class="v">${g.deja}</span></div>
       <div class="genrow"><label for="genGhost" title="Quiet snare hits around the main ones">Ghosts</label><input type="range" id="genGhost" min="0" max="100" value="${g.ghosts}"><span class="v">${g.ghosts}</span></div>
       <div class="genrow"><label for="genEuclid" title="Evenly spread hits on one hat/percussion pad (euclidean rhythm): 0 — off, higher — more hits">Euclid</label><input type="range" id="genEuclid" min="0" max="100" value="${g.euclid}"><span class="v">${g.euclid}</span></div>
-      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "no folder")}</span><button class="ghost small" id="midiFolderBtn">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
+      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "Choose your folder with MIDI clips")}</span><button class="ghost small" id="midiFolderBtn">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
     </details>
     ${pats.mine && !pats.mine.ready ? `<div class="hint">Reading your projects ${pats.mine.done}/${pats.mine.total}… their genres appear when done.</div>` : ""}
     <div class="gencredit">${esc(pats.credit)}</div></div>`;
@@ -1108,7 +1164,7 @@ function renderInspectorNow(){
       <button class="danger" id="actDel">Delete</button>
     </div>
     ${soundHTML(side, it)}
-    ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
+    ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" translate="no" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
     ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
     <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
@@ -1142,7 +1198,7 @@ async function runJob(key, startFn){
 }
 async function pull(id, group){
   const it = S.move.sets.find(x=>x.id===id); if(!it) return;
-  const ex = S.lib.items.find(x=>x.name===it.name);
+  const ex = S.lib.items.find(x=>x.sourceId===id);          // тот же проект; другой с таким же именем ляжет в «Имя 2»
   if(ex && !confirm(`"${it.name}" is already on the computer. Update the project and its audio? Description and notes are kept.`)) return;
   status(`Copying "${it.name}" to the computer…`);
   try{
@@ -1198,7 +1254,7 @@ function dropOnMove(id, cell, slot){
   if(!cell || slot==null) return push(id, null);
   if(cell.classList.contains("slot")) return push(id, slot);
   const old = S.move.sets.find(x=>x.id===cell.dataset.id), it = S.lib.items.find(x=>x.id===id); if(!old || !it) return push(id, null);
-  if(!confirm(`Pad ${slot+1} holds "${old.name}". Delete it from Move and put "${it.name}" in its place? Deleting from the device cannot be undone.`)) return;
+  if(!confirm(`Pad ${slot+1} holds "${old.name}". Delete it from Move and put "${it.name}" in its place? A copy of "${old.name}" is saved first to the "_Deleted" folder on the computer.`)) return;
   return push(id, slot, old.id);
 }
 async function deleteSelected(){
@@ -1212,8 +1268,11 @@ async function deleteSelected(){
   const it = selItem(); if(!it) return; const {side, id} = S.sel;
   try{
     if(side==="move"){
-      if(!confirm(`Delete "${it.name}" from Move? This cannot be undone.`)) return;
-      await api("DELETE", `/api/move/sets/${id}`); S.sel = null; await loadMove(); status(`"${it.name}" deleted from Move`);
+      if(!confirm(`Delete "${it.name}" from Move? A copy is saved first to the "_Deleted" folder on the computer.`)) return;
+      status(`Saving a copy of "${it.name}" before deleting…`);
+      const res = await runJob("move:"+id, () => api("DELETE", `/api/move/sets/${id}`));
+      S.sel = null; await loadMove(); await loadLib();
+      status(`"${it.name}" deleted from Move. A copy is in the "_Deleted" folder on the computer${res?.backup ? `: ${res.backup}` : ""}`);
     } else {
       if(!confirm(`Remove "${it.name}" from the folder? The project moves to the "_Deleted" subfolder.`)) return;
       stopIfPlaying(id);
@@ -1318,6 +1377,18 @@ async function uploadAudio(id, blob, ext){
 async function loadInputs(){
   try{ S.inputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind==="audioinput" && d.deviceId && d.deviceId!=="default"); }catch(e){ S.inputs = []; }
 }
+/* Браузер не отдаёт список входов, пока странице не разрешён микрофон — просим доступ при первом открытии списка */
+let inputsAsked = false;
+async function askInputs(){
+  if(S.inputs.length || inputsAsked) return;
+  inputsAsked = true;
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({audio:true});
+    s.getTracks().forEach(t => t.stop());
+  }catch(e){ inputsAsked = false; status("To choose an audio input, allow microphone access for this page (the browser asks once)", true); return; }
+  await loadInputs(); monFillInputs(S.mon?.dev); renderInspector();
+  status(S.inputs.length ? `Audio inputs found: ${S.inputs.length}. Pick one in the list` : "No other audio inputs found");
+}
 /* мониторинг входа (Move по USB и т. п.) — отдельно от записи */
 async function monStart(){
   await monStop();
@@ -1354,9 +1425,13 @@ $("#monBtn").onclick = () => S.mon ? monStop() : monStart();
 function monFillInputs(cur){
   if(cur===undefined){ try{ cur = localStorage.getItem("mm-mon-input") || ""; }catch(e){ cur = ""; } }
   const list = [{deviceId:"", label:"Default input"}, ...S.inputs];
-  $("#monInput").innerHTML = list.map(d => `<option value="${esc(d.deviceId)}" ${d.deviceId===cur?"selected":""}>${esc(d.label||"Input "+d.deviceId.slice(0,4))}</option>`).join("");
+  $("#monInput").innerHTML = list.map(d => `<option value="${esc(d.deviceId)}" ${d.deviceId===cur?"selected":""}>${esc(d.label||"Input "+d.deviceId.slice(0,4))}</option>`).join("")
+    + (S.inputs.length ? "" : `<option value="__ask">Show all inputs… (allow access)</option>`);
 }
-$("#monInput").onchange = e => { try{ localStorage.setItem("mm-mon-input", e.target.value); }catch(err){} if(S.mon) monStart(); };
+$("#monInput").addEventListener("mousedown", () => askInputs());
+document.addEventListener("mousedown", e => { if(e.target.id==="inputSel") askInputs(); });   // список входов записи — в правой панели
+$("#monInput").addEventListener("focus", () => askInputs());
+$("#monInput").onchange = e => { if(e.target.value==="__ask"){ e.target.value = ""; askInputs(); return; } try{ localStorage.setItem("mm-mon-input", e.target.value); }catch(err){} if(S.mon) monStart(); };
 loadInputs().then(() => monFillInputs());
 navigator.mediaDevices?.addEventListener?.("devicechange", () => loadInputs().then(() => monFillInputs(S.mon?.dev)));
 async function recOpen(id){
@@ -1436,6 +1511,7 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
     const gh = e.target.closest("[data-ghead]");
     if(gh){ const g = gh.dataset.g; S.collapsed[g] = !S.collapsed[g]; saveGroups(); render(); return; }
     if(e.target.id==="retry"){ S.move.state==="auth" ? showAuth() : (S.move.state="loading", render(), loadMove()); return; }
+    if(e.target.id==="moveAddrSet"){ setMoveAddr($("#moveAddr").value); return; }
     const p = e.target.closest("[data-play]"); if(p){ e.stopPropagation(); play(p.dataset.play); return; }
     const t = e.target.closest(".tile"); if(!t) return;
     if(t.dataset.side==="lib" && (e.metaKey || e.ctrlKey)){
@@ -1488,6 +1564,16 @@ $("#importBtn").onclick = () => { $("#bundleFile").value = ""; $("#bundleFile").
 $("#bundleFile").onchange = e => importFiles(e.target.files);
 $("#libGrid").addEventListener("dragover", e => { if(!drag && e.dataTransfer.types.includes("Files")){ e.preventDefault(); $("#libGrid").classList.add("drop"); } });
 $("#libGrid").addEventListener("drop", e => { if(!drag && e.dataTransfer.files.length){ e.preventDefault(); $("#libGrid").classList.remove("drop"); if(isCmd()) return; importFiles(e.dataTransfer.files, e.target.closest("[data-group]")?.dataset.group); } });
+/* «+» в колонке компьютера: добавить проекты или выбрать папку библиотеки (сборка 57) */
+$("#addMenuBtn").onclick = e => {
+  e.stopPropagation();
+  const m = $("#addMenu"), r = e.currentTarget.getBoundingClientRect();
+  m.hidden = !m.hidden;
+  if(!m.hidden){ m.style.top = (r.bottom + 4) + "px"; m.style.right = (window.innerWidth - r.right) + "px"; }   // поверх шапки колонки
+};
+$("#addMenu").addEventListener("click", () => { $("#addMenu").hidden = true; });
+document.addEventListener("click", e => { if(!e.target.closest("#addWrap")) $("#addMenu").hidden = true; });
+document.addEventListener("keydown", e => { if(e.key === "Escape") $("#addMenu").hidden = true; });
 $("#newGroup").onclick = () => { const n = (prompt("New group name:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Group "${n}" created — drag projects into it`); };
 
 /* ───────── события: инспектор ───────── */
@@ -1526,7 +1612,7 @@ function setView(v){
   S.view = v; pickNone();
   document.querySelectorAll("header [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view===v));
   const cmd = isCmd();
-  for(const id of ["#importBtn","#newGroup","#chooseFolder","#libPath","#moveBanner"]) $(id).hidden = cmd;
+  for(const id of ["#addWrap","#moveBanner"]) $(id).hidden = cmd;
   document.querySelectorAll(".pbar").forEach(b => b.hidden = !cmd);
   $("#rkind").hidden = !cmd;
   $("#moveTitle").textContent = cmd ? `Move · ${v==="presets"?"Presets":"Samples"}` : "Move";
@@ -1655,7 +1741,7 @@ function cmdInspector(){
     <div class="where">on this computer · ${esc(pcDir(pk.path))}</div>
     <div class="ulname" data-ren="1" title="Double-click to rename">${pk.type==="folder"?"▸ ":""}${esc(pcName(pk.path))}</div>
     ${f ? `<div class="facts"><span class="fact">${ulSize(f.size)}</span></div>` : ""}
-    <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚ Pause" : "▶ Play"}</button>` : ""}
+    <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay" class="icon" title="Play" aria-label="Play">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
       ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">Show in Finder</button></div>
     <div class="acts"><button class="primary" id="toMove" ${mvData()?"":"disabled"} title="Copy into the folder open on the left">← Copy to Move</button></div>
     <div class="hint">Copies into ${esc(pdir("L"))} on Move. Nothing on Move is overwritten: a file with the same name gets “2” added.</div>`;
@@ -1689,11 +1775,11 @@ function ulInspector(rel){
     <div class="where">on Move · ${esc(here)}</div>
     <div class="ulname" data-ren="1" title="Double-click to rename">${esc(base)}</div>
     <div class="facts"><span class="fact">${ulSize(f.size)}</span></div>
-    <div class="acts">${UL_AUDIO.test(base) ? `<button id="ulPlay">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚ Pause" : "▶ Play"}</button>` : ""}
+    <div class="acts">${UL_AUDIO.test(base) ? `<button id="ulPlay" class="icon" title="Play" aria-label="Play">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
       ${pcOk ? `<button class="primary" id="toPc" title="Copy into the folder open on the right">Copy to computer →</button>` : ""}
       <button class="danger" id="ulDelete" ${f.used.length?"disabled":""} title="${f.used.length?"Used — delete is only for files nothing uses":"Delete this file from Move"}">Delete</button></div>
     <h3>Used in</h3>
-    ${f.used.length ? `<ul class="uselist">${f.used.map(u => `<li><b>${esc(u.name)}</b> · ${KIND[u.kind]||u.kind}</li>`).join("")}</ul>` : `<div class="hint">No project, preset or Schwung slot uses this file — it can be deleted.</div>`}
+    ${f.used.length ? `<ul class="uselist">${f.used.map(u => `<li><b translate="no">${esc(u.name)}</b> · ${KIND[u.kind]||u.kind}</li>`).join("")}</ul>` : `<div class="hint">No project, preset or Schwung slot uses this file — it can be deleted.</div>`}
     ${sugg.length ? `<h3>Name by project</h3>${projects.length>1 ? `<div class="hint">Used in ${projects.length} projects — pick the one this sample belongs to.</div>` : ""}
       <div class="sugg">${sugg.map(x => `<button data-ulsuggest="${esc(x.name)}" title="From project “${esc(x.project)}”">${esc(x.name)}</button>`).join("")}</div>` : ""}
     <div class="hint">Double-click the name to rename. To move, drag the file onto a folder. Either way every project, preset and Schwung slot that uses it is updated; you see the list first, and a backup of each changed file is saved on the computer.</div>`;
@@ -2012,6 +2098,7 @@ insp.addEventListener("change", async e => {
   if(g && ["genMut","genSwing","genDeja","genBars","genGhost","genEuclid"].includes(id)){ g[{genMut:"mutation",genSwing:"swing",genDeja:"deja",genBars:"bars",genGhost:"ghosts",genEuclid:"euclid"}[id]] = +e.target.value; return genRun(); }
   if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
   if(e.target.id==="monChk") return setMonitor(e.target.checked);
+  if(e.target.id==="inputSel" && e.target.value==="__ask"){ e.target.value = ""; askInputs(); return; }
   if(e.target.id==="inputSel"){ S.inputId = e.target.value; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} if(S.rec && S.rec.state==="armed") recOpen(S.rec.id); return; }
   if(e.target.id==="groupSel"){ const it = selItem(); if(!it || S.sel.side!=="lib") return; let g = e.target.value;
     if(g==="__new__"){ g = (prompt("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
@@ -2133,6 +2220,30 @@ async function showAuth(){
   catch(e){ $("#authErr").textContent = "Move is not responding"; }
 }
 function hideAuth(){ authOpen = false; $("#auth").classList.remove("on"); }
+document.addEventListener("input", e => { if(e.target.id==="moveAddr") S.moveAddrDraft = e.target.value; });   // перерисовка не стирает набранное
+document.addEventListener("keydown", e => { if(e.target.id==="moveAddr" && e.key==="Enter"){ e.preventDefault(); setMoveAddr(e.target.value); } });
+async function setMoveAddr(v){                         // адрес Move вручную (сборка 55)
+  S.moveAddrDraft = undefined;
+  try{ await api("POST", "/api/config", {moveUrl: v}); await loadConfig(); S.move.state = "loading"; render(); await loadMove(); }
+  catch(e){ fail(e); }
+}
+/* ───────── отчёт о проблеме (сборка 55) ───────── */
+$("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#report").classList.add("on"); $("#reportText").focus(); };
+$("#reportCancel").onclick = () => $("#report").classList.remove("on");
+document.addEventListener("keydown", e => {
+  if(!$("#report").classList.contains("on")) return;
+  if(e.key==="Escape"){ e.preventDefault(); $("#report").classList.remove("on"); }
+  else if((e.key==="Backspace" || e.key==="Delete") && e.target.id!=="reportText") e.stopImmediatePropagation();
+}, true);
+$("#reportOk").onclick = async () => {
+  $("#reportOk").disabled = true;
+  try{
+    const r = await api("POST", "/api/report", {text: $("#reportText").value, reveal: true});
+    $("#report").classList.remove("on"); $("#reportText").value = "";
+    status(`Report saved: ${r.name} (${/Desktop/.test(r.path) ? "on your Desktop" : r.path}). Send this file to the author.`);
+  }catch(e){ $("#reportErr").textContent = e.message || "Could not save the report"; }
+  finally{ $("#reportOk").disabled = false; }
+};
 async function submitCode(){
   const code = $("#code").value.trim(); if(!code) return;
   $("#authOk").disabled = true;
@@ -2151,7 +2262,8 @@ $("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); 
 render(); loadConfig(); loadLib(); loadMove();
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
 
-function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; $("#themeBtn").textContent = d ? "Light" : "Dark"; }
+function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; const b = $("#themeBtn");
+  b.textContent = d ? "Light" : "Dark"; b.dataset.to = d ? "light" : "dark"; }   // кнопка — в цветах темы, на которую переключает
 $("#themeBtn").onclick = () => {
   const d = document.documentElement.dataset.theme!=="dark";
   if(d) document.documentElement.dataset.theme = "dark"; else delete document.documentElement.dataset.theme;
@@ -2159,6 +2271,10 @@ $("#themeBtn").onclick = () => {
   themeLabel();
 };
 themeLabel();
+/* язык: кнопка подписана языком, на который переключает (сборка 56) */
+$("#langBtn").textContent = LANG === "ru" ? "EN" : "RU";
+$("#langBtn").setAttribute("translate", "no");
+$("#langBtn").onclick = () => setLang(LANG === "ru" ? "en" : "ru");
 </script>
 </body>
 </html>

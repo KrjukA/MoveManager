@@ -2,10 +2,50 @@
 Второй запуск не поднимает второй сервер — просто открывает браузер с уже работающим."""
 import os
 import socket
+import subprocess
+import sys
 import threading
 import webbrowser
 
 import app
+
+
+TEXTS = {
+    "en": {"running": "Move Manager is running", "keep": "Keep this window open while you use the manager.",
+           "open": "Open in browser", "quit": "Quit"},
+    "ru": {"running": "Move Manager работает", "keep": "Не закрывайте это окно, пока пользуетесь программой.",
+           "open": "Открыть в браузере", "quit": "Выйти"},
+}
+
+
+def _mac_langs():
+    try:
+        out = subprocess.run(["defaults", "read", "-g", "AppleLanguages"], capture_output=True, timeout=3).stdout
+        return [x.strip(' "(),\n') for x in out.decode("utf-8", "replace").split(",") if x.strip(' "(),\n')]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _win_lang():
+    try:
+        import ctypes
+        return ctypes.windll.kernel32.GetUserDefaultUILanguage()
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def system_lang(env=None, platform=None, mac_langs=_mac_langs, win_lang=_win_lang):
+    """Язык системы для окна запуска: «ru» или «en». Из Finder/Проводника переменной LANG обычно нет."""
+    env = os.environ if env is None else env
+    platform = platform or sys.platform
+    if platform == "darwin":
+        langs = mac_langs()
+        if langs:
+            return "ru" if langs[0].lower().startswith("ru") else "en"
+    if platform.startswith("win"):
+        return "ru" if (win_lang() & 0x3FF) == 0x19 else "en"
+    val = env.get("LC_ALL") or env.get("LC_MESSAGES") or env.get("LANG") or ""
+    return "ru" if val.lower().startswith("ru") else "en"
 
 
 def port_busy(port):
@@ -30,14 +70,15 @@ def _window(url, quit_cb):
         root._logo = logo                          # иначе картинку соберёт сборщик мусора
     except Exception:  # noqa: BLE001
         pass
-    tk.Label(root, text="Move Manager is running", font=("Helvetica", 14, "bold")).pack(padx=24, pady=(10, 2))
-    tk.Label(root, text=f"build {app.BUILD} · {url}", fg="#777").pack(padx=24)
-    tk.Label(root, text="Keep this window open while you use the manager.", fg="#777").pack(padx=24, pady=(6, 0))
+    tx = TEXTS[system_lang()]
+    tk.Label(root, text=tx["running"], font=("Helvetica", 14, "bold")).pack(padx=24, pady=(10, 2))
+    tk.Label(root, text=f"{app.VERSION} · build {app.BUILD} · {url}", fg="#777").pack(padx=24)
+    tk.Label(root, text=tx["keep"], fg="#777").pack(padx=24, pady=(6, 0))
     row = tk.Frame(root); row.pack(pady=16)
-    tk.Button(row, text="Open in browser", width=16, command=lambda: webbrowser.open(url)).pack(side="left", padx=6)
+    tk.Button(row, text=tx["open"], width=18, command=lambda: webbrowser.open(url)).pack(side="left", padx=6)
     def quit_():
         quit_cb(); root.destroy()
-    tk.Button(row, text="Quit", width=10, command=quit_).pack(side="left", padx=6)
+    tk.Button(row, text=tx["quit"], width=10, command=quit_).pack(side="left", padx=6)
     root.protocol("WM_DELETE_WINDOW", quit_)
     return root
 
