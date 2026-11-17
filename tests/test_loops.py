@@ -1,5 +1,6 @@
 """Сборка 53: лупы — длительность файла, темп из имени, темп и длина «как Move», сборка аудиоклипа."""
 import io
+import pathlib
 import math
 import struct
 import unittest
@@ -79,6 +80,34 @@ class Seconds(unittest.TestCase):
         for bad in (b"", b"hello world", b"RIFF\0\0\0\0WAVE", b"ID3\x03" + b"\0" * 40):
             with self.assertRaises(ValueError):
                 loops.audio_seconds(bad)
+
+
+DATA = pathlib.Path(__file__).parent / "data"
+
+
+class FlacMp3(unittest.TestCase):
+    """Образцы в tests/data — 1 с моно 22050 Гц (afconvert / lame)."""
+    def test_flac(self):
+        self.assertAlmostEqual(loops.audio_seconds((DATA / "one_second.flac").read_bytes()), 1.0, places=3)
+
+    def test_mp3_cbr_with_info_tag(self):
+        self.assertAlmostEqual(loops.audio_seconds((DATA / "one_second_cbr.mp3").read_bytes()), 1.0, delta=0.03)
+
+    def test_mp3_vbr_with_xing(self):
+        self.assertAlmostEqual(loops.audio_seconds((DATA / "one_second_vbr.mp3").read_bytes()), 1.0, delta=0.03)
+
+    def test_mp3_without_tag(self):
+        self.assertAlmostEqual(loops.audio_seconds((DATA / "one_second_noxing.mp3").read_bytes()), 1.0, delta=0.08)
+
+    def test_mp3_after_id3(self):
+        d = (DATA / "one_second_cbr.mp3").read_bytes()
+        tag = b"ID3\x03\x00\x00" + bytes([0, 0, 1, 0]) + b"\0" * 128          # ID3v2 на 128 байт
+        self.assertAlmostEqual(loops.audio_seconds(tag + d), 1.0, delta=0.03)
+
+    def test_truncated_flac_mp3(self):
+        for name in ("one_second.flac", "one_second_cbr.mp3"):
+            with self.assertRaises(ValueError):
+                loops.audio_seconds((DATA / name).read_bytes()[:20])
 
 
 class Tempo(unittest.TestCase):

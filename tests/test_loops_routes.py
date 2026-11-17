@@ -228,3 +228,15 @@ class Loops(RouteBase):
         payload = b"RIFF\r\n--x\r\n\r\n" + bytes(range(256)) * 3
         body, ctype = multipart([("Петля 120bpm.wav", payload), ("b.wav", b"\r\n")])
         self.assertEqual(app.read_loop_files(ctype, body), [("Петля 120bpm.wav", payload), ("b.wav", b"\r\n")])
+
+
+    def test_add_flac_and_mp3(self):
+        import pathlib
+        d = pathlib.Path(__file__).parent / "data"
+        job = self.run_job(*self.send([("a 120bpm.flac", (d / "one_second.flac").read_bytes()),
+                                       ("b 120bpm.mp3", (d / "one_second_cbr.mp3").read_bytes())]))
+        self.assertEqual(job["status"], "done", job)
+        row = self.writes[0]["tracks"][1]["clipSlots"]
+        self.assertEqual([samplelib.uri_to_rel(row[i]["clip"]["sampleUri"]) for i in (0, 1)],
+                         ["Samples/UPLOAD/a 120bpm.flac", "Samples/UPLOAD/b 120bpm.mp3"])
+        self.assertEqual(row[0]["clip"]["region"]["end"], 4.0)          # 1 с при 120 = 2 доли → 1 такт

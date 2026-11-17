@@ -327,7 +327,7 @@ footer .status.err{color:var(--bad)}
   <input type="file" id="bundleFile" accept=".ablbundle,.zip" multiple hidden>
   <input type="file" id="ulFile" multiple hidden>
   <input type="file" id="clipFile" accept=".mid,.midi,audio/midi" hidden>
-  <input type="file" id="loopFile" accept=".wav,.aif,.aiff,audio/wav,audio/aiff" multiple hidden>
+  <input type="file" id="loopFile" accept=".wav,.aif,.aiff,.flac,.mp3,audio/wav,audio/aiff,audio/flac,audio/mpeg" multiple hidden>
   <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" hidden>
 </footer>
 
@@ -627,7 +627,7 @@ function clipsHTML(side, it){
     }
   });
   html += `</div>`;
-  const keys = `<div class="hint" style="margin-top:6px">⌘C copy · ⌘X cut · ⌘V paste · ⌫ delete · arrows move · drag: move, onto a clip: swap, ⌥ drag: copy${buf?" · Esc: clear clipboard":""}${side==="move"?" · drop WAV/AIFF files on an audio track cell to add loops":""}</div>`;
+  const keys = `<div class="hint" style="margin-top:6px">⌘C copy · ⌘X cut · ⌘V paste · ⌫ delete · arrows move · drag: move, onto a clip: swap, ⌥ drag: copy${buf?" · Esc: clear clipboard":""}${side==="move"?" · drop WAV, AIFF, FLAC or MP3 files on an audio track cell to add loops":""}</div>`;
   if(!S.cell) return html + keys + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.</div>`;
   const {t, s: sc} = S.cell, cl = (grid[t]||[])[sc], tr = tracks[t] || {};
   const noSsh = side==="move" && !padMode(), audioTr = tr.trackKind && tr.trackKind!=="midi";
@@ -635,7 +635,7 @@ function clipsHTML(side, it){
     const why = side!=="move" ? "Adding loops works for projects on Move" : noSsh ? "Adding loops on Move needs pad control enabled" : "";
     return html + keys + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
       ${cl ? `<button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
-      <button id="loopAdd" class="primary" ${why?"disabled":""} title="${esc(why||"Pick WAV/AIFF files: they go to Samples/UPLOAD on Move and fill this track from this cell to the right")}">Add loops…</button></div>
+      <button id="loopAdd" class="primary" ${why?"disabled":""} title="${esc(why||"Pick WAV, AIFF, FLAC or MP3 files: they go to Samples/UPLOAD on Move and fill this track from this cell to the right")}">Add loops…</button></div>
       <div class="hint">${why ? esc(why)+"." : "Several files fill the track to the right, in file-name order. Loop tempo comes from the file name (\"160bpm\"); without it the loop is fitted to whole bars, like Move does."}</div>`;
   }
   const why = noSsh ? "Import to Move needs pad control enabled" : audioTr ? "This is an audio track; MIDI cannot go into it" : "";
@@ -768,9 +768,9 @@ async function addLoops(fileList, t, s){
   const tr = (it.info?.tracks||[])[t] || {};
   if(tr.clipKind!=="audio"){ status("Loops can only go into an audio track", true); return; }
   if(!padMode()){ status("Adding loops on Move needs pad control enabled", true); return; }
-  const files = [...fileList].filter(f => /\.(wav|aif|aiff)$/i.test(f.name)).sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:"base"}));
-  const other = [...fileList].filter(f => !/\.(wav|aif|aiff)$/i.test(f.name)).map(f => f.name);
-  if(!files.length){ status(`Only WAV and AIFF files can be added as loops${other.length?` (skipped: ${other.join(", ")})`:""}`, true); return; }
+  const files = [...fileList].filter(f => /\.(wav|aif|aiff|flac|mp3)$/i.test(f.name)).sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:"base"}));
+  const other = [...fileList].filter(f => !/\.(wav|aif|aiff|flac|mp3)$/i.test(f.name)).map(f => f.name);
+  if(!files.length){ status(`Only WAV, AIFF, FLAC and MP3 files can be added as loops${other.length?` (skipped: ${other.join(", ")})`:""}`, true); return; }
   const row = (it.info?.clips||[])[t] || [], scenes = row.length;
   const busy = files.map((_,i) => s+i).filter(c => c < scenes && row[c]);
   let replace = 0;
@@ -795,7 +795,7 @@ async function addLoops(fileList, t, s){
     const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove();
     const pl = res.placed||[], sk = res.skipped||[];
     S.cell = {t, s}; renderInspector();
-    status(`Loops added: ${pl.length} to track ${t+1}${pl.length?`, scene${pl.length>1?"s":""} ${pl[0].scene+1}${pl.length>1?"–"+(pl[pl.length-1].scene+1):""}`:""}${sk.length?`. Not added (no more cells): ${sk.join(", ")}`:""}${other.length?`. Skipped (not WAV/AIFF): ${other.join(", ")}`:""}. Leave the project on Move and open it again to see the changes`);
+    status(`Loops added: ${pl.length} to track ${t+1}${pl.length?`, scene${pl.length>1?"s":""} ${pl[0].scene+1}${pl.length>1?"–"+(pl[pl.length-1].scene+1):""}`:""}${sk.length?`. Not added (no more cells): ${sk.join(", ")}`:""}${other.length?`. Skipped (not WAV/AIFF/FLAC/MP3): ${other.join(", ")}`:""}. Leave the project on Move and open it again to see the changes`);
   }catch(e){ fail(e); }
 }
 async function deleteClip(){

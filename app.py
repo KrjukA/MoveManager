@@ -2493,7 +2493,7 @@ def restore_library(folder, data, entry):
 
 # ───────────────────────── лупы в аудиоячейки (сборка 53) ─────────────────────────
 UPLOAD_DIR = "Samples/UPLOAD"
-LOOP_EXTS = (".wav", ".aif", ".aiff")
+LOOP_EXTS = (".wav", ".aif", ".aiff", ".flac", ".mp3")
 
 
 def upload_dir_sizes():
@@ -2533,7 +2533,7 @@ def put_sample(rel, data):
 def _loop_name(name):
     name = str(name or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
     if not name or name.startswith(".") or not samplelib.safe_rel(name) or Path(name).suffix.lower() not in LOOP_EXTS:
-        raise AppError(f"\"{name or '?'}\": only WAV and AIFF files can be added as loops")
+        raise AppError(f"\"{name or '?'}\": only WAV, AIFF, FLAC and MP3 files can be added as loops")
     return name
 
 
@@ -2612,7 +2612,7 @@ def plan_loops(song, track, scene, files, replace):
         try:
             sec = loops.audio_seconds(data)
         except ValueError:
-            raise AppError(f"\"{name}\" is not a readable WAV or AIFF file")
+            raise AppError(f"\"{name}\" is not a readable WAV, AIFF, FLAC or MP3 file")
         if sec <= 0:
             raise AppError(f"\"{name}\" is empty")
         if scene + i >= scenes:
