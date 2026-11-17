@@ -120,6 +120,18 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 .pads .keyb{font-size:10px;padding:0 4px}
 .pads .role{font-size:0;height:4px;padding:0}
 .pads .tile .tag{display:none}
+.mini{display:grid;grid-template-columns:repeat(var(--sc,8),minmax(0,1fr));gap:1px;margin-top:auto}
+.mini i{display:block;aspect-ratio:1;border-radius:1px;background:var(--line)}
+#moveGrid .mini i{background:rgba(255,255,255,.07)}
+.pads .tile{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"name name" "meta mini";gap:3px 5px;align-content:space-between}
+.pads .tile .name{grid-area:name}
+.pads .tile .top{grid-area:meta;flex-direction:column;align-items:flex-start;gap:3px;align-self:end}
+.pads .tile .top .bpm{margin-left:0}
+.pads .tile .mini{grid-area:mini;align-self:end;margin:0;gap:1px}
+.pads .tile .mini i{aspect-ratio:auto;height:6px}
+.pads .tile .keyb{font-size:9px;padding:0 3px}
+.pads .tile .top .bpm{font-size:9px}
+.pads .tile .scale,.pads .tile .roles{display:none}
 .slot{background:var(--pad-empty);border:1px solid transparent;border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--dev-dim);font:11px var(--mono)}
 .slot.over{border-color:var(--pick);background:var(--sel)}
 .rowlabel{grid-column:1/-1;color:var(--dev-dim);font:11px var(--mono);padding-top:6px;text-transform:uppercase;letter-spacing:.1em}
@@ -139,6 +151,7 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 #libGrid .tile.row .name{grid-area:n;-webkit-line-clamp:1;font-size:12px}
 #libGrid .tile.row .scale{display:none}
 #libGrid .tile.row .roles{grid-area:r;margin:0}
+#libGrid .tile.row .mini{grid-area:r;margin:0;width:56px}
 #libGrid .tile.row .role{font-size:0;height:4px;padding:0}
 #libGrid .tile.row .play{grid-area:p;position:static;width:22px;height:22px;display:none}
 #libGrid .tile.row.sel .play,#libGrid .tile.row.playing .play,#libGrid .tile.row:hover .play{display:flex}
@@ -484,6 +497,14 @@ const selItem = () => S.sel ? items(S.sel.side).find(x => x.id===S.sel.id) : nul
 function select(side,id){ pickNone(); genStop(); S.gen = null; S.keyEdit = false; S.inspY = 0; S.sel = {side,id}; S.order = null; S.pans = {}; S.replace = side==="move" && padMode(); S.key = null; S.cell = null; S.clipBuf = null; if(S.rec && S.rec.state==="armed") recClose(); render(); }
 
 /* ───────── отрисовка ───────── */
+/* мини-сетка клипов проекта: строки — треки, колонки — сцены; занятый слот — в цвете трека (сборка 57) */
+function trackColor(t){ return PAD_COLORS[t?.color] ? `rgb(${PAD_COLORS[t.color]})` : (ROLE_COLORS[t?.role] || "#9a9a95"); }
+function miniHTML(info){
+  const g = info.clips, tr = info.tracks || [], sc = Math.max(1, ...g.map(r => r.length));
+  let cells = "";
+  g.forEach((row, t) => { const c = trackColor(tr[t]); for(let s=0;s<sc;s++) cells += row[s] ? `<i style="background:${c}"></i>` : "<i></i>"; });
+  return `<div class="mini" style="--sc:${sc}" aria-hidden="true">${cells}</div>`;
+}
 function tileHTML(side, it, pad){
   const info = it.info, cam = camelot(info), sel = selItem(), selCam = sel ? camelot(sel.info) : null;
   const isSel = S.sel && S.sel.side===side && S.sel.id===it.id;
@@ -507,7 +528,7 @@ function tileHTML(side, it, pad){
       ${(it.schwung || info?.schwung) ? `<span class="swb" title="Uses Schwung${side==="lib" && it.schwung ? " · Schwung state saved with the project" : ""}">S</span>` : ""}<span class="bpm">${info?.tempo ? Math.round(info.tempo*10)/10+(pad||side==="lib"?"":" bpm") : ""}</span></div>
     <div class="name">${esc(it.name)}</div>
     <div class="scale"${pad&&info?" hidden":""}>${info ? esc(keyName(info)) : (it.failed ? "could not read" : `<span class="shim">reading project…</span>`)}</div>
-    <div class="roles">${roles}</div>
+    ${info?.clips?.length ? miniHTML(info) : `<div class="roles">${roles}</div>`}
     ${side==="lib" && it.audio ? `<button class="play" data-play="${esc(it.id)}" aria-label="Play">${S.playing==="lib:"+it.id && !$("#audio").paused ? "❚❚" : "▶"}</button>` : ""}
     ${onOther ? `<span class="tag" title="Copy exists on the computer">⤓</span>` : ""}
     ${cbar}
