@@ -102,6 +102,9 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 /* Move: сетка пэдов в тёмном корпусе прибора */
 #moveGrid{background:var(--device);border:1px solid var(--dev-border);border-radius:10px;margin:4px 14px 14px;padding:10px;flex:none;max-height:calc(100% - 60px);color:var(--dev-text)}
 #moveGrid .tile{background:var(--pad);border:none;border-radius:5px;color:var(--dev-text)}
+#moveGrid .empty button,#moveGrid .empty input{color:var(--dev-text);background:var(--pad);border-color:var(--dev-line)}
+#moveGrid .empty input::placeholder{color:var(--dev-dim)}
+#moveGrid .empty .hint{color:var(--dev-dim)}
 #moveGrid .tile:hover{background:color-mix(in srgb,var(--pad) 85%,#fff)}
 #moveGrid .tile .bpm,#moveGrid .tile .scale{color:var(--dev-dim)}
 #moveGrid .tile .job{background:rgba(30,30,28,.88);color:var(--dev-dim)}
@@ -279,6 +282,7 @@ footer{flex:none;border-top:1px solid var(--line);display:flex;align-items:cente
 footer .status{color:var(--dim);font:11px var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 footer .status.err{color:var(--bad)}
 
+.empty .addr{display:flex;gap:6px;justify-content:center;margin:10px auto 4px;max-width:320px}.empty .addr input{flex:1;min-width:0}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -454,7 +458,7 @@ async function loadConfig(){
   try{
     const c = await api("GET","/api/config");
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
-    S.uiStamp = c.uiStamp; S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
+    S.uiStamp = c.uiStamp; S.cfg = c; S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
     if(c.stale) status("The app was updated on disk. Restart it in Terminal: Ctrl+C, then python3 app.py again", true);
   }catch(e){}
 }
@@ -525,7 +529,11 @@ function renderPane(side){
     html = list.map(it => tileHTML(side,it)).join("");
     if(side==="move" && S.move.state!=="ok"){
       html = S.move.state==="loading" ? `<div class="empty">Looking for Move on the network…</div>`
-        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">${S.move.state==="auth"?"Enter code":"Retry"}</button></div>`;
+        : S.move.state==="auth" ? `<div class="empty">${esc(S.move.msg)}<br><button id="retry">Enter code</button></div>`
+        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">Retry</button>
+            <div class="addr"><input id="moveAddr" type="text" spellcheck="false" placeholder="move.local or 192.168.1.23" value="${esc(S.moveAddrDraft ?? (S.cfg?.moveUrl||"").replace(/^https?:\/\//,""))}" aria-label="Move address">
+            <button id="moveAddrSet">Connect</button></div>
+            <div class="hint">If Move isn't found by name, type its IP address — on Move: Settings → Wi-Fi.${/Mac/.test(navigator.platform) ? " On a Mac also allow the app in System Settings → Privacy & Security → Local Network." : ""}</div></div>`;
     } else if(!list.length){
       html = `<div class="empty">${side==="move" ? "No projects on Move." : "Folder is empty. Drag a project here from Move."}</div>`;
     }
@@ -1444,6 +1452,7 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
     const gh = e.target.closest("[data-ghead]");
     if(gh){ const g = gh.dataset.g; S.collapsed[g] = !S.collapsed[g]; saveGroups(); render(); return; }
     if(e.target.id==="retry"){ S.move.state==="auth" ? showAuth() : (S.move.state="loading", render(), loadMove()); return; }
+    if(e.target.id==="moveAddrSet"){ setMoveAddr($("#moveAddr").value); return; }
     const p = e.target.closest("[data-play]"); if(p){ e.stopPropagation(); play(p.dataset.play); return; }
     const t = e.target.closest(".tile"); if(!t) return;
     if(t.dataset.side==="lib" && (e.metaKey || e.ctrlKey)){
@@ -2141,6 +2150,13 @@ async function showAuth(){
   catch(e){ $("#authErr").textContent = "Move is not responding"; }
 }
 function hideAuth(){ authOpen = false; $("#auth").classList.remove("on"); }
+document.addEventListener("input", e => { if(e.target.id==="moveAddr") S.moveAddrDraft = e.target.value; });   // перерисовка не стирает набранное
+document.addEventListener("keydown", e => { if(e.target.id==="moveAddr" && e.key==="Enter"){ e.preventDefault(); setMoveAddr(e.target.value); } });
+async function setMoveAddr(v){                         // адрес Move вручную (сборка 55)
+  S.moveAddrDraft = undefined;
+  try{ await api("POST", "/api/config", {moveUrl: v}); await loadConfig(); S.move.state = "loading"; render(); await loadMove(); }
+  catch(e){ fail(e); }
+}
 /* ───────── отчёт о проблеме (сборка 55) ───────── */
 $("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#report").classList.add("on"); $("#reportText").focus(); };
 $("#reportCancel").onclick = () => $("#report").classList.remove("on");

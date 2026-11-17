@@ -71,7 +71,8 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "54"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "55"          # номер сборки: виден в шапке программы и в журнале экспорта
+VERSION = "1.1"       # версия для друзей (релиз v1.1); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -1728,6 +1729,19 @@ def log_error(title, exc):
 REPORT_DIR = Path.home() / "Desktop"
 
 
+def normalize_move_url(value):
+    """Адрес Move от человека: «192.168.1.23», «move.local», «http://…/…» → «http://хост». Только имя или IP."""
+    s = str(value or "").strip()
+    if not s:
+        return "http://move.local"
+    host = urlparse(s if "://" in s else "http://" + s)
+    name = host.hostname or ""
+    if host.username or host.password or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]{0,252}", name) \
+            or s.startswith("-") or any(c in s for c in " ;$`|&<>'\""):
+        raise AppError("Enter Move's address like 192.168.1.23 or move.local")
+    return "http://" + name.lower()
+
+
 def build_report(text):
     """Текст отчёта: что написал человек, сборка, система, состояние подключения, последние ошибки.
     Без cookies, ключей и паролей; домашняя папка заменена на «~»."""
@@ -1740,7 +1754,7 @@ def build_report(text):
     lines = [
         f"{APP_NAME} — problem report",
         f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Build: {BUILD}",
+        f"Version: {VERSION} · Build: {BUILD}",
         f"System: {platform.platform()} · Python {platform.python_version()} · {'app' if FROZEN else 'source'}",
         f"Move address: {CFG.get('move_url')}",
         f"Signed in to Move: {'yes' if CFG.get('cookies') else 'no'} · pad control (SSH): {'on' if ssh_enabled() else 'off'}",
@@ -3296,8 +3310,11 @@ class Handler(BaseHTTPRequestHandler):
                 CFG["library"] = str(p)
             if b.get("audioFormat") in ("wav", "mp3"):
                 CFG["audio_format"] = b["audioFormat"]
-            if b.get("moveUrl"):
-                CFG["move_url"] = str(b["moveUrl"]).rstrip("/")
+            if "moveUrl" in b:
+                new_url = normalize_move_url(b["moveUrl"])
+                if new_url != CFG.get("move_url"):
+                    CFG["move_url"] = new_url
+                    ssh_session_reset()                  # SSH-соединение было к старому адресу
             if "midiFolder" in b:
                 mf = str(b["midiFolder"] or "").strip()
                 if mf and not Path(mf).expanduser().is_dir():
