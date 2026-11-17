@@ -1452,7 +1452,8 @@ def ssh_read_song(oid):
 
 
 def ssh_write_song(oid, payload):
-    ssh_run(f'set -e; f=$(ls {set_dir(oid)}/*/Song.abl | head -n 1); [ -n "$f" ]; '
+    # путь — перебором в оболочке, не через ls: BusyBox ls печатает «?» вместо кириллицы («Песня» → «??????????»)
+    ssh_run(f'set -e; f=; for x in {set_dir(oid)}/*/Song.abl; do [ -f "$x" ] && {{ f="$x"; break; }}; done; [ -n "$f" ]; '
             f'cat > "$f.tmp"; mv "$f.tmp" "$f"; {REFRESH}', data=payload, timeout=90)
 
 
