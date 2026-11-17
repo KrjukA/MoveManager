@@ -1,10 +1,13 @@
 """Сборка 53: лупы на сервере — сетка, правило дорожек, образец клипа, загрузка в UPLOAD, маршрут."""
 import copy
+import shutil
+import unittest
 import hashlib
 import json
 import uuid
 
 import app
+import loops
 import history
 import samplelib
 from tests.test_clip_ops import song as clip_song
@@ -230,13 +233,45 @@ class Loops(RouteBase):
         self.assertEqual(app.read_loop_files(ctype, body), [("Петля 120bpm.wav", payload), ("b.wav", b"\r\n")])
 
 
-    def test_add_flac_and_mp3(self):
+    def test_flac_and_mp3_become_wav(self):
+        """Move не играет FLAC/MP3 в клипах (проверено 17.11) — переводим в WAV перед загрузкой."""
+        calls = []
+        def fake_convert(name, data):
+            calls.append(name)
+            return name.rsplit(".", 1)[0] + ".wav", wav_bytes(1.0)
+        saved = app.convert_to_wav
+        app.convert_to_wav = fake_convert
+        try:
+            job = self.run_job(*self.send([("a 120bpm.flac", b"fLaC..."), ("b 120bpm.mp3", b"ID3..."),
+                                           ("c 120bpm.wav", wav_bytes(1.0))]))
+        finally:
+            app.convert_to_wav = saved
+        self.assertEqual(job["status"], "done", job)
+        self.assertEqual(calls, ["a 120bpm.flac", "b 120bpm.mp3"])
+        row = self.writes[0]["tracks"][1]["clipSlots"]
+        self.assertEqual([samplelib.uri_to_rel(row[i]["clip"]["sampleUri"]) for i in (0, 1, 2)],
+                         ["Samples/UPLOAD/a 120bpm.wav", "Samples/UPLOAD/b 120bpm.wav", "Samples/UPLOAD/c 120bpm.wav"])
+        self.assertEqual(set(self.remote), {"a 120bpm.wav", "b 120bpm.wav", "c 120bpm.wav"})
+
+    def test_convert_unavailable_is_clear_400(self):
+        saved = app.convert_to_wav
+        def no_tool(name, data):
+            raise app.AppError(f'"{name}": convert it to WAV first — Move plays only WAV and AIFF in clips')
+        app.convert_to_wav = no_tool
+        try:
+            st, d = self.send([("a.mp3", b"ID3...")])
+        finally:
+            app.convert_to_wav = saved
+        self.assertEqual(st, 400)
+        self.assertIn("WAV", d["message"])
+        self.assertEqual(self.remote, {})
+
+    @unittest.skipUnless(shutil.which("afconvert"), "afconvert есть только на Mac")
+    def test_real_afconvert(self):
         import pathlib
         d = pathlib.Path(__file__).parent / "data"
-        job = self.run_job(*self.send([("a 120bpm.flac", (d / "one_second.flac").read_bytes()),
-                                       ("b 120bpm.mp3", (d / "one_second_cbr.mp3").read_bytes())]))
-        self.assertEqual(job["status"], "done", job)
-        row = self.writes[0]["tracks"][1]["clipSlots"]
-        self.assertEqual([samplelib.uri_to_rel(row[i]["clip"]["sampleUri"]) for i in (0, 1)],
-                         ["Samples/UPLOAD/a 120bpm.flac", "Samples/UPLOAD/b 120bpm.mp3"])
-        self.assertEqual(row[0]["clip"]["region"]["end"], 4.0)          # 1 с при 120 = 2 доли → 1 такт
+        for src in ("one_second.flac", "one_second_cbr.mp3", "one_second_vbr.mp3"):
+            name, data = app.convert_to_wav(src, (d / src).read_bytes())
+            self.assertTrue(name.endswith(".wav"), name)
+            self.assertEqual(data[:4], b"RIFF")
+            self.assertAlmostEqual(loops.audio_seconds(data), 1.0, delta=0.06)

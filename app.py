@@ -2572,6 +2572,33 @@ def upload_loops(files):
     return rels
 
 
+CONVERT_EXTS = (".flac", ".mp3")      # Move хранит их, но в аудиоклипе не играет (проверено 17.11) — переводим в WAV
+
+
+def convert_to_wav(name, data):
+    """FLAC/MP3 → WAV через встроенный в macOS afconvert (24 бита для FLAC, 16 — для MP3). Нет afconvert — понятный отказ."""
+    tool = shutil.which("afconvert")
+    if not tool:
+        raise AppError(f"\"{name}\": convert it to WAV first — Move plays only WAV and AIFF in clips")
+    ext = Path(name).suffix.lower()
+    src, dst = tmp_path(ext), tmp_path(".wav")
+    try:
+        src.write_bytes(data)
+        r = subprocess.run([tool, "-f", "WAVE", "-d", "LEI24" if ext == ".flac" else "LEI16", str(src), str(dst)],
+                           capture_output=True, timeout=300)
+        if r.returncode or not dst.exists():
+            raise AppError(f"\"{name}\" could not be converted to WAV")
+        return Path(name).stem + ".wav", dst.read_bytes()
+    finally:
+        src.unlink(missing_ok=True)
+        dst.unlink(missing_ok=True)
+
+
+def prepare_loop_files(files):
+    """FLAC и MP3 — в WAV; остальное как есть."""
+    return [convert_to_wav(n, d) if Path(str(n)).suffix.lower() in CONVERT_EXTS else (n, d) for n, d in files]
+
+
 def read_loop_files(ctype, body):
     """multipart/form-data → [(имя файла, байты)]. Режем по границе сами: без копий всего тела в памяти."""
     m = re.search(r'boundary="?([^";]+)"?', ctype or "")
@@ -3315,7 +3342,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.raw_body(limit=300 * 1024 * 1024)
                 if not ssh_enabled():
                     raise AppError("Adding loops on Move needs pad control enabled")
-                files = read_loop_files(self.headers.get("Content-Type"), body)
+                files = prepare_loop_files(read_loop_files(self.headers.get("Content-Type"), body))
                 replace = (q.get("replace") or ["0"])[0] == "1"
                 plan_loops(ssh_read_song(oid), t, sc, files, replace)     # 400/409 сразу, до загрузки
                 return self.send_json(start_job("loops", job_add_loops(oid, t, sc, files, replace)))
