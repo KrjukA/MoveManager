@@ -283,6 +283,10 @@ footer .status{color:var(--dim);font:11px var(--mono);max-width:100%;overflow:hi
 footer .status.err{color:var(--bad)}
 
 .empty .addr{display:flex;gap:6px;justify-content:center;margin:10px auto 4px;max-width:320px}.empty .addr input{flex:1;min-width:0}
+#themeBtn[data-to="light"]{background:#ededea;color:#1a1a19;border-color:#cfcfca}
+#themeBtn[data-to="light"]:hover{background:#ffffff}
+#themeBtn[data-to="dark"]{background:#262624;color:#ededea;border-color:#262624}
+#themeBtn[data-to="dark"]:hover{background:#3a3a36}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -604,7 +608,7 @@ function soundHTML(side, it){
   if(side!=="lib") return "";
   const R = S.rec && S.rec.id===it.id ? S.rec : null;
   const onMove = S.move.state==="ok" && S.move.sets.some(x => x.id===it.sourceId || x.name===it.name);
-  const inputs = `<select id="inputSel" aria-label="Audio input for recording" ${R && R.state==="rec"?"disabled":""}><option value="">Default input</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Input")}</option>`).join("")}</select>`;
+  const inputs = `<select id="inputSel" aria-label="Audio input for recording" ${R && R.state==="rec"?"disabled":""}><option value="">Default input</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Input")}</option>`).join("")}${S.inputs.length?"":`<option value="__ask">Show all inputs… (allow access)</option>`}</select>`;
   const panel = R ? `${inputs}
       <canvas id="meter" width="600" height="52" aria-label="Input level"></canvas>
       <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="monChk" ${R.monitor?"checked":""}> monitor input — use headphones</label>
@@ -1337,6 +1341,18 @@ async function uploadAudio(id, blob, ext){
 async function loadInputs(){
   try{ S.inputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind==="audioinput" && d.deviceId && d.deviceId!=="default"); }catch(e){ S.inputs = []; }
 }
+/* Браузер не отдаёт список входов, пока странице не разрешён микрофон — просим доступ при первом открытии списка */
+let inputsAsked = false;
+async function askInputs(){
+  if(S.inputs.length || inputsAsked) return;
+  inputsAsked = true;
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({audio:true});
+    s.getTracks().forEach(t => t.stop());
+  }catch(e){ inputsAsked = false; status("To choose an audio input, allow microphone access for this page (the browser asks once)", true); return; }
+  await loadInputs(); monFillInputs(S.mon?.dev); renderInspector();
+  status(S.inputs.length ? `Audio inputs found: ${S.inputs.length}. Pick one in the list` : "No other audio inputs found");
+}
 /* мониторинг входа (Move по USB и т. п.) — отдельно от записи */
 async function monStart(){
   await monStop();
@@ -1373,9 +1389,13 @@ $("#monBtn").onclick = () => S.mon ? monStop() : monStart();
 function monFillInputs(cur){
   if(cur===undefined){ try{ cur = localStorage.getItem("mm-mon-input") || ""; }catch(e){ cur = ""; } }
   const list = [{deviceId:"", label:"Default input"}, ...S.inputs];
-  $("#monInput").innerHTML = list.map(d => `<option value="${esc(d.deviceId)}" ${d.deviceId===cur?"selected":""}>${esc(d.label||"Input "+d.deviceId.slice(0,4))}</option>`).join("");
+  $("#monInput").innerHTML = list.map(d => `<option value="${esc(d.deviceId)}" ${d.deviceId===cur?"selected":""}>${esc(d.label||"Input "+d.deviceId.slice(0,4))}</option>`).join("")
+    + (S.inputs.length ? "" : `<option value="__ask">Show all inputs… (allow access)</option>`);
 }
-$("#monInput").onchange = e => { try{ localStorage.setItem("mm-mon-input", e.target.value); }catch(err){} if(S.mon) monStart(); };
+$("#monInput").addEventListener("mousedown", () => askInputs());
+document.addEventListener("mousedown", e => { if(e.target.id==="inputSel") askInputs(); });   // список входов записи — в правой панели
+$("#monInput").addEventListener("focus", () => askInputs());
+$("#monInput").onchange = e => { if(e.target.value==="__ask"){ e.target.value = ""; askInputs(); return; } try{ localStorage.setItem("mm-mon-input", e.target.value); }catch(err){} if(S.mon) monStart(); };
 loadInputs().then(() => monFillInputs());
 navigator.mediaDevices?.addEventListener?.("devicechange", () => loadInputs().then(() => monFillInputs(S.mon?.dev)));
 async function recOpen(id){
@@ -2032,6 +2052,7 @@ insp.addEventListener("change", async e => {
   if(g && ["genMut","genSwing","genDeja","genBars","genGhost","genEuclid"].includes(id)){ g[{genMut:"mutation",genSwing:"swing",genDeja:"deja",genBars:"bars",genGhost:"ghosts",genEuclid:"euclid"}[id]] = +e.target.value; return genRun(); }
   if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
   if(e.target.id==="monChk") return setMonitor(e.target.checked);
+  if(e.target.id==="inputSel" && e.target.value==="__ask"){ e.target.value = ""; askInputs(); return; }
   if(e.target.id==="inputSel"){ S.inputId = e.target.value; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} if(S.rec && S.rec.state==="armed") recOpen(S.rec.id); return; }
   if(e.target.id==="groupSel"){ const it = selItem(); if(!it || S.sel.side!=="lib") return; let g = e.target.value;
     if(g==="__new__"){ g = (prompt("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
@@ -2195,7 +2216,8 @@ $("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); 
 render(); loadConfig(); loadLib(); loadMove();
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
 
-function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; $("#themeBtn").textContent = d ? "Light" : "Dark"; }
+function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; const b = $("#themeBtn");
+  b.textContent = d ? "Light" : "Dark"; b.dataset.to = d ? "light" : "dark"; }   // кнопка — в цветах темы, на которую переключает
 $("#themeBtn").onclick = () => {
   const d = document.documentElement.dataset.theme!=="dark";
   if(d) document.documentElement.dataset.theme = "dark"; else delete document.documentElement.dataset.theme;
