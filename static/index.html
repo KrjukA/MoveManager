@@ -302,6 +302,12 @@ footer .status.err{color:var(--bad)}
 #themeBtn[data-to="dark"]{background:#262624;color:#ededea;border-color:#262624}
 #themeBtn[data-to="dark"]:hover{background:#3a3a36}
 #monInput{max-width:150px;text-overflow:ellipsis}
+.addwrap{position:relative;display:inline-flex}
+#addMenuBtn{min-width:30px;font-weight:600}
+.menu{position:fixed;z-index:30;display:flex;flex-direction:column;min-width:220px;padding:4px;background:var(--bg);border:1px solid var(--line2);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.menu[hidden]{display:none}
+.menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px;white-space:nowrap}
+.menu button:hover{background:var(--sel)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -336,9 +342,12 @@ footer .status.err{color:var(--bad)}
   </section>
   <section class="pane">
     <div class="pane-head"><h2 id="libTitle">Computer</h2><span class="count" id="libCount"></span><span class="path" id="libPath"></span><span class="modes" id="rkind" role="group" aria-label="Right panel shows" hidden><button class="ghost on" data-rkind="pc" title="Folders on this computer">Computer</button><button class="ghost" data-rkind="move" title="A second view of the Move library, to move things between its folders">Move</button></span><div class="spacer"></div>
-      <button class="ghost" id="importBtn" title="Add .ablbundle projects that are already on this computer">Add…</button>
       <button class="ghost" id="newGroup" title="Create a project group">+ Group</button>
-      <button id="chooseFolder">Folder…</button></div>
+      <span class="addwrap" id="addWrap"><button id="addMenuBtn" title="Add projects or choose the library folder" aria-haspopup="menu">+</button>
+        <span class="menu" id="addMenu" role="menu" hidden>
+          <button id="importBtn" role="menuitem" title="Add .ablbundle projects that are already on this computer">Add projects (.ablbundle)…</button>
+          <button id="chooseFolder" role="menuitem" title="Pick which folder on this computer holds your Move projects">Choose library folder…</button>
+        </span></span></div>
     <div class="pbar" data-panel="R" hidden><button class="ghost" data-act="up" title="Up one folder. Drop a file here to put it one level up">↑</button><span class="crumb"></span><input type="search" data-act="q" placeholder="Search" aria-label="Search"><label class="chk" data-only="move" style="margin:0" title="Show only files no project, preset or Schwung slot uses"><input type="checkbox" data-act="unused"> Unused</label><button class="ghost" data-act="newfolder" title="Create a folder here">+ Folder</button><button class="ghost" data-act="upload" data-only="move" title="Upload files from this computer into this folder on Move (or drag them here from Finder)" aria-label="Upload">⤒</button><button data-act="choose" data-only="pc" title="Pick a folder on this computer">Choose…</button><button class="ghost" data-act="reload" title="Read again">↻</button></div>
     <div class="grid" id="libGrid" data-side="lib"></div>
   </section>
@@ -935,7 +944,7 @@ function genHTML(){
       <div class="genrow"><label for="genDeja">Déjà vu</label><input type="range" id="genDeja" min="0" max="100" value="${g.deja}"><span class="v">${g.deja}</span></div>
       <div class="genrow"><label for="genGhost" title="Quiet snare hits around the main ones">Ghosts</label><input type="range" id="genGhost" min="0" max="100" value="${g.ghosts}"><span class="v">${g.ghosts}</span></div>
       <div class="genrow"><label for="genEuclid" title="Evenly spread hits on one hat/percussion pad (euclidean rhythm): 0 — off, higher — more hits">Euclid</label><input type="range" id="genEuclid" min="0" max="100" value="${g.euclid}"><span class="v">${g.euclid}</span></div>
-      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "no folder")}</span><button class="ghost small" id="midiFolderBtn">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
+      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "Choose your folder with MIDI clips")}</span><button class="ghost small" id="midiFolderBtn">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
     </details>
     ${pats.mine && !pats.mine.ready ? `<div class="hint">Reading your projects ${pats.mine.done}/${pats.mine.total}… their genres appear when done.</div>` : ""}
     <div class="gencredit">${esc(pats.credit)}</div></div>`;
@@ -1553,6 +1562,16 @@ $("#importBtn").onclick = () => { $("#bundleFile").value = ""; $("#bundleFile").
 $("#bundleFile").onchange = e => importFiles(e.target.files);
 $("#libGrid").addEventListener("dragover", e => { if(!drag && e.dataTransfer.types.includes("Files")){ e.preventDefault(); $("#libGrid").classList.add("drop"); } });
 $("#libGrid").addEventListener("drop", e => { if(!drag && e.dataTransfer.files.length){ e.preventDefault(); $("#libGrid").classList.remove("drop"); if(isCmd()) return; importFiles(e.dataTransfer.files, e.target.closest("[data-group]")?.dataset.group); } });
+/* «+» в колонке компьютера: добавить проекты или выбрать папку библиотеки (сборка 57) */
+$("#addMenuBtn").onclick = e => {
+  e.stopPropagation();
+  const m = $("#addMenu"), r = e.currentTarget.getBoundingClientRect();
+  m.hidden = !m.hidden;
+  if(!m.hidden){ m.style.top = (r.bottom + 4) + "px"; m.style.right = (window.innerWidth - r.right) + "px"; }   // поверх шапки колонки
+};
+$("#addMenu").addEventListener("click", () => { $("#addMenu").hidden = true; });
+document.addEventListener("click", e => { if(!e.target.closest("#addWrap")) $("#addMenu").hidden = true; });
+document.addEventListener("keydown", e => { if(e.key === "Escape") $("#addMenu").hidden = true; });
 $("#newGroup").onclick = () => { const n = (prompt("New group name:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Group "${n}" created — drag projects into it`); };
 
 /* ───────── события: инспектор ───────── */
@@ -1591,7 +1610,7 @@ function setView(v){
   S.view = v; pickNone();
   document.querySelectorAll("header [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view===v));
   const cmd = isCmd();
-  for(const id of ["#importBtn","#newGroup","#chooseFolder","#libPath","#moveBanner"]) $(id).hidden = cmd;
+  for(const id of ["#addWrap","#newGroup","#libPath","#moveBanner"]) $(id).hidden = cmd;
   document.querySelectorAll(".pbar").forEach(b => b.hidden = !cmd);
   $("#rkind").hidden = !cmd;
   $("#moveTitle").textContent = cmd ? `Move · ${v==="presets"?"Presets":"Samples"}` : "Move";
