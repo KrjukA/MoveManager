@@ -42,7 +42,8 @@ select{appearance:none;-webkit-appearance:none;padding-right:26px!important;curs
   background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8a85' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center}
 select option{background:var(--field);color:var(--text)}
 
-header{display:flex;align-items:baseline;gap:16px;padding:12px 16px 10px;border-bottom:1px solid var(--line);flex:none}
+header{display:flex;align-items:baseline;gap:16px;padding:12px 16px 10px;border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap;row-gap:8px}
+@media (max-width:1240px){header{gap:10px}}
 .logo{font-size:16px;font-weight:500;letter-spacing:0;color:var(--text);display:flex;align-items:center;gap:8px;align-self:center}
 .logo img{height:22px;width:auto;display:block}
 .conn{display:flex;align-items:center;gap:6px;color:var(--dim);font:11px var(--mono)}
@@ -287,6 +288,7 @@ footer .status.err{color:var(--bad)}
 #themeBtn[data-to="light"]:hover{background:#ffffff}
 #themeBtn[data-to="dark"]{background:#262624;color:#ededea;border-color:#262624}
 #themeBtn[data-to="dark"]:hover{background:#3a3a36}
+#monInput{max-width:150px;text-overflow:ellipsis}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
@@ -305,6 +307,7 @@ footer .status.err{color:var(--bad)}
   <nav class="views" role="tablist" aria-label="Section"><button class="ghost on" data-view="projects" title="Projects on Move and on this computer">Projects</button><button class="ghost" data-view="samples" title="Samples: Move library and folders on this computer">Samples</button><button class="ghost" data-view="presets" title="Track presets: Move library and folders on this computer">Presets</button></nav>
   <div class="spacer"></div>
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="ghost" title="Listen to the chosen input through the computer — independent of recording">🎧 Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
+  <button id="langBtn" class="ghost" title="Language">RU</button>
   <button id="themeBtn" class="ghost" title="Switch theme">Dark</button>
   <button id="reportBtn" class="ghost" title="Something went wrong? Save a short report to send to the author">Report</button>
   <button id="refresh">Refresh</button>
@@ -355,6 +358,7 @@ footer .status.err{color:var(--bad)}
   <div class="row"><button id="authCancel">Later</button><button class="primary" id="authOk">Connect</button></div>
 </div></div>
 
+<script src="/static/i18n.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
@@ -2225,6 +2229,10 @@ $("#themeBtn").onclick = () => {
   themeLabel();
 };
 themeLabel();
+/* язык: кнопка подписана языком, на который переключает (сборка 56) */
+$("#langBtn").textContent = LANG === "ru" ? "EN" : "RU";
+$("#langBtn").setAttribute("translate", "no");
+$("#langBtn").onclick = () => setLang(LANG === "ru" ? "en" : "ru");
 </script>
 </body>
 </html>

@@ -71,7 +71,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "55"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "56"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.1"       # версия для друзей (релиз v1.1); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -3323,10 +3323,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if m in ("GET", "HEAD") and path in ("/", "/index.html"):
             return self.send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
-        if m in ("GET", "HEAD") and len(seg) == 2 and seg[0] == "static" and re.fullmatch(r"[a-z0-9_-]+\.png", seg[1]):
-            f = STATIC_DIR / seg[1]                 # картинки интерфейса (логотип, значок); только .png из static
+        if m in ("GET", "HEAD") and len(seg) == 2 and seg[0] == "static" and re.fullmatch(r"[a-z0-9_-]+\.(png|js)", seg[1]):
+            f = STATIC_DIR / seg[1]                 # картинки интерфейса и скрипт переводов; только из static
             if f.is_file():
-                return self.send_file(f, "image/png")
+                return self.send_file(f, "image/png" if f.suffix == ".png" else "text/javascript; charset=utf-8")
         if not seg or seg[0] != "api":
             return self.send_json({"error": "not found"}, 404)
         seg = seg[1:]
