@@ -127,7 +127,7 @@ class RouteTests(RouteBase):
         status, _, _ = self.req("POST", "/api/library/Demo/clip?track=0&scene=1&replace=0", self.midi_file())
         self.assertEqual(status, 200)
         s, names = self.lib_song()
-        self.assertEqual(app.parse_song(s)["clips"][0][1], {"notes": 2, "length": 8.0})
+        self.assertEqual({k: app.parse_song(s)["clips"][0][1][k] for k in ("notes", "length")}, {"notes": 2, "length": 8.0})
         self.assertIn("Samples/kick.wav", names)
 
     def test_import_busy_needs_replace(self):
@@ -150,7 +150,7 @@ class RouteTests(RouteBase):
         job = self.wait_job(body)
         self.assertEqual(job["status"], "done", job.get("error"))
         self.assertEqual(len(self.writes), 1)
-        self.assertEqual(app.parse_song(self.writes[0])["clips"][0][1], {"notes": 2, "length": 8.0})
+        self.assertEqual({k: app.parse_song(self.writes[0])["clips"][0][1][k] for k in ("notes", "length")}, {"notes": 2, "length": 8.0})
         self.assertEqual(len(list((self.tmp / "history" / "move" / OID).glob("*.abl"))), 1)   # сборка 52: история вместо backups/
 
     def test_import_into_move_busy(self):

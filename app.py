@@ -275,6 +275,21 @@ def parse_song(song):
     }
 
 
+ROLL_MAX = 256   # нот в картинке клетки клипа — хватает с запасом, ответ остаётся маленьким
+
+
+def note_roll(clip, start):
+    """Картинка нот клипа для клетки: [[начало от начала клипа, длина, нота], ...] в долях."""
+    out = []
+    for n in (clip.get("notes") or [])[:ROLL_MAX]:
+        try:
+            out.append([round(float(n.get("startTime", 0)) - start, 3), round(float(n.get("duration", 0)), 3),
+                        int(n.get("noteNumber", 0))])
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def clips_grid(song):
     """Сетка клипов: по дорожкам, по сценам — {"notes", "length"} или None."""
     grid = []
@@ -290,7 +305,8 @@ def clips_grid(song):
                                 "tempo": (c.get("warping") or {}).get("tempoAfterLastMarker"),
                                 "transpose": c.get("transpose", 0), "notes": 0, "length": length})
                 else:
-                    row.append({"notes": len(c.get("notes") or []), "length": length})
+                    row.append({"notes": len(c.get("notes") or []), "length": length,
+                                "roll": note_roll(c, float(region.get("start", 0.0)))})
             else:
                 row.append(None)
         grid.append(row)
@@ -1529,7 +1545,8 @@ def cached_info(oid, stamp):
 
 def stale_info(info):
     """Разбор от старой сборки: без clips (до 20), без вида дорожки clipKind (до 51),
-    без пометки audio у клипов аудиодорожек (до 53), роль аудиодорожки по эффекту (до 54)."""
+    без пометки audio у клипов аудиодорожек (до 53), роль аудиодорожки по эффекту (до 54),
+    без картинки нот roll у MIDI-клипов (до 58)."""
     info = info or {}
     if "clips" not in info or any("clipKind" not in t for t in info.get("tracks") or []):
         return True
@@ -1537,6 +1554,8 @@ def stale_info(info):
     if any(t.get("trackKind") == "audio" and t.get("role") != "Audio" for t in tracks):   # до 54: роль по эффекту
         return True
     for i, row in enumerate(info.get("clips") or []):
+        if any(c and not c.get("audio") and "roll" not in c for c in row):                 # до 58: без картинки нот
+            return True
         if i < len(tracks) and tracks[i].get("clipKind") == "audio" and any(c and "audio" not in c for c in row):
             return True
     return False

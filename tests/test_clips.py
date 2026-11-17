@@ -22,7 +22,23 @@ def song():
 
 class ClipTests(unittest.TestCase):
     def test_clips_grid(self):
-        self.assertEqual(parse_song(song())["clips"], [[{"notes": 3, "length": 4.0}, None], [None, None]])
+        roll = [[0.0, 0.25, 36], [1.0, 0.25, 36], [2.0, 0.25, 36]]
+        self.assertEqual(parse_song(song())["clips"], [[{"notes": 3, "length": 4.0, "roll": roll}, None], [None, None]])
+
+    def test_roll_relative_to_region_and_capped(self):
+        s = song()
+        c = s["tracks"][0]["clipSlots"][0]["clip"]
+        c["region"]["start"] = 1.0
+        c["notes"] = [{"noteNumber": 60 + i % 12, "startTime": 1.0 + i * 0.01, "duration": 0.123456, "velocity": 100.0}
+                      for i in range(400)]
+        roll = parse_song(s)["clips"][0][0]["roll"]
+        self.assertEqual(len(roll), app.ROLL_MAX)
+        self.assertEqual(roll[0], [0.0, 0.123, 60])
+
+    def test_old_cache_without_roll_is_stale(self):
+        info = parse_song(song())
+        del info["clips"][0][0]["roll"]
+        self.assertTrue(app.stale_info(info))
 
     def test_put_clip_rounds_to_bar(self):
         s = song()

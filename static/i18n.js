@@ -50,8 +50,8 @@ exact: {
   "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)": "заменить оригинал — проект переедет на другой Pad (иначе создаётся копия «_edit»)",
   // Clips
   "The project has no clip cells.": "В проекте нет ячеек для Clips.",
-  "Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.":
-    "Выберите ячейку: заполненную можно сохранить как .mid, в любую можно загрузить .mid. В ячейке — число нот и длина в тактах.", "Remove the clip from this cell": "Убрать Clip из этой ячейки",
+  "Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows the notes; an audio cell shows the loop tempo.":
+    "Выберите ячейку: заполненную можно сохранить как .mid, в любую можно загрузить .mid. В ячейке видны ноты, в аудиоячейке — темп лупа.", "Remove the clip from this cell": "Убрать Clip из этой ячейки",
   "Notes from the MIDI file become the clip in this cell": "Ноты из MIDI-файла станут Clip в этой ячейке",
   "Generate a drum pattern for this cell": "Сгенерировать барабанный Pattern для этой ячейки",
   "The generator works on Drum Rack tracks": "Генератор работает на Track с Drum Rack",

@@ -49,7 +49,7 @@ class Grid(RouteBase):
         g = app.clips_grid(s)
         self.assertEqual(g[1][0], {"audio": True, "sample": "Old 100bpm.wav", "tempo": 100.0, "transpose": -3,
                                    "notes": 0, "length": 16.0})
-        self.assertEqual(g[0][0], {"notes": 3, "length": 4.0})
+        self.assertEqual(g[0][0], {"notes": 3, "length": 4.0, "roll": [[0.0, 0.25, 36], [1.0, 0.25, 36], [2.0, 0.25, 36]]})
 
     def test_stale_without_audio_flag(self):
         s = song()
