@@ -26,7 +26,8 @@ class Fixes(unittest.TestCase):
         calls = []
         def fake(cmd, *a, **k):
             calls.append(k); return mock.Mock(returncode=0, stdout=b"", stderr=b"")
-        with mock.patch.object(app.subprocess, "run", side_effect=fake):
+        with mock.patch.object(app.subprocess, "run", side_effect=fake), \
+                mock.patch.dict(os.environ, {"MOVE_MANAGER_TESTING": ""}):     # запуск подменён — сети нет
             app.ssh_run("cat > x", data=b"1")
             with tempfile.TemporaryDirectory() as d, mock.patch.object(app, "SSH_KEY", Path(d) / "k"):
                 app.ensure_ssh_key()

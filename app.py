@@ -5,6 +5,7 @@
 Нужен только пакет requests:  python3 -m pip install requests
 """
 import copy
+import hashlib
 import io
 import json
 import math
@@ -29,6 +30,7 @@ import requests
 
 import drumgen
 import history
+import loops
 import samplelib
 from midi import MidiError, _no_overlaps, clip_to_midi, midi_to_notes
 
@@ -67,7 +69,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "52"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "53"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -278,8 +280,13 @@ def clips_grid(song):
             c = (slot or {}).get("clip")
             if c:
                 region = c.get("region") or {}
-                row.append({"notes": len(c.get("notes") or []),
-                            "length": float(region.get("end", 0.0)) - float(region.get("start", 0.0))})
+                length = float(region.get("end", 0.0)) - float(region.get("start", 0.0))
+                if c.get("sampleUri") is not None:       # аудиоклип: ссылка на сэмпл библиотеки
+                    row.append({"audio": True, "sample": unquote(str(c.get("sampleUri"))).rsplit("/", 1)[-1],
+                                "tempo": (c.get("warping") or {}).get("tempoAfterLastMarker"),
+                                "transpose": c.get("transpose", 0), "notes": 0, "length": length})
+                else:
+                    row.append({"notes": len(c.get("notes") or []), "length": length})
             else:
                 row.append(None)
         grid.append(row)
@@ -324,8 +331,9 @@ def put_clip(song, track, scene, notes, length):
     template = None
     for t in song.get("tracks") or []:
         for sl in t.get("clipSlots") or []:
-            if (sl or {}).get("clip"):
-                template = sl["clip"]
+            c = (sl or {}).get("clip")
+            if c and c.get("sampleUri") is None:      # образец — только MIDI-клип, иначе протекут поля сэмпла
+                template = c
                 break
         if template:
             break
@@ -343,6 +351,9 @@ def put_clip(song, track, scene, notes, length):
 
 class CellBusy(AppError):
     """Ячейка-цель занята, а замена не разрешена (маршрут отвечает 409)."""
+    def __init__(self, message="Cell is occupied", cells=None):
+        super().__init__(message)
+        self.cells = cells
 
 
 def track_clip_kind(track):
@@ -372,8 +383,6 @@ def clip_op(song, op, src, dst, replace=False):
     if not a:
         raise AppError("Cell is empty")
     sk, dk = track_clip_kind(s_track), track_clip_kind(d_track)
-    if "audio" in (sk, dk):
-        raise AppError("Audio clips can't be moved yet")
     if sk != dk:
         raise AppError(f"A clip from {KIND_WORDS[sk]} can only go to {KIND_WORDS[sk]}")
     if b and op != "swap" and not replace:
@@ -464,6 +473,8 @@ class Move:
         return CFG["move_url"].rstrip("/")
 
     def req(self, method, path, timeout=20, **kw):
+        if os.environ.get("MOVE_MANAGER_TESTING") and urlparse(self.base).hostname not in ("127.0.0.1", "localhost"):
+            raise MoveOffline("Tests must not reach a real Move over HTTP")
         headers = kw.pop("headers", {})
         headers.setdefault("Referer", self.base + "/data/Sets")
         try:
@@ -823,6 +834,8 @@ def ssh_run(script, data=None, timeout=40):
 
 def _ssh_run(script, data=None, timeout=40):
     cmd = ssh_cmd()
+    if os.environ.get("MOVE_MANAGER_TESTING") and Path(cmd[0]).name == "ssh":     # из тестов — только подменённый SSH
+        raise SshError("Tests must not reach a real Move over SSH")
     if data is None:
         return _SSH.run(cmd, script, timeout)
     try:                                          # с данными на stdin — отдельное соединение
@@ -1486,9 +1499,16 @@ def cached_info(oid, stamp):
 
 
 def stale_info(info):
-    """Разбор от старой сборки: без clips (до 20) или без вида дорожки clipKind (до 51)."""
+    """Разбор от старой сборки: без clips (до 20), без вида дорожки clipKind (до 51),
+    без пометки audio у клипов аудиодорожек (до 53)."""
     info = info or {}
-    return "clips" not in info or any("clipKind" not in t for t in info.get("tracks") or [])
+    if "clips" not in info or any("clipKind" not in t for t in info.get("tracks") or []):
+        return True
+    tracks = info.get("tracks") or []
+    for i, row in enumerate(info.get("clips") or []):
+        if i < len(tracks) and tracks[i].get("clipKind") == "audio" and any(c and "audio" not in c for c in row):
+            return True
+    return False
 
 
 def tmp_path(suffix):
@@ -2475,6 +2495,213 @@ def restore_library(folder, data, entry):
         tmp.unlink(missing_ok=True)
 
 
+# ───────────────────────── лупы в аудиоячейки (сборка 53) ─────────────────────────
+UPLOAD_DIR = "Samples/UPLOAD"
+LOOP_EXTS = (".wav", ".aif", ".aiff", ".flac", ".mp3")
+
+
+def upload_dir_sizes():
+    """{имя файла: размер} папки Samples/UPLOAD на Move (нет папки — пусто). Быстро: без чтения файлов."""
+    out = ssh_run(f"cd {shlex.quote(samplelib.ABS_PREFIX + UPLOAD_DIR)} 2>/dev/null && "
+                  f"for f in *; do [ -f \"$f\" ] && stat -c '%s %n' -- \"$f\"; done; true")
+    res = {}
+    for line in out.decode("utf-8", "replace").splitlines():
+        size, _, name = line.partition(" ")
+        if size.isdigit() and name:
+            res[name] = int(size)
+    return res
+
+
+def remote_md5(names):
+    """md5 выбранных файлов UPLOAD (только кандидатов того же размера)."""
+    if not names:
+        return {}
+    quoted = " ".join(shlex.quote(n) for n in names)
+    out = ssh_run(f"cd {shlex.quote(samplelib.ABS_PREFIX + UPLOAD_DIR)} && md5sum -- {quoted}", timeout=300)
+    res = {}
+    for line in out.decode("utf-8", "replace").splitlines():
+        md5, _, name = line.partition("  ")
+        if len(md5) == 32 and name:
+            res[name] = md5
+    return res
+
+
+def put_sample(rel, data):
+    """Атомарная загрузка файла в библиотеку Move."""
+    path = samplelib.ABS_PREFIX + rel
+    folder = path.rsplit("/", 1)[0]
+    ssh_run(f'( mkdir -p {shlex.quote(folder)} && cat > {shlex.quote(path)}.mmtmp && mv {shlex.quote(path)}.mmtmp {shlex.quote(path)} ) '
+            f'|| {{ rm -f {shlex.quote(path)}.mmtmp; exit 1; }}', data=data, timeout=300)
+
+
+def _loop_name(name):
+    name = str(name or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if not name or name.startswith(".") or not samplelib.safe_rel(name) or Path(name).suffix.lower() not in LOOP_EXTS:
+        raise AppError(f"\"{name or '?'}\": only WAV, AIFF, FLAC and MP3 files can be added as loops")
+    return name
+
+
+def upload_loops(files):
+    """Загружает лупы в Samples/UPLOAD: такой же файл уже есть — берём его, имя занято другим — «Имя 2.wav».
+    Возвращает rel каждого файла. Ошибка — AppError с перечнем уже загруженных."""
+    have = upload_dir_sizes()
+    known = {}                                     # имя → md5 (считаем только для файлов того же размера)
+    rels, done = [], []
+    for name, data in files:
+        name = _loop_name(name)
+        md5 = hashlib.md5(data).hexdigest()
+        stem, ext = Path(name).stem, Path(name).suffix
+        cands = [n for n, size in have.items() if size == len(data)
+                 and (n == name or re.fullmatch(re.escape(stem) + r" \d+" + re.escape(ext), n))]
+        ask = [n for n in cands if n not in known]
+        if ask:
+            known.update(remote_md5(ask))
+        same = [n for n in cands if known.get(n) == md5]
+        if same:
+            final = name if name in same else sorted(same, key=loops.natural_key)[0]
+        else:
+            final, k = name, 2
+            while final in have:
+                final, k = f"{stem} {k}{ext}", k + 1
+            try:
+                put_sample(f"{UPLOAD_DIR}/{final}", data)
+            except (SshError, AppError) as e:
+                got = ", ".join(done) or "none"
+                raise AppError(f"Upload of \"{name}\" failed ({e}). The project was not changed. "
+                               f"Already in Samples/UPLOAD: {got}")
+            have[final] = len(data)
+            known[final] = md5
+            done.append(final)
+        rels.append(f"{UPLOAD_DIR}/{final}")
+    return rels
+
+
+CONVERT_EXTS = (".flac", ".mp3")      # Move хранит их, но в аудиоклипе не играет (проверено 17.11) — переводим в WAV
+
+
+def convert_to_wav(name, data):
+    """FLAC/MP3 → WAV через встроенный в macOS afconvert (24 бита для FLAC, 16 — для MP3). Нет afconvert — понятный отказ."""
+    tool = shutil.which("afconvert")
+    if not tool:
+        raise AppError(f"\"{name}\": convert it to WAV first — Move plays only WAV and AIFF in clips")
+    ext = Path(name).suffix.lower()
+    src, dst = tmp_path(ext), tmp_path(".wav")
+    try:
+        src.write_bytes(data)
+        r = subprocess.run([tool, "-f", "WAVE", "-d", "LEI24" if ext == ".flac" else "LEI16", str(src), str(dst)],
+                           capture_output=True, timeout=300)
+        if r.returncode or not dst.exists():
+            raise AppError(f"\"{name}\" could not be converted to WAV")
+        return Path(name).stem + ".wav", dst.read_bytes()
+    finally:
+        src.unlink(missing_ok=True)
+        dst.unlink(missing_ok=True)
+
+
+def prepare_loop_files(files):
+    """FLAC и MP3 — в WAV; остальное как есть."""
+    return [convert_to_wav(n, d) if Path(str(n)).suffix.lower() in CONVERT_EXTS else (n, d) for n, d in files]
+
+
+def read_loop_files(ctype, body):
+    """multipart/form-data → [(имя файла, байты)]. Режем по границе сами: без копий всего тела в памяти."""
+    m = re.search(r'boundary="?([^";]+)"?', ctype or "")
+    if "multipart/form-data" not in (ctype or "") or not m:
+        raise AppError("No files given")
+    sep = b"--" + m.group(1).encode("latin-1")
+    files, pos = [], body.find(sep)
+    while pos >= 0:
+        start = pos + len(sep)
+        if body[start:start + 2] == b"--":
+            break
+        nxt = body.find(b"\r\n" + sep, start)
+        if nxt < 0:
+            break
+        head_end = body.find(b"\r\n\r\n", start, nxt)
+        if head_end >= 0:
+            head = body[start:head_end].decode("utf-8", "replace")
+            fn = re.search(r'filename\*=UTF-8\'\'([^;\r\n]+)', head, re.I)
+            fn = unquote(fn.group(1)) if fn else (re.search(r'filename="([^"]*)"', head) or [None, None])[1]
+            if fn:
+                files.append((fn.replace("%22", '"'), body[head_end + 4:nxt]))
+        pos = nxt + 2
+    if not files:
+        raise AppError("No files given")
+    return files
+
+
+def plan_loops(song, track, scene, files, replace):
+    """Проверки до загрузки: аудиодорожка, форматы, ячейки. → (план [(сцена, имя, байты, секунды)], пропущенные)."""
+    tr, _ = _slot(song, track, scene)
+    if track_clip_kind(tr) != "audio":
+        raise AppError("Loops can only go into an audio track")
+    files = sorted(files, key=lambda f: loops.natural_key(f[0]))
+    scenes = len(tr.get("clipSlots") or [])
+    plan, skipped = [], []
+    for i, (name, data) in enumerate(files):
+        name = _loop_name(name)
+        try:
+            sec = loops.audio_seconds(data)
+        except ValueError:
+            raise AppError(f"\"{name}\" is not a readable WAV, AIFF, FLAC or MP3 file")
+        if sec <= 0:
+            raise AppError(f"\"{name}\" is empty")
+        if scene + i >= scenes:
+            skipped.append(name)
+            continue
+        plan.append((scene + i, name, data, sec))
+    busy = [s for s, *_ in plan if (tr["clipSlots"][s] or {}).get("clip")]
+    if busy and not replace:
+        raise CellBusy(f"{len(busy)} cell(s) already have a clip", cells=busy)
+    return plan, skipped
+
+
+def loops_action(track, scenes):
+    if len(scenes) == 1:
+        return f"Loop added {cell_name(track, scenes[0])}"
+    return f"Loops added T{track + 1} S{scenes[0] + 1}–S{scenes[-1] + 1}"
+
+
+def job_add_loops(oid, track, scene, files, replace):
+    """Лупы в ячейки аудиодорожки на Move: загрузка в UPLOAD → версия → одна запись проекта."""
+    def fn(stage):
+        plan, skipped = plan_loops(ssh_read_song(oid), track, scene, files, replace)
+        stage(f"Uploading {len(plan)} file(s) to Samples/UPLOAD")
+        rels = upload_loops([(name, data) for _, name, data, _ in plan])
+        try:
+            return _place_loops(oid, track, scene, plan, rels, skipped, replace, stage)
+        except AppError as e:
+            got = ", ".join(r.rsplit("/", 1)[1] for r in rels)
+            raise AppError(f"{str(e).rstrip('.')}. The project was not changed. Already in Samples/UPLOAD: {got}")
+    return fn
+
+
+def _place_loops(oid, track, scene, plan, rels, skipped, replace, stage):
+    """После загрузки: под замком проекта — перепроверка ячеек, клипы, версия, одна запись."""
+    stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
+    with target_lock("move:" + oid):
+        song = ssh_read_song(oid)
+        plan_loops(song, track, scene, [(n, d) for _, n, d, _ in plan], replace)    # ячейки не заняли за время загрузки
+        new = copy.deepcopy(song)
+        tr = new["tracks"][track]
+        ts = new.get("timeSignature") or {"upper": 4, "lower": 4}
+        bar = int(ts.get("upper", 4)) * 4 / int(ts.get("lower", 4))
+        tempo = float(new.get("tempo") or 120.0)
+        template = next((sl["clip"] for t in new.get("tracks") or [] for sl in t.get("clipSlots") or []
+                         if (sl or {}).get("clip") and sl["clip"].get("sampleUri") is not None), None)
+        placed = []
+        for (s, name, _data, sec), rel in zip(plan, rels):
+            lt, beats = loops.fit(sec, tempo, bar, loops.name_tempo(name))
+            tr["clipSlots"][s]["clip"] = loops.audio_clip(template, rel, lt, beats, ts, tr.get("color"))
+            placed.append({"scene": s, "sample": rel.rsplit("/", 1)[1], "tempo": round(float(lt), 3), "beats": beats})
+        save_move_version(oid, song, loops_action(track, [p["scene"] for p in placed]))
+        stage("Writing clips")
+        ssh_write_song(oid, dump_song(new))
+        with LOCK:
+            INFO_CACHE.pop(oid, None)
+    return {"placed": placed, "skipped": skipped, "uploaded": rels}
+
+
 def clip_op_action(op, src, dst):
     a, b = cell_name(*src), cell_name(*dst)
     return {"copy": f"Clip copied {a} → {b}", "move": f"Clip moved {a} → {b}", "swap": f"Clips swapped {a} ↔ {b}"}[op]
@@ -2893,7 +3120,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "offline",
                             "message": "Move is unreachable. Check that it is on and on the same Wi-Fi network."}, 503)
         except CellBusy as e:
-            self.send_json({"error": "busy", "message": str(e)}, 409)
+            self.send_json({"error": "busy", "message": str(e), "cells": e.cells}, 409)
         except SamplesMissing as e:
             self.send_json({"error": "missing", "message": str(e), "missing": e.missing}, 409)
         except AppError as e:
@@ -3114,6 +3341,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not ssh_enabled():
                     raise AppError("Deleting a clip on Move needs pad control enabled")
                 return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0, f"Clip deleted {cell_name(t, sc)}")))
+            if act == "loops" and m == "POST":
+                t, sc = cell_args(q)
+                body = self.raw_body(limit=300 * 1024 * 1024)
+                if not ssh_enabled():
+                    raise AppError("Adding loops on Move needs pad control enabled")
+                files = prepare_loop_files(read_loop_files(self.headers.get("Content-Type"), body))
+                replace = (q.get("replace") or ["0"])[0] == "1"
+                plan_loops(ssh_read_song(oid), t, sc, files, replace)     # 400/409 сразу, до загрузки
+                return self.send_json(start_job("loops", job_add_loops(oid, t, sc, files, replace)))
             if act == "history" and m == "GET" and len(seg) == 4:
                 return self.send_json({"versions": list_history("move", oid)})
             if act == "history" and m == "POST" and seg[4:] == ["restore"]:

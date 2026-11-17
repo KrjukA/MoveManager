@@ -40,7 +40,8 @@ class SshNoMux(unittest.TestCase):
         # macOS: общее соединение (ControlMaster) падает с «mm_send_fd: Message too long», когда данные идут через stdin
         saved = os.environ.pop("MOVE_SSH_CMD", None)
         try:
-            with mock.patch.object(app.subprocess, "run") as run:
+            with mock.patch.object(app.subprocess, "run") as run, \
+                    mock.patch.dict(os.environ, {"MOVE_MANAGER_TESTING": ""}):   # запуск подменён — сети нет
                 run.return_value = mock.Mock(returncode=0, stdout=b"", stderr=b"")
                 app.ssh_run("true", data=b"x")
             self.assertNotIn("ControlMaster", " ".join(run.call_args[0][0]))

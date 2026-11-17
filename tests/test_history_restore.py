@@ -116,6 +116,7 @@ class Restore(RouteBase):
         self.missing_on_move = ["Drift/Samples/a.wav", "packs/Drift/Samples/a.wav"]
         st, _, b = self.post(f"/api/move/sets/{OID}/history/restore", {"id": vid})
         self.assertEqual(st, 200, b)
+        self.assertEqual(self.wait_job(b)["status"], "done")      # дождаться: иначе задача переживёт подмены теста
 
     def test_restore_move_needs_ssh(self):
         vid = history.save_version(app.history_dir("move", OID), app.dump_song(song()), "x")

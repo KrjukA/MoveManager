@@ -103,11 +103,13 @@ class ClipOp(unittest.TestCase):
                 clip_op(s, op, a, b)
             self.assertEqual(s, before, (op, a, b))
 
-    def test_audio_source_refused(self):
+    def test_audio_to_audio_allowed(self):          # сборка 53: аудиоклипы — между аудиодорожками
         s = song()
-        s["tracks"][1]["clipSlots"][0]["clip"] = {"name": "loop"}
+        s["tracks"][1]["clipSlots"][0]["clip"] = {"name": "loop", "sampleUri": "ableton:/user-library/Samples/a.wav"}
+        clip_op(s, "copy", (1, 0), (1, 1))
+        self.assertEqual(s["tracks"][1]["clipSlots"][1]["clip"]["name"], "loop")
         with self.assertRaises(AppError):
-            clip_op(s, "copy", (1, 0), (1, 1))
+            clip_op(s, "copy", (1, 0), (0, 1))
 
     def test_errors(self):
         s = song()

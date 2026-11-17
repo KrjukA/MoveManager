@@ -327,6 +327,7 @@ footer .status.err{color:var(--bad)}
   <input type="file" id="bundleFile" accept=".ablbundle,.zip" multiple hidden>
   <input type="file" id="ulFile" multiple hidden>
   <input type="file" id="clipFile" accept=".mid,.midi,audio/midi" hidden>
+  <input type="file" id="loopFile" accept=".wav,.aif,.aiff,.flac,.mp3,audio/wav,audio/aiff,audio/flac,audio/mpeg" multiple hidden>
   <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" hidden>
 </footer>
 
@@ -619,15 +620,24 @@ function clipsHTML(side, it){
     for(let c=0;c<scenes;c++){
       const cl = row[c], sel = S.cell && S.cell.t===t && S.cell.s===c;
       const bars = cl ? Math.round(cl.length/bar*10)/10 : 0;
-      const isBuf = buf && buf.t===t && buf.s===c, no = fromKind && (fromKind==="audio" || tr.clipKind!==fromKind);
-      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""} ${isBuf?"buf":""} ${no?"no":""}" ${cl && tr.clipKind!=="audio"?`draggable="true"`:""} data-t="${t}" data-s="${c}" title="Track ${t+1}, scene ${c+1}${cl?`: ${cl.notes} notes, ${bars} bars`:": empty"}">${cl?`${cl.notes}<br>${bars}b`:""}</button>`;
+      const isBuf = buf && buf.t===t && buf.s===c, no = fromKind && tr.clipKind!==fromKind;
+      const tempo = cl && cl.audio && cl.tempo ? (Math.abs(cl.tempo-Math.round(cl.tempo))<0.05 ? Math.round(cl.tempo) : cl.tempo.toFixed(1)) : "";
+      const tip = !cl ? ": empty" : cl.audio ? `: ${cl.sample} · ${bars} bars · loop ${tempo} bpm${cl.transpose?` · ${cl.transpose>0?"+":""}${cl.transpose} st`:""}` : `: ${cl.notes} notes, ${bars} bars`;
+      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""} ${isBuf?"buf":""} ${no?"no":""}" ${cl?`draggable="true"`:""} data-t="${t}" data-s="${c}" data-audio="${tr.clipKind==="audio"?1:""}" title="${esc(`Track ${t+1}, scene ${c+1}${tip}`)}">${cl?(cl.audio?`${bars}b<br>${tempo}`:`${cl.notes}<br>${bars}b`):""}</button>`;
     }
   });
   html += `</div>`;
-  const keys = `<div class="hint" style="margin-top:6px">⌘C copy · ⌘X cut · ⌘V paste · ⌫ delete · arrows move · drag: move, onto a clip: swap, ⌥ drag: copy${buf?" · Esc: clear clipboard":""}</div>`;
+  const keys = `<div class="hint" style="margin-top:6px">⌘C copy · ⌘X cut · ⌘V paste · ⌫ delete · arrows move · drag: move, onto a clip: swap, ⌥ drag: copy${buf?" · Esc: clear clipboard":""}${side==="move"?" · drop WAV, AIFF, FLAC or MP3 files on an audio track cell to add loops":""}</div>`;
   if(!S.cell) return html + keys + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.</div>`;
   const {t, s: sc} = S.cell, cl = (grid[t]||[])[sc], tr = tracks[t] || {};
   const noSsh = side==="move" && !padMode(), audioTr = tr.trackKind && tr.trackKind!=="midi";
+  if(tr.clipKind==="audio"){                                  // аудиодорожка: лупы вместо MIDI
+    const why = side!=="move" ? "Adding loops works for projects on Move" : noSsh ? "Adding loops on Move needs pad control enabled" : "";
+    return html + keys + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
+      ${cl ? `<button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
+      <button id="loopAdd" class="primary" ${why?"disabled":""} title="${esc(why||"Pick WAV, AIFF, FLAC or MP3 files: they go to Samples/UPLOAD on Move and fill this track from this cell to the right")}">Add loops…</button></div>
+      <div class="hint">${why ? esc(why)+"." : "Several files fill the track to the right, in file-name order. Loop tempo comes from the file name (\"160bpm\"); without it the loop is fitted to whole bars, like Move does."}</div>`;
+  }
   const why = noSsh ? "Import to Move needs pad control enabled" : audioTr ? "This is an audio track; MIDI cannot go into it" : "";
   return html + keys + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
     ${cl ? `<button id="clipSave">Save .mid</button><button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
@@ -636,13 +646,22 @@ function clipsHTML(side, it){
     ${S.gen && S.gen.t===t && S.gen.s===sc && S.gen.key===side+":"+it.id ? genHTML() : ""}
     ${why ? `<div class="hint">${esc(why)}.</div>` : `<div class="hint">Only notes are taken from the file; clip length is rounded up to whole bars.${side==="move"?" The project is backed up before writing.":""}</div>`}`;
 }
+/* Проект на Move мог измениться на самом девайсе (Move сам сохраняет открытый проект) —
+   при ошибке действия с клипами перечитываем его и объясняем, а не оставляем старую картинку */
+async function moveFailed(side, id, e){
+  if(side!=="move" || e.auth){ fail(e); return; }
+  const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; }
+  await loadMove();
+  const stale = /Cell is empty|Cell is occupied|already have a clip|no longer/i.test(e.message||"");
+  status(stale ? "The project on Move was changed on the device (Move saves an open project on its own), so this cell no longer matches. The view was refreshed — check it and try again. Leave the project on Move while editing it here."
+               : (e.message||"Something went wrong") + " The view was refreshed.", true);
+}
 /* ───────── копия, перенос, обмен клипов (сборка 51) ───────── */
 let clipDrag = null;                                   // {t, s} клипа, который сейчас тащат
 function clipBufHere(side, it){ const b = S.clipBuf; return b && b.key===side+":"+it.id ? b : null; }
 const KIND_TEXT = {drums:"a Drum Rack track", melodic:"a melodic track", audio:"an audio track"};
 function clipRuleError(it, from, to){
   const tr = it.info?.tracks || [], a = (tr[from.t]||{}).clipKind, b = (tr[to.t]||{}).clipKind;
-  if(a==="audio" || b==="audio") return "Audio clips can't be moved yet";
   if(a && b && a!==b) return `A clip from ${KIND_TEXT[a]} can only go to ${KIND_TEXT[a]}`;
   return "";
 }
@@ -669,7 +688,7 @@ async function clipOp(op, from, to){
     S.cell = {t:to.t, s:to.s}; renderInspector();
     status(`${verb}: track ${from.t+1}, scene ${from.s+1} → track ${to.t+1}, scene ${to.s+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
     return true;
-  }catch(e){ fail(e); return false; }
+  }catch(e){ await moveFailed(side, id, e); return false; }
 }
 function clipKeys(e){
   /* горячие клавиши вкладки Clips; true — клавиша обработана здесь */
@@ -753,6 +772,42 @@ async function restoreVersion(vid){
     status(`Restored to ${v.when}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
   }catch(e){ fail(e); }
 }
+/* ───────── лупы в аудиоячейки (сборка 53) ───────── */
+async function addLoops(fileList, t, s){
+  const it = selItem(); if(!it || S.sel.side!=="move") return; const id = S.sel.id;
+  const tr = (it.info?.tracks||[])[t] || {};
+  if(tr.clipKind!=="audio"){ status("Loops can only go into an audio track", true); return; }
+  if(!padMode()){ status("Adding loops on Move needs pad control enabled", true); return; }
+  const files = [...fileList].filter(f => /\.(wav|aif|aiff|flac|mp3)$/i.test(f.name)).sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:"base"}));
+  const other = [...fileList].filter(f => !/\.(wav|aif|aiff|flac|mp3)$/i.test(f.name)).map(f => f.name);
+  if(!files.length){ status(`Only WAV, AIFF, FLAC and MP3 files can be added as loops${other.length?` (skipped: ${other.join(", ")})`:""}`, true); return; }
+  const row = (it.info?.clips||[])[t] || [], scenes = row.length;
+  const busy = files.map((_,i) => s+i).filter(c => c < scenes && row[c]);
+  let replace = 0;
+  if(busy.length){
+    if(!confirm(`Replace ${busy.length} clip${busy.length>1?"s":""} in track ${t+1}, scene${busy.length>1?"s":""} ${busy.map(c=>c+1).join(", ")}?`)) return;
+    replace = 1;
+  }
+  const send = rep => { const fd = new FormData(); files.forEach(f => fd.append("file", f, f.name)); return fetch(`${clipURL("move",it)}/loops?track=${t}&scene=${s}&replace=${rep}`, {method:"POST", body:fd}); };
+  try{
+    status(`Uploading ${files.length} loop${files.length>1?"s":""}…`);
+    let r = await send(replace);
+    if(r.status===409){
+      const d = await r.json().catch(()=>({}));
+      if(!confirm(`Replace ${(d.cells||[]).length} clip(s) in track ${t+1}?`)) return;
+      r = await send(1);
+    }
+    const d = await r.json().catch(()=>({}));
+    if(r.status===401){ showAuth(); return; }
+    if(!r.ok) throw new Error(d.message || "Could not add the loops");
+    genStop();
+    const res = await runJob("move:"+id, async () => d);
+    const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove();
+    const pl = res.placed||[], sk = res.skipped||[];
+    S.cell = {t, s}; renderInspector();
+    status(`Loops added: ${pl.length} to track ${t+1}${pl.length?`, scene${pl.length>1?"s":""} ${pl[0].scene+1}${pl.length>1?"–"+(pl[pl.length-1].scene+1):""}`:""}${sk.length?`. Not added (no more cells): ${sk.join(", ")}`:""}${other.length?`. Skipped (not WAV/AIFF/FLAC/MP3): ${other.join(", ")}`:""}. Leave the project on Move and open it again to see the changes`);
+  }catch(e){ fail(e); }
+}
 async function deleteClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side, id} = S.sel, {t, s: sc} = S.cell;
   if(!confirm(`Delete the clip in track ${t+1}, scene ${sc+1}?${side==="move"?" The project on Move is backed up first.":""}`)) return;
@@ -765,7 +820,7 @@ async function deleteClip(){
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
     status(`Clip deleted: track ${t+1}, scene ${sc+1}${side==="move"?". Leave the project on Move and open it again to see the changes":""}`);
-  }catch(e){ fail(e); }
+  }catch(e){ await moveFailed(side, id, e); }
 }
 async function saveClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side} = S.sel, {t, s: sc} = S.cell;
@@ -1669,7 +1724,7 @@ async function ulApply(moves, what){
     const others = touch.filter(p => !/\/Sets\//.test(p)).map(p => p.includes("/schwung/") ? "Schwung state" : ulBase(p));
     const lines = [...projects.map(p => `• ${p} (project)`), ...[...new Set(others)].map(p => `• ${p}`)];
     const files = plan.moves.length;
-    const msg = `${what}${files>1?` (${files} files)`:""}\n\n` + (lines.length ? `References will be rewritten in:\n${lines.join("\n")}\n\nA backup of every changed file is saved on the computer first.` : "Nothing uses it, so no project changes. A backup record is saved on the computer.")
+    const msg = `${what}${files>1?` (${files} files)`:""}\n\n` + (lines.length ? `References will be rewritten in:\n${lines.join("\n")}\n\nA backup of every changed file is saved on the computer first.\n\nLeave these projects on Move first — Move saves an open project on its own and would put the old sample paths back.` : "Nothing uses it, so no project changes. A backup record is saved on the computer.")
       + (projects.length ? `\n\nIf one of these projects is open on Move, open another project first: Move would save the open one with the old paths.` : "");
     if(!confirm(msg)) return false;
     if(plan.moves.some(([o]) => "ul:"+o===S.playing)) stopLibAudio();
@@ -1930,6 +1985,7 @@ insp.addEventListener("click", async e => {
   if(t.dataset.tab){ S.tab = t.dataset.tab; return renderInspector(); }
   const cc = t.closest(".clipcell"); if(cc){ genStop(); S.cell = {t:+cc.dataset.t, s:+cc.dataset.s}; return renderInspector(); }
   if(t.dataset.restore) return restoreVersion(t.dataset.restore);
+  if(t.id==="loopAdd"){ $("#loopFile").value = ""; return $("#loopFile").click(); }
   if(t.id==="clipSave") return saveClip();
   if(t.id==="keyEdit"){ S.keyEdit = true; return renderInspector(); }
   if(t.id==="keyDone"){ S.keyEdit = false; if(S.key && !keyPayload(selItem())) S.key = null; return renderInspector(); }
@@ -2016,6 +2072,28 @@ insp.addEventListener("drop", e => {
 insp.addEventListener("dragend", () => { if(clipDrag){ clipDrag = null; renderInspector(); } });   // отпустили мимо сетки
 
 $("#clipFile").onchange = e => uploadClip(e.target.files[0]);
+$("#loopFile").onchange = e => { if(S.cell) addLoops(e.target.files, S.cell.t, S.cell.s); };
+/* файлы из Finder на ячейку аудиодорожки — лупы; мимо ячейки — не даём браузеру открыть файл */
+insp.addEventListener("dragover", e => {
+  if(clipDrag || trkDrag!==null || !e.dataTransfer.types.includes("Files")) return;
+  e.preventDefault();
+  insp.querySelectorAll(".clipcell.over").forEach(x=>x.classList.remove("over"));
+  const c = e.target.closest(".clipcell");
+  const ok = c && c.dataset.audio && S.sel?.side==="move";
+  e.dataTransfer.dropEffect = ok ? "copy" : "none";
+  if(ok) c.classList.add("over");
+});
+insp.addEventListener("dragleave", e => { if(!insp.contains(e.relatedTarget)) insp.querySelectorAll(".clipcell.over").forEach(x=>x.classList.remove("over")); });
+insp.addEventListener("drop", e => {
+  if(clipDrag || trkDrag!==null || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  insp.querySelectorAll(".clipcell.over").forEach(x=>x.classList.remove("over"));
+  const c = e.target.closest(".clipcell");
+  if(!c || !c.dataset.audio){ status(S.sel?.side==="move" ? "Drop loops on a cell of an audio track" : "Adding loops works for projects on Move", true); return; }
+  if(S.sel?.side!=="move"){ status("Adding loops works for projects on Move", true); return; }
+  S.cell = {t:+c.dataset.t, s:+c.dataset.s};
+  addLoops(e.dataTransfer.files, +c.dataset.t, +c.dataset.s);
+});
 $("#audioFile").onchange = async e => {
   const f = e.target.files[0], it = selItem(); if(!f || !it || S.sel.side!=="lib") return;
   try{ await uploadAudio(it.id, f, f.name.split(".").pop().toLowerCase()); status("File attached as project audio"); }
