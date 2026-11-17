@@ -59,13 +59,20 @@ class Translate(unittest.TestCase):
         # the author (17.11): короткие кнопки, вкладки и заголовки — по-английски; переводятся описания и сообщения
         # the author (17.11): шапка остаётся английской; кнопки .mid и Generate — тоже
         labels = ["Projects", "Samples", "Presets", "Refresh", "Report", "Enable pad control", "Save report",
-                  "Report a problem", "Default input", "Save .mid", "Load .mid", "Generate…"]
+                  "Report a problem", "Default input", "Save .mid", "Load .mid", "Generate…",
+                  "Delete clip", "Swing", "Ghosts", "Euclid", "½ time: off", "½ time: kick + snare"]
         self.assertEqual(translate(labels), labels)
 
     def test_panel_and_generator_controls_are_russian(self):
         got = translate(["Description", "Notes", "To computer →", "← To Move", "Open", "Copy to computer →", "Tracks", "Clips",
                          "History", "Restore", "Genre", "Mutation", "Put in cell", "on computer"])
         self.assertEqual([g for g in got if not CYR.search(g)], [])
+
+    def test_card_texts_with_paths(self):
+        got = translate(["Copies into Samples/Drums on Move. Nothing on Move is overwritten: a file with the same name gets “2” added.",
+                         "on this computer · /Users/x/Loops", "on this computer", "Project audio: Song.wav", "More"])
+        self.assertEqual(got, ["Копируется в Samples/Drums на Move. На Move ничего не перезаписывается: к файлу с таким же именем добавится «2».",
+                               "на этом компьютере · /Users/x/Loops", "на этом компьютере", "Звук проекта: Song.wav", "Ещё"])
 
     def test_descriptions_are_russian_with_english_terms(self):
         r = translate(["Looking for Move on the network…", "Deleting a clip on Move needs pad control enabled",

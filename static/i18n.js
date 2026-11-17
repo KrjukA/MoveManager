@@ -206,8 +206,7 @@ exact: {
   // правая панель: кнопки и заголовки (the author, 17.11: переводить; кроме .mid и Generate)
   "on computer": "на компьютере", "on Move": "на Move", "To computer →": "На компьютер →", "← To Move": "← На Move", "with audio": "со звуком",
   "Show in Finder": "Показать в Finder", "Delete": "Удалить", "Group": "Группа", "Description": "Описание", "Notes": "Заметки",
-  "Tracks": "Треки", "Clips": "Клипы", "History": "История", "Apply changes": "Применить", "Reset": "Сбросить", "Restore": "Вернуть",
-  "Delete clip": "Удалить Clip", "Add loops…": "Добавить Loops…", "Export from Move": "Экспорт с Move", "Record input": "Записать вход",
+  "Tracks": "Треки", "Clips": "Клипы", "History": "История", "Apply changes": "Применить", "Reset": "Сбросить", "Restore": "Вернуть", "Add loops…": "Добавить Loops…", "Export from Move": "Экспорт с Move", "Record input": "Записать вход",
   "● Record input": "● Записать вход", "File…": "Файл…", "Sound": "Звук", "Project": "Проект", "Open": "Открыть",
   "Copy to computer →": "Копировать на компьютер →", "← Copy to Move": "← Копировать на Move", "Copy to Move": "Копировать на Move",
   "Name by project": "Назвать по проекту", "Used in": "Где используется", "Root": "Тоника", "Scale": "Лад", "Done": "Готово",
@@ -216,9 +215,8 @@ exact: {
   "Cancel": "Отмена", "Clear selection": "Снять выделение", "Choose…": "Выбрать…", "Change…": "Изменить…",
   "Stop using this folder": "Не использовать эту папку", "Project group": "Группа проекта", "Audio format": "Формат звука", "Rename": "Переименовать",
   // генератор: кнопки и ручки переводятся
-  "Genre": "Жанр", "Genres": "Жанры", "Bars": "Такты", "Swing": "Свинг", "Mutation": "Мутация", "Ghosts": "Гоуст-ноты", "Euclid": "Евклид",
-  "Another": "Ещё вариант", "Put in cell": "Положить в ячейку", "■ Stop": "■ Стоп", "▶ Play pattern": "▶ Слушать паттерн",
-  "½ time: off": "Халфтайм: выкл.", "½ time: all": "Халфтайм: всё", "½ time: kick": "Халфтайм: бочка", "½ time: kick + snare": "Халфтайм: бочка + снейр",
+  "Genre": "Жанр", "Genres": "Жанры", "Bars": "Такты", "Mutation": "Мутация",
+  "Another": "Ещё вариант", "Put in cell": "В ячейку", "More": "Ещё", "on this computer": "на этом компьютере", "■ Stop": "■ Стоп", "▶ Play pattern": "▶ Слушать паттерн",
   "Empty folder. Drag files here from the other panel or from Finder.": "Пустая папка. Перетащите сюда файлы из другой панели или из Finder."
 },
 patterns: [
@@ -315,7 +313,10 @@ patterns: [
   [/^Audio track · effect: (.+?)((?: · clips: \d+)?)$/, (m, e, c) => `Audio Track · эффект: ${e}${c.replace("clips:", "Clips:")}`],
   [/^on Move · pad (\d+)$/, "на Move · Pad $1"],
   [/^pad (\d+): (.+)$/, "Pad $1: $2"],
-  [/^on Move · (.+)$/, "на Move · $1"], [/^on computer · (.+)$/, "на компьютере · $1"],
+  [/^on Move · (.+)$/, "на Move · $1"], [/^on this computer · (.+)$/, "на этом компьютере · $1"],
+  [/^Copies into (.+) on Move\. Nothing on Move is overwritten: a file with the same name gets “2” added\.$/,
+    "Копируется в $1 на Move. На Move ничего не перезаписывается: к файлу с таким же именем добавится «2»."],
+  [/^Project audio: (.+)$/, "Звук проекта: $1"], [/^Last export failed: (.+)$/s, "Последний экспорт не удался: $1"], [/^on computer · (.+)$/, "на компьютере · $1"],
   [/^(\d+) files$/, "файлов: $1"], [/^(\d+) used$/, "используется: $1"], [/^(\d+) projects?$/, "проектов: $1"],
   [/^Reading your projects (\d+)\/(\d+)… their genres appear when done\.$/, "Читаю ваши проекты $1/$2… их жанры появятся, когда закончу."],
   [/^Loading "(.+)"…$/, "Загружаю «$1»…"], [/^Adding "(.+)"…$/, "Добавляю «$1»…"],

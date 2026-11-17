@@ -113,8 +113,8 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 .grid.cmd{display:block;padding:0 0 18px}
 #moveGrid.cmd{background:none;border:none;border-radius:0;margin:0;padding:0 0 18px;flex:1;max-height:none;color:inherit}
 #moveGrid.cmd .empty{color:var(--faint)}
-.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;grid-auto-rows:minmax(84px,auto)}
-.pads .tile{min-height:84px;padding:5px 6px;gap:3px;border-top:3px solid var(--pc,var(--dev-line))!important}
+.grid.pads{grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;grid-auto-rows:minmax(100px,auto)}
+.pads .tile{min-height:100px;padding:5px 6px;gap:3px;border-top:3px solid var(--pc,var(--dev-line))!important}
 .pads .tile .name{font-size:11px;line-height:1.25;-webkit-line-clamp:3}
 .pads .tile .bpm{font-size:10px}
 .pads .keyb{font-size:10px;padding:0 4px}
@@ -123,12 +123,12 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 .mini{display:grid;grid-template-columns:repeat(var(--sc,8),minmax(0,1fr));gap:1px;margin-top:auto}
 .mini i{display:block;aspect-ratio:1;border-radius:1px;background:var(--line)}
 #moveGrid .mini i{background:rgba(255,255,255,.07)}
-.pads .tile{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"name name" "meta mini";gap:3px 5px;align-content:space-between}
-.pads .tile .name{grid-area:name}
-.pads .tile .top{grid-area:meta;flex-direction:column;align-items:flex-start;gap:3px;align-self:end}
+.pads .tile{display:flex;flex-direction:column;gap:3px}
+.pads .tile .top{order:2;gap:4px}
+.pads .tile .name{order:1;-webkit-line-clamp:2}
 .pads .tile .top .bpm{margin-left:0}
-.pads .tile .mini{grid-area:mini;align-self:end;margin:0;gap:1px}
-.pads .tile .mini i{aspect-ratio:auto;height:6px}
+.pads .tile .mini{order:3;margin-top:auto;gap:2px}
+.pads .tile .mini i{aspect-ratio:auto;height:9px;border-radius:2px}
 .pads .tile .keyb{font-size:9px;padding:0 3px}
 .pads .tile .top .bpm{font-size:9px}
 .pads .tile .scale,.pads .tile .roles{display:none}
@@ -924,7 +924,7 @@ function genHTML(){
   return `<div class="genpanel" id="gen">
     <select id="genSource" aria-label="Genre">${opts}</select>
     <div class="genrow"><label for="genMut">Mutation</label><input type="range" id="genMut" min="0" max="100" value="${g.mutation}"><span class="v" id="genMutV">${g.mutation}</span></div>
-    <div class="genrow"><button id="genAnother">Another</button><button id="genPlay">${g.playing?"■ Stop":"▶ Play"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"}>Put in cell</button></div>
+    <div class="genrow"><button id="genAnother">Another</button><button id="genPlay" class="icon" title="${g.playing?"Stop":"Play"}" aria-label="${g.playing?"Stop":"Play"}">${g.playing?"■":"▶"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"}>Put in cell</button></div>
     ${g.loading ? `<div class="hint">${esc(g.loading)}</div>` : ""}
     ${g.error ? `<div class="hint" style="color:var(--bad)">${esc(g.error)}</div>` : g.hint ? `<div class="hint">${esc(g.hint)}</div>` : ""}
     ${grid}
@@ -1720,7 +1720,7 @@ function cmdInspector(){
     <div class="where">on this computer · ${esc(pcDir(pk.path))}</div>
     <div class="ulname" data-ren="1" title="Double-click to rename">${pk.type==="folder"?"▸ ":""}${esc(pcName(pk.path))}</div>
     ${f ? `<div class="facts"><span class="fact">${ulSize(f.size)}</span></div>` : ""}
-    <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚ Pause" : "▶ Play"}</button>` : ""}
+    <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay" class="icon" title="Play" aria-label="Play">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
       ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">Show in Finder</button></div>
     <div class="acts"><button class="primary" id="toMove" ${mvData()?"":"disabled"} title="Copy into the folder open on the left">← Copy to Move</button></div>
     <div class="hint">Copies into ${esc(pdir("L"))} on Move. Nothing on Move is overwritten: a file with the same name gets “2” added.</div>`;
@@ -1754,7 +1754,7 @@ function ulInspector(rel){
     <div class="where">on Move · ${esc(here)}</div>
     <div class="ulname" data-ren="1" title="Double-click to rename">${esc(base)}</div>
     <div class="facts"><span class="fact">${ulSize(f.size)}</span></div>
-    <div class="acts">${UL_AUDIO.test(base) ? `<button id="ulPlay">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚ Pause" : "▶ Play"}</button>` : ""}
+    <div class="acts">${UL_AUDIO.test(base) ? `<button id="ulPlay" class="icon" title="Play" aria-label="Play">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
       ${pcOk ? `<button class="primary" id="toPc" title="Copy into the folder open on the right">Copy to computer →</button>` : ""}
       <button class="danger" id="ulDelete" ${f.used.length?"disabled":""} title="${f.used.length?"Used — delete is only for files nothing uses":"Delete this file from Move"}">Delete</button></div>
     <h3>Used in</h3>
