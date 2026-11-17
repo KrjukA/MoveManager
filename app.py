@@ -69,7 +69,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "53"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "54"          # номер сборки: виден в шапке программы и в журнале экспорта
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -234,7 +234,8 @@ def parse_song(song):
         inst = find_instrument(devices) or {}
         kind = inst.get("kind") or ""
         folders = preset["folders"] if preset else []
-        name = tr.get("name") or top.get("name") or (preset or {}).get("name") or kind or f"Track {i + 1}"
+        audio = tr.get("kind") == "audio"            # на аудиодорожке устройства — эффекты: имя и роль не по ним
+        name = tr.get("name") or ("Audio" if audio else top.get("name") or (preset or {}).get("name") or kind or f"Track {i + 1}")
         samples = []
         collect_samples(devices, samples)
         clips = sum(1 for s in tr.get("clipSlots") or [] if s.get("clip"))
@@ -250,7 +251,7 @@ def parse_song(song):
             "kind": kind,
             "trackKind": tr.get("kind") or "",
             "clipKind": track_clip_kind(tr),
-            "role": guess_role(folders, [name, (preset or {}).get("name") or ""], kind, tr.get("kind")),
+            "role": "Audio" if audio else guess_role(folders, [name, (preset or {}).get("name") or ""], kind, tr.get("kind")),
             "clips": clips,
             "pan": pan if isinstance(pan, (int, float)) else 0,
             "color": tr.get("color"),
@@ -1500,11 +1501,13 @@ def cached_info(oid, stamp):
 
 def stale_info(info):
     """Разбор от старой сборки: без clips (до 20), без вида дорожки clipKind (до 51),
-    без пометки audio у клипов аудиодорожек (до 53)."""
+    без пометки audio у клипов аудиодорожек (до 53), роль аудиодорожки по эффекту (до 54)."""
     info = info or {}
     if "clips" not in info or any("clipKind" not in t for t in info.get("tracks") or []):
         return True
     tracks = info.get("tracks") or []
+    if any(t.get("trackKind") == "audio" and t.get("role") != "Audio" for t in tracks):   # до 54: роль по эффекту
+        return True
     for i, row in enumerate(info.get("clips") or []):
         if i < len(tracks) and tracks[i].get("clipKind") == "audio" and any(c and "audio" not in c for c in row):
             return True

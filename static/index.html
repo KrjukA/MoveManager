@@ -1073,11 +1073,13 @@ function renderInspectorNow(){
   const changed = isChanged(it);
   const trk = order.map((ti,pos) => { const t = tracks[ti];
     const path = [SOURCE_RU[t.source]||t.source, ...t.folders].filter(Boolean).join(" / ");
-    const sub = [path, KIND_RU[t.kind]||t.kind, t.clips?`clips: ${t.clips}`:"", t.sampleCount?`samples: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
+    const isAudio = t.trackKind==="audio";              // аудиодорожка: на ней эффекты, а не инструмент
+    const sub = isAudio ? ["Audio track", t.preset ? `effect: ${t.preset}` : "", t.clips?`clips: ${t.clips}`:""].filter(Boolean).join(" · ")
+                        : [path, KIND_RU[t.kind]||t.kind, t.clips?`clips: ${t.clips}`:"", t.sampleCount?`samples: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
     const pv = panOf(t);
     return `<div class="trk" data-pos="${pos}" title="${esc(t.samples?.length?"Samples: "+t.samples.join(", "):"")}">
       <span class="n" draggable="true" title="Drag to reorder">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
-      <div class="b"><div class="t">${esc(t.preset||t.name)}</div><div class="p" title="${esc(sub)}">${esc(sub)}</div>
+      <div class="b"><div class="t">${esc(isAudio ? t.name : (t.preset||t.name))}</div><div class="p" title="${esc(sub)}">${esc(sub)}</div>
 </div></div>`; }).join("");
   // подсказки по Камелоту
   let sugg = "";
