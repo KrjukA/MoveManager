@@ -11,11 +11,13 @@ import json
 import math
 import mimetypes
 import os
+import platform
 import re
 import shlex
 import shutil
 import subprocess
 import tarfile
+import traceback
 import sys
 import threading
 import time
@@ -1709,6 +1711,73 @@ def reveal(path, select=False):
 JOBS = {}
 
 
+def log_error(title, exc):
+    """Ошибка с полным следом (traceback) в cache/errors.log — чтобы разбирать отчёты друзей."""
+    try:
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip()
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        f = CACHE_DIR / "errors.log"
+        if f.exists() and f.stat().st_size > 600_000:
+            f.write_text(f.read_text("utf-8", "replace")[-300_000:], "utf-8")
+        with f.open("a", encoding="utf-8") as h:
+            h.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [build {BUILD}] {title}: {exc}\n{tb}\n---\n")
+    except OSError:
+        pass
+
+
+REPORT_DIR = Path.home() / "Desktop"
+
+
+def build_report(text):
+    """Текст отчёта: что написал человек, сборка, система, состояние подключения, последние ошибки.
+    Без cookies, ключей и паролей; домашняя папка заменена на «~»."""
+    def tail(name, chars):
+        f = CACHE_DIR / name
+        try:
+            return f.read_text("utf-8", "replace")[-chars:] if f.exists() else "(empty)"
+        except OSError:
+            return "(could not read)"
+    lines = [
+        f"{APP_NAME} — problem report",
+        f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Build: {BUILD}",
+        f"System: {platform.platform()} · Python {platform.python_version()} · {'app' if FROZEN else 'source'}",
+        f"Move address: {CFG.get('move_url')}",
+        f"Signed in to Move: {'yes' if CFG.get('cookies') else 'no'} · pad control (SSH): {'on' if ssh_enabled() else 'off'}",
+        f"Library folder: {CFG.get('library')}",
+        f"Data folder: {DATA_DIR}",
+        "",
+        "What happened:",
+        (str(text or "").strip() or "(no description)"),
+        "",
+        "Recent errors (cache/errors.log):",
+        tail("errors.log", 20_000),
+        "",
+        "Slow Move commands (cache/ssh-timing.log):",
+        tail("ssh-timing.log", 3_000),
+    ]
+    rep = "\n".join(lines) + "\n"
+    home = str(Path.home())
+    if home and home != "/":
+        rep = rep.replace(home, "~")
+    for v in (CFG.get("cookies") or {}).values():   # на всякий случай: значения входа не попадают никуда
+        if v:
+            rep = rep.replace(str(v), "[hidden]")
+    return rep
+
+
+def save_report(text):
+    folder = REPORT_DIR
+    try:
+        folder.mkdir(exist_ok=True)                  # Рабочий стол; если его нет — папка данных программы
+    except OSError:
+        folder = DATA_DIR
+        folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{APP_NAME} report {time.strftime('%Y-%m-%d %H-%M-%S')}.txt"
+    path.write_text(build_report(text), "utf-8")
+    return path
+
+
 def log_line(name, text):
     """Короткий журнал в cache/: ошибки задач и медленные команды к Move — чтобы разбирать сбои по факту."""
     try:
@@ -1745,7 +1814,7 @@ def start_job(title, fn):
         except MoveOffline:
             job.update(status="error", error="Move is unreachable. Check that it is on and on the same network.")
         except Exception as e:  # noqa: BLE001
-            log_line("errors.log", f"{title}: {e}")
+            log_error(title, e)
             job.update(status="error", error=str(e))
 
     threading.Thread(target=run, daemon=True).start()
@@ -3176,6 +3245,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:  # noqa: BLE001
+            log_error(f"{self.command} {urlparse(self.path).path}", e)
             self.send_json({"error": "app", "message": f"Internal error: {e}"}, 500)
         finally:
             # ответ отправлен, а тело запроса так и не прочитано — его байты сломали бы следующий запрос
@@ -3200,6 +3270,15 @@ class Handler(BaseHTTPRequestHandler):
         seg = seg[1:]
 
         # ── настройки
+        if seg == ["report"] and m == "POST":
+            b = self.body()
+            path = save_report(str(b.get("text") or "")[:5000])
+            if b.get("reveal"):
+                try:
+                    reveal(path, select=True)
+                except Exception:  # noqa: BLE001  — открыть папку не вышло: файл всё равно сохранён
+                    pass
+            return self.send_json({"ok": True, "path": str(path), "name": path.name})
         if seg == ["config"] and m == "GET":
             return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),

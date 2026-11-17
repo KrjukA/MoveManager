@@ -298,6 +298,7 @@ footer .status.err{color:var(--bad)}
   <div class="spacer"></div>
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="ghost" title="Listen to the chosen input through the computer — independent of recording">🎧 Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
   <button id="themeBtn" class="ghost" title="Switch theme">Dark</button>
+  <button id="reportBtn" class="ghost" title="Something went wrong? Save a short report to send to the author">Report</button>
   <button id="refresh">Refresh</button>
 </header>
 
@@ -331,6 +332,13 @@ footer .status.err{color:var(--bad)}
   <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" hidden>
 </footer>
 
+<div class="modal" id="report"><div class="box">
+  <h4>Report a problem</h4>
+  <p>What did you do, and what went wrong? A report file is saved to your Desktop — send it to the author. It contains this text, the app version, your system and recent errors; no passwords or keys.</p>
+  <textarea id="reportText" rows="5" maxlength="5000" placeholder="E.g. I dragged two loops onto track 2 of “My Song” and got an error…" aria-label="What happened"></textarea>
+  <div class="err" id="reportErr"></div>
+  <div class="row"><button id="reportCancel">Cancel</button><button class="primary" id="reportOk">Save report</button></div>
+</div></div>
 <div class="modal" id="auth"><div class="box">
   <h4>Confirmation code</h4>
   <p>Move shows a code on its screen. Enter it to connect.</p>
@@ -2133,6 +2141,18 @@ async function showAuth(){
   catch(e){ $("#authErr").textContent = "Move is not responding"; }
 }
 function hideAuth(){ authOpen = false; $("#auth").classList.remove("on"); }
+/* ───────── отчёт о проблеме (сборка 55) ───────── */
+$("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#report").classList.add("on"); $("#reportText").focus(); };
+$("#reportCancel").onclick = () => $("#report").classList.remove("on");
+$("#reportOk").onclick = async () => {
+  $("#reportOk").disabled = true;
+  try{
+    const r = await api("POST", "/api/report", {text: $("#reportText").value, reveal: true});
+    $("#report").classList.remove("on"); $("#reportText").value = "";
+    status(`Report saved: ${r.name} (${/Desktop/.test(r.path) ? "on your Desktop" : r.path}). Send this file to the author.`);
+  }catch(e){ $("#reportErr").textContent = e.message || "Could not save the report"; }
+  finally{ $("#reportOk").disabled = false; }
+};
 async function submitCode(){
   const code = $("#code").value.trim(); if(!code) return;
   $("#authOk").disabled = true;
