@@ -64,6 +64,17 @@ class Seconds(unittest.TestCase):
         self.assertAlmostEqual(loops.audio_seconds(aiff_bytes(96000, sr=48000)), 2.0, places=4)
         self.assertAlmostEqual(loops.audio_seconds(aiff_bytes(44100, sr=44100)), 1.0, places=4)
 
+    def test_truncated_or_crafted_is_value_error(self):
+        good = wav_bytes(1.0)
+        for bad in (good[:30], good[:40], aiff_bytes(100)[:30]):
+            with self.assertRaises(ValueError):
+                loops.audio_seconds(bad)
+        a = bytearray(aiff_bytes(100))
+        i = a.index(b"COMM") + 8 + 8
+        a[i:i + 2] = b"\x7f\xff"                                   # экспонента частоты вне диапазона
+        with self.assertRaises(ValueError):
+            loops.audio_seconds(bytes(a))
+
     def test_not_audio(self):
         for bad in (b"", b"hello world", b"RIFF\0\0\0\0WAVE", b"ID3\x03" + b"\0" * 40):
             with self.assertRaises(ValueError):
@@ -74,7 +85,7 @@ class Tempo(unittest.TestCase):
     def test_name_tempo(self):
         cases = {"Jungle1 160bpm.wav": 160, "Break 84 bpm.wav": 84, "Pad 120BPM.aif": 120, "bpm 90 loop.wav": 90,
                  "Set 93 Rec 2 - 100 bpm.wav": 100, "Vocal_92.5bpm.wav": 92.5,
-                 "Kick 909.wav": None, "Fast 500bpm.wav": None, "Vocal Zamelo.wav": None}
+                 "Loop bpm140.wav": 140, "Loop 140bpm.wav": 140, "Kick 909.wav": None, "Fast 500bpm.wav": None, "Vocal Zamelo.wav": None}
         for name, want in cases.items():
             self.assertEqual(loops.name_tempo(name), want, name)
 

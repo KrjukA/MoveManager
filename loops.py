@@ -11,7 +11,7 @@ import struct
 
 import samplelib
 
-TEMPO_RE = re.compile(r"(?<![\d.])(\d{2,3}(?:\.\d+)?)\s*[-_]?\s*bpm|bpm\s*[-_]?\s*(\d{2,3}(?:\.\d+)?)(?![\d.])", re.I)
+TEMPO_RE = re.compile(r"(?<![\d.])(\d{2,3}(?:\.\d+)?)\s*[-_]?\s*bpm|bpm\s*[-_]?\s*(\d{2,3}(?:\.\d+)?)(?!\d)(?!\.\d)", re.I)
 BAR_COUNTS = (1, 2, 4, 8, 16, 32)
 
 
@@ -25,7 +25,14 @@ def _ext80(b):
 
 
 def audio_seconds(data):
-    """Длительность WAV или AIFF в секундах по заголовку; иначе ValueError."""
+    """Длительность WAV или AIFF в секундах по заголовку; иначе ValueError (и для обрезанных/странных файлов)."""
+    try:
+        return _audio_seconds(data)
+    except (struct.error, OverflowError, ZeroDivisionError):
+        raise ValueError("Not a WAV or AIFF file")
+
+
+def _audio_seconds(data):
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WAVE":
         p, sr, align, size = 12, None, None, None
         while p + 8 <= len(data):
@@ -45,7 +52,7 @@ def audio_seconds(data):
             if cid == b"COMM" and n >= 18:
                 _ch, frames, _bits = struct.unpack(">hIh", data[p + 8:p + 16])
                 sr = _ext80(data[p + 16:p + 26])
-                if sr > 0:
+                if sr > 0 and math.isfinite(sr):
                     return frames / sr
             p += 8 + n + (n & 1)
     raise ValueError("Not a WAV or AIFF file")

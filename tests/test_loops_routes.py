@@ -82,12 +82,18 @@ class Loops(RouteBase):
     def setUp(self):
         super().setUp()
         self.move_song = song()
-        self._saved_up = (app.MOVE, app.set_by_id, app.upload_dir_md5, app.put_sample)
+        self._saved_up = (app.MOVE, app.set_by_id, app.upload_dir_sizes, app.remote_md5, app.put_sample, app.ssh_write_song)
         app.MOVE = FakeMove(song())
         app.set_by_id = lambda oid: next(o for o in app.MOVE.list_sets() if o["objectId"] == oid)
         self.remote = {}                         # имя в UPLOAD → байты
         self.fail_on = None
-        app.upload_dir_md5 = lambda: {n: hashlib.md5(d).hexdigest() for n, d in self.remote.items()}
+        self.md5_asked = []
+        app.upload_dir_sizes = lambda: {n: len(d) for n, d in self.remote.items()}
+
+        def md5s(names):
+            self.md5_asked.append(sorted(names))
+            return {n: hashlib.md5(self.remote[n]).hexdigest() for n in names if n in self.remote}
+        app.remote_md5 = md5s
 
         def put(rel, data):
             name = rel.rsplit("/", 1)[1]
@@ -97,7 +103,7 @@ class Loops(RouteBase):
         app.put_sample = put
 
     def tearDown(self):
-        app.MOVE, app.set_by_id, app.upload_dir_md5, app.put_sample = self._saved_up
+        app.MOVE, app.set_by_id, app.upload_dir_sizes, app.remote_md5, app.put_sample, app.ssh_write_song = self._saved_up
         super().tearDown()
 
     def send(self, files, track=1, scene=0, replace=0):
@@ -196,3 +202,29 @@ class Loops(RouteBase):
         self.assertIn("1 a.wav", job["error"])               # уже загруженные названы
         self.assertEqual(self.writes, [])
         self.assertEqual(history.list_versions(app.history_dir("move", OID)), [])
+
+
+    def test_md5_only_for_same_size(self):
+        self.remote = {"Big.wav": wav_bytes(3.0), "Hit.wav": wav_bytes(0.25)}
+        app.upload_loops([("Hit.wav", wav_bytes(0.25))])
+        self.assertEqual(self.md5_asked, [["Hit.wav"]])               # «Big.wav» другого размера — не хэшируем
+
+    def test_truncated_file_400(self):
+        st, d = self.send([("cut.wav", wav_bytes(1.0)[:30])])
+        self.assertEqual(st, 400, d)
+        self.assertIn("cut.wav", d["message"])
+
+    def test_write_failure_names_uploaded(self):
+        def boom(oid, payload):
+            raise app.SshError("Move did not answer")
+        app.ssh_write_song = boom
+        job = self.run_job(*self.send([("1 a.wav", wav_bytes(1.0)), ("2 b.wav", wav_bytes(1.0))]))
+        self.assertEqual(job["status"], "error")
+        self.assertIn("1 a.wav", job["error"])
+        self.assertIn("2 b.wav", job["error"])
+        self.assertIn("Samples/UPLOAD", job["error"])
+
+    def test_multipart_binary_and_unicode(self):
+        payload = b"RIFF\r\n--x\r\n\r\n" + bytes(range(256)) * 3
+        body, ctype = multipart([("Петля 120bpm.wav", payload), ("b.wav", b"\r\n")])
+        self.assertEqual(app.read_loop_files(ctype, body), [("Петля 120bpm.wav", payload), ("b.wav", b"\r\n")])

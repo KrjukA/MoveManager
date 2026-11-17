@@ -2496,9 +2496,24 @@ UPLOAD_DIR = "Samples/UPLOAD"
 LOOP_EXTS = (".wav", ".aif", ".aiff")
 
 
-def upload_dir_md5():
-    """{имя файла: md5} папки Samples/UPLOAD на Move (нет папки — пусто)."""
-    out = ssh_run(f"cd {shlex.quote(samplelib.ABS_PREFIX + UPLOAD_DIR)} 2>/dev/null && md5sum -- * 2>/dev/null; true")
+def upload_dir_sizes():
+    """{имя файла: размер} папки Samples/UPLOAD на Move (нет папки — пусто). Быстро: без чтения файлов."""
+    out = ssh_run(f"cd {shlex.quote(samplelib.ABS_PREFIX + UPLOAD_DIR)} 2>/dev/null && "
+                  f"for f in *; do [ -f \"$f\" ] && stat -c '%s %n' -- \"$f\"; done; true")
+    res = {}
+    for line in out.decode("utf-8", "replace").splitlines():
+        size, _, name = line.partition(" ")
+        if size.isdigit() and name:
+            res[name] = int(size)
+    return res
+
+
+def remote_md5(names):
+    """md5 выбранных файлов UPLOAD (только кандидатов того же размера)."""
+    if not names:
+        return {}
+    quoted = " ".join(shlex.quote(n) for n in names)
+    out = ssh_run(f"cd {shlex.quote(samplelib.ABS_PREFIX + UPLOAD_DIR)} && md5sum -- {quoted}", timeout=300)
     res = {}
     for line in out.decode("utf-8", "replace").splitlines():
         md5, _, name = line.partition("  ")
@@ -2525,16 +2540,19 @@ def _loop_name(name):
 def upload_loops(files):
     """Загружает лупы в Samples/UPLOAD: такой же файл уже есть — берём его, имя занято другим — «Имя 2.wav».
     Возвращает rel каждого файла. Ошибка — AppError с перечнем уже загруженных."""
-    have = upload_dir_md5()
-    by_md5 = {}
-    for n, m in have.items():
-        by_md5.setdefault(m, []).append(n)
+    have = upload_dir_sizes()
+    known = {}                                     # имя → md5 (считаем только для файлов того же размера)
     rels, done = [], []
     for name, data in files:
         name = _loop_name(name)
         md5 = hashlib.md5(data).hexdigest()
         stem, ext = Path(name).stem, Path(name).suffix
-        same = [n for n in by_md5.get(md5, []) if n == name or re.fullmatch(re.escape(stem) + r" \d+" + re.escape(ext), n)]
+        cands = [n for n, size in have.items() if size == len(data)
+                 and (n == name or re.fullmatch(re.escape(stem) + r" \d+" + re.escape(ext), n))]
+        ask = [n for n in cands if n not in known]
+        if ask:
+            known.update(remote_md5(ask))
+        same = [n for n in cands if known.get(n) == md5]
         if same:
             final = name if name in same else sorted(same, key=loops.natural_key)[0]
         else:
@@ -2547,25 +2565,35 @@ def upload_loops(files):
                 got = ", ".join(done) or "none"
                 raise AppError(f"Upload of \"{name}\" failed ({e}). The project was not changed. "
                                f"Already in Samples/UPLOAD: {got}")
-            have[final] = md5
-            by_md5.setdefault(md5, []).append(final)
+            have[final] = len(data)
+            known[final] = md5
             done.append(final)
         rels.append(f"{UPLOAD_DIR}/{final}")
     return rels
 
 
 def read_loop_files(ctype, body):
-    """multipart/form-data → [(имя файла, байты)]."""
-    from email import policy
-    from email.parser import BytesParser
-    if "multipart/form-data" not in (ctype or ""):
+    """multipart/form-data → [(имя файла, байты)]. Режем по границе сами: без копий всего тела в памяти."""
+    m = re.search(r'boundary="?([^";]+)"?', ctype or "")
+    if "multipart/form-data" not in (ctype or "") or not m:
         raise AppError("No files given")
-    msg = BytesParser(policy=policy.HTTP).parsebytes(b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + body)
-    files = []
-    for part in msg.iter_parts():
-        fn = part.get_filename()
-        if fn:
-            files.append((fn, part.get_payload(decode=True) or b""))
+    sep = b"--" + m.group(1).encode("latin-1")
+    files, pos = [], body.find(sep)
+    while pos >= 0:
+        start = pos + len(sep)
+        if body[start:start + 2] == b"--":
+            break
+        nxt = body.find(b"\r\n" + sep, start)
+        if nxt < 0:
+            break
+        head_end = body.find(b"\r\n\r\n", start, nxt)
+        if head_end >= 0:
+            head = body[start:head_end].decode("utf-8", "replace")
+            fn = re.search(r'filename\*=UTF-8\'\'([^;\r\n]+)', head, re.I)
+            fn = unquote(fn.group(1)) if fn else (re.search(r'filename="([^"]*)"', head) or [None, None])[1]
+            if fn:
+                files.append((fn.replace("%22", '"'), body[head_end + 4:nxt]))
+        pos = nxt + 2
     if not files:
         raise AppError("No files given")
     return files
@@ -2609,29 +2637,38 @@ def job_add_loops(oid, track, scene, files, replace):
         plan, skipped = plan_loops(ssh_read_song(oid), track, scene, files, replace)
         stage(f"Uploading {len(plan)} file(s) to Samples/UPLOAD")
         rels = upload_loops([(name, data) for _, name, data, _ in plan])
-        stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
-        with target_lock("move:" + oid):
-            song = ssh_read_song(oid)
-            plan_loops(song, track, scene, [(n, d) for _, n, d, _ in plan], replace)    # ячейки не заняли за время загрузки
-            new = copy.deepcopy(song)
-            tr = new["tracks"][track]
-            ts = new.get("timeSignature") or {"upper": 4, "lower": 4}
-            bar = int(ts.get("upper", 4)) * 4 / int(ts.get("lower", 4))
-            tempo = float(new.get("tempo") or 120.0)
-            template = next((sl["clip"] for t in new.get("tracks") or [] for sl in t.get("clipSlots") or []
-                             if (sl or {}).get("clip") and sl["clip"].get("sampleUri") is not None), None)
-            placed = []
-            for (s, name, _data, sec), rel in zip(plan, rels):
-                lt, beats = loops.fit(sec, tempo, bar, loops.name_tempo(name))
-                tr["clipSlots"][s]["clip"] = loops.audio_clip(template, rel, lt, beats, ts, tr.get("color"))
-                placed.append({"scene": s, "sample": rel.rsplit("/", 1)[1], "tempo": round(float(lt), 3), "beats": beats})
-            save_move_version(oid, song, loops_action(track, [p["scene"] for p in placed]))
-            stage("Writing clips")
-            ssh_write_song(oid, dump_song(new))
-            with LOCK:
-                INFO_CACHE.pop(oid, None)
-        return {"placed": placed, "skipped": skipped, "uploaded": rels}
+        try:
+            return _place_loops(oid, track, scene, plan, rels, skipped, replace, stage)
+        except AppError as e:
+            got = ", ".join(r.rsplit("/", 1)[1] for r in rels)
+            raise AppError(f"{str(e).rstrip('.')}. The project was not changed. Already in Samples/UPLOAD: {got}")
     return fn
+
+
+def _place_loops(oid, track, scene, plan, rels, skipped, replace, stage):
+    """После загрузки: под замком проекта — перепроверка ячеек, клипы, версия, одна запись."""
+    stage("Waiting for another edit of this project to finish" if target_lock("move:" + oid).locked() else "Reading project on Move")
+    with target_lock("move:" + oid):
+        song = ssh_read_song(oid)
+        plan_loops(song, track, scene, [(n, d) for _, n, d, _ in plan], replace)    # ячейки не заняли за время загрузки
+        new = copy.deepcopy(song)
+        tr = new["tracks"][track]
+        ts = new.get("timeSignature") or {"upper": 4, "lower": 4}
+        bar = int(ts.get("upper", 4)) * 4 / int(ts.get("lower", 4))
+        tempo = float(new.get("tempo") or 120.0)
+        template = next((sl["clip"] for t in new.get("tracks") or [] for sl in t.get("clipSlots") or []
+                         if (sl or {}).get("clip") and sl["clip"].get("sampleUri") is not None), None)
+        placed = []
+        for (s, name, _data, sec), rel in zip(plan, rels):
+            lt, beats = loops.fit(sec, tempo, bar, loops.name_tempo(name))
+            tr["clipSlots"][s]["clip"] = loops.audio_clip(template, rel, lt, beats, ts, tr.get("color"))
+            placed.append({"scene": s, "sample": rel.rsplit("/", 1)[1], "tempo": round(float(lt), 3), "beats": beats})
+        save_move_version(oid, song, loops_action(track, [p["scene"] for p in placed]))
+        stage("Writing clips")
+        ssh_write_song(oid, dump_song(new))
+        with LOCK:
+            INFO_CACHE.pop(oid, None)
+    return {"placed": placed, "skipped": skipped, "uploaded": rels}
 
 
 def clip_op_action(op, src, dst):
@@ -3275,12 +3312,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(start_job("clip", job_clip_move(oid, t, sc, None, 0, f"Clip deleted {cell_name(t, sc)}")))
             if act == "loops" and m == "POST":
                 t, sc = cell_args(q)
-                body = self.raw_body(limit=1024 * 1024 * 1024)
+                body = self.raw_body(limit=300 * 1024 * 1024)
                 if not ssh_enabled():
                     raise AppError("Adding loops on Move needs pad control enabled")
                 files = read_loop_files(self.headers.get("Content-Type"), body)
                 replace = (q.get("replace") or ["0"])[0] == "1"
-                plan, _ = plan_loops(ssh_read_song(oid), t, sc, files, replace)     # 400/409 сразу, до загрузки
+                plan_loops(ssh_read_song(oid), t, sc, files, replace)     # 400/409 сразу, до загрузки
                 return self.send_json(start_job("loops", job_add_loops(oid, t, sc, files, replace)))
             if act == "history" and m == "GET" and len(seg) == 4:
                 return self.send_json({"versions": list_history("move", oid)})

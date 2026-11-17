@@ -769,7 +769,8 @@ async function addLoops(fileList, t, s){
   if(tr.clipKind!=="audio"){ status("Loops can only go into an audio track", true); return; }
   if(!padMode()){ status("Adding loops on Move needs pad control enabled", true); return; }
   const files = [...fileList].filter(f => /\.(wav|aif|aiff)$/i.test(f.name)).sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:"base"}));
-  if(!files.length){ status("Only WAV and AIFF files can be added as loops", true); return; }
+  const other = [...fileList].filter(f => !/\.(wav|aif|aiff)$/i.test(f.name)).map(f => f.name);
+  if(!files.length){ status(`Only WAV and AIFF files can be added as loops${other.length?` (skipped: ${other.join(", ")})`:""}`, true); return; }
   const row = (it.info?.clips||[])[t] || [], scenes = row.length;
   const busy = files.map((_,i) => s+i).filter(c => c < scenes && row[c]);
   let replace = 0;
@@ -794,7 +795,7 @@ async function addLoops(fileList, t, s){
     const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove();
     const pl = res.placed||[], sk = res.skipped||[];
     S.cell = {t, s}; renderInspector();
-    status(`Loops added: ${pl.length} to track ${t+1}${pl.length?`, scene${pl.length>1?"s":""} ${pl[0].scene+1}${pl.length>1?"–"+(pl[pl.length-1].scene+1):""}`:""}${sk.length?`. Not added (no more cells): ${sk.join(", ")}`:""}. Leave the project on Move and open it again to see the changes`);
+    status(`Loops added: ${pl.length} to track ${t+1}${pl.length?`, scene${pl.length>1?"s":""} ${pl[0].scene+1}${pl.length>1?"–"+(pl[pl.length-1].scene+1):""}`:""}${sk.length?`. Not added (no more cells): ${sk.join(", ")}`:""}${other.length?`. Skipped (not WAV/AIFF): ${other.join(", ")}`:""}. Leave the project on Move and open it again to see the changes`);
   }catch(e){ fail(e); }
 }
 async function deleteClip(){
