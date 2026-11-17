@@ -14,7 +14,8 @@ class Normalize(unittest.TestCase):
             self.assertEqual(app.normalize_move_url(given), want, given)
 
     def test_bad(self):
-        for bad in ("192.168.1.23; rm -rf /", "a b", "http://user@evil/", "$(x)", "-oProxyCommand=x"):
+        for bad in ("192.168.1.23; rm -rf /", "a b", "http://user@evil/", "$(x)", "-oProxyCommand=x", "fe80::1",
+                    "192.168.1.5:abc"):
             with self.assertRaises(app.AppError, msg=bad):
                 app.normalize_move_url(bad)
 

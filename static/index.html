@@ -1229,7 +1229,10 @@ async function deleteSelected(){
   try{
     if(side==="move"){
       if(!confirm(`Delete "${it.name}" from Move? A copy is saved first to the "_Deleted" folder on the computer.`)) return;
-      await api("DELETE", `/api/move/sets/${id}`); S.sel = null; await loadMove(); status(`"${it.name}" deleted from Move`);
+      status(`Saving a copy of "${it.name}" before deleting…`);
+      const res = await runJob("move:"+id, () => api("DELETE", `/api/move/sets/${id}`));
+      S.sel = null; await loadMove(); await loadLib();
+      status(`"${it.name}" deleted from Move. A copy is in the "_Deleted" folder on the computer${res?.backup ? `: ${res.backup}` : ""}`);
     } else {
       if(!confirm(`Remove "${it.name}" from the folder? The project moves to the "_Deleted" subfolder.`)) return;
       stopIfPlaying(id);
@@ -2160,6 +2163,11 @@ async function setMoveAddr(v){                         // адрес Move вру
 /* ───────── отчёт о проблеме (сборка 55) ───────── */
 $("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#report").classList.add("on"); $("#reportText").focus(); };
 $("#reportCancel").onclick = () => $("#report").classList.remove("on");
+document.addEventListener("keydown", e => {
+  if(!$("#report").classList.contains("on")) return;
+  if(e.key==="Escape"){ e.preventDefault(); $("#report").classList.remove("on"); }
+  else if((e.key==="Backspace" || e.key==="Delete") && e.target.id!=="reportText") e.stopImmediatePropagation();
+}, true);
 $("#reportOk").onclick = async () => {
   $("#reportOk").disabled = true;
   try{

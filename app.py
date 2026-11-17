@@ -1759,6 +1759,12 @@ def normalize_move_url(value):
     if not s:
         return "http://move.local"
     host = urlparse(s if "://" in s else "http://" + s)
+    try:
+        host.port                                    # «192.168.1.5:abc» → ошибка
+    except ValueError:
+        raise AppError("Enter Move's address like 192.168.1.23 or move.local")
+    if host.netloc.count(":") > 1:                   # IPv6 без скобок: «fe80::1»
+        raise AppError("Enter Move's address like 192.168.1.23 or move.local")
     name = host.hostname or ""
     if host.username or host.password or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]{0,252}", name) \
             or s.startswith("-") or any(c in s for c in " ;$`|&<>'\""):
@@ -2023,6 +2029,10 @@ def job_push(folder, slot=None, replace_id=None):
                     schwung = schwung_restore(created[0], state.read_bytes())
                 except (SshError, AppError, tarfile.TarError) as e:
                     schwung = f"error: {e}"
+        if len(created) == 1:                    # проект на компьютере теперь «родом» с нового сета, если не с другого живого
+            src_id = read_json(d / "meta.json", {}).get("sourceId")
+            if not src_id or src_id == replace_id or src_id not in {o["objectId"] for o in MOVE.list_sets()}:
+                update_meta(d, sourceId=created[0])
         return {"name": d.name, "slot": placed, "replaced": bool(replace_id), "schwung": schwung}
     return fn
 
@@ -2055,6 +2065,9 @@ def job_edit_move(oid, order, pans, replace, key=None):
                 shutil.copyfile(src, orig)                 # оригинал целиком — в «_Deleted» перед удалением с Move
             stage("Uploading to Move")
             MOVE.upload(dst, f"{new_name}.ablbundle")
+        except BaseException:
+            orig.unlink(missing_ok=True)
+            raise
         finally:
             src.unlink(missing_ok=True)
             dst.unlink(missing_ok=True)
@@ -2064,17 +2077,18 @@ def job_edit_move(oid, order, pans, replace, key=None):
                 orig.unlink(missing_ok=True)
                 raise AppError("The new version was uploaded but could not be identified — the original was kept")
             new_oid = created[0]["objectId"]
+            stage("Saving a copy of the original")
+            try:
+                backup_move_set(oid, orig)               # не вышло — оригинал и его история остаются как были
+            finally:
+                orig.unlink(missing_ok=True)
             # история — к новому сету до удаления и переименования: сбой там не оставит её у удалённого ID
             history.move_history(history_dir("move", oid), history_dir("move", new_oid))
             _save_version(history_dir("move", new_oid), before_bytes, edit_action(order, pans, key))
-            stage("Saving a copy of the original")
-            try:
-                backup_move_set(oid, orig)
-            finally:
-                orig.unlink(missing_ok=True)
             stage("Replacing the original")
             MOVE.delete(oid)
             MOVE.rename(new_oid, obj["name"])
+            remap_library_source(oid, new_oid)
             with LOCK:
                 meta = CFG.setdefault("move_meta", {})
                 if oid in meta:
@@ -2987,6 +3001,16 @@ def rename_library(folder, new_name):
     return new_name
 
 
+def remap_library_source(old, new):
+    """Сет на Move получил новый ID (замена без SSH) — проекты на компьютере «родом» с него помнят новый."""
+    try:
+        for d in lib_root().iterdir():
+            if d.is_dir() and not d.name.startswith((".", "_")) and read_json(d / "meta.json", {}).get("sourceId") == old:
+                update_meta(d, sourceId=new)
+    except OSError:
+        pass
+
+
 def backup_move_set(oid, bundle=None):
     """Копия сета с Move в «_Deleted» библиотеки на компьютере — перед любым удалением с девайса.
     bundle — уже скачанный бандл (иначе скачиваем). Не вышло — AppError, и удалять нельзя."""
@@ -3572,11 +3596,15 @@ class Handler(BaseHTTPRequestHandler):
                 MOVE.rename(oid, safe_name(self.body().get("name")))
                 return self.send_json({"ok": True})
             if act is None and m == "DELETE":
-                kept = backup_move_set(oid)                  # копия в «_Deleted» на компьютере, иначе не удаляем
-                MOVE.delete(oid)
-                with LOCK:
-                    INFO_CACHE.pop(oid, None)
-                return self.send_json({"ok": True, "backup": kept.name})
+                def fn(stage):                               # задача: скачивание копии бывает долгим
+                    stage("Saving a copy to the computer before deleting")
+                    kept = backup_move_set(oid)              # копия в «_Deleted» на компьютере, иначе не удаляем
+                    stage("Deleting from Move")
+                    MOVE.delete(oid)
+                    with LOCK:
+                        INFO_CACHE.pop(oid, None)
+                    return {"ok": True, "backup": kept.name}
+                return self.send_json(start_job("delete", fn))
 
         # ── библиотека
         if seg == ["library-import"] and m == "POST":
