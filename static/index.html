@@ -1142,7 +1142,7 @@ async function runJob(key, startFn){
 }
 async function pull(id, group){
   const it = S.move.sets.find(x=>x.id===id); if(!it) return;
-  const ex = S.lib.items.find(x=>x.name===it.name);
+  const ex = S.lib.items.find(x=>x.sourceId===id);          // тот же проект; другой с таким же именем ляжет в «Имя 2»
   if(ex && !confirm(`"${it.name}" is already on the computer. Update the project and its audio? Description and notes are kept.`)) return;
   status(`Copying "${it.name}" to the computer…`);
   try{

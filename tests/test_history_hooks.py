@@ -157,6 +157,7 @@ class Hooks(RouteBase):
     # ── перенос и смена ID ──
     def test_pull_into_existing_folder_saves_version(self):
         app.MOVE.sets[0]["name"] = "Demo"
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))   # тот же проект
         before = self.lib_song()[0]
         app.ssh_enabled = lambda: False
         app.job_pull(OID, False)(lambda *a, **k: None)
@@ -259,3 +260,31 @@ class Hooks(RouteBase):
     def test_history_dir_validates(self):
         with self.assertRaises(app.AppError):
             app.history_dir("move", "../../etc")
+
+
+class PullNames(Hooks):
+    """Сборка 55: «To computer →» не затирает другой проект с тем же именем."""
+    def run_pull(self, name):
+        app.MOVE.sets[0]["name"] = name
+        app.ssh_enabled = lambda: False
+        app.job_pull(OID, False)(lambda *a, **k: None)
+
+    def test_same_source_updates_folder(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
+        self.run_pull("Demo")
+        self.assertFalse((self.tmp / "lib" / "Demo 2").exists())
+        self.assertEqual(self.lib()[0]["action"], "Replaced by copy from Move")
+
+    def test_other_project_same_name_gets_new_folder(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": "ffffffff-2222-3333-4444-555555555555"}))
+        before = (self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes()
+        self.run_pull("Demo")
+        self.assertEqual((self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes(), before)
+        self.assertTrue(list((self.tmp / "lib" / "Demo 2").glob("*.ablbundle")))
+        self.assertEqual(json.loads((self.tmp / "lib" / "Demo 2" / "meta.json").read_text())["sourceId"], OID)
+
+    def test_local_project_without_source_is_not_overwritten(self):
+        before = (self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes()
+        self.run_pull("Demo")
+        self.assertEqual((self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes(), before)
+        self.assertTrue((self.tmp / "lib" / "Demo 2").exists())

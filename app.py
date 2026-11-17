@@ -1788,7 +1788,12 @@ def job_pull(oid, with_audio, group=None):
         obj = set_by_id(oid)
         name = safe_name(obj["name"])
         root = lib_root()
-        d = root / name
+        d, k = root / name, 2
+        # папка с тем же именем, но от другого проекта (или своя, без sourceId) — не трогаем: «Имя 2», «Имя 3»…
+        while d.exists() and (any(d.glob("*.ablbundle")) or not d.is_dir()) \
+                and read_json(d / "meta.json", {}).get("sourceId") != oid:
+            d, k = root / f"{name} {k}", k + 1
+        name = d.name
         d.mkdir(exist_ok=True)
         stage("Downloading project")
         tmp = tmp_path(".ablbundle")
