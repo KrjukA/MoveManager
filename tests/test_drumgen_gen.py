@@ -122,6 +122,21 @@ class Generate(unittest.TestCase):
         self.assertGreater(sum(layer_hits(100, sd) for sd in range(8)), sum(layer_hits(30, sd) for sd in range(8)))
         self.assertGreater(sum(layer_hits(30, sd) for sd in range(8)), 0)
 
+    def test_ghosts_work_when_backbeat_is_a_clap(self):
+        # Footwork: бэкбит — клэп, малого нет; на Mutation 100 ручка Ghosts всё равно должна добавлять тихие удары
+        def quiet(amount, seed):
+            res = gen(genre="Footwork", pattern_id=None, mutation=100, seed=seed, bars=2, ghosts=amount, euclid=0)
+            return sum(1 for n in res["notes"] if n["velocity"] <= 60)
+        self.assertEqual(sum(quiet(0, sd) for sd in range(10)), 0)
+        self.assertGreaterEqual(sum(quiet(100, sd) for sd in range(10)), 40)     # в среднем ≥ 2 на такт
+
+    def test_euclid_audible_even_when_rim_is_dense(self):
+        # в Footwork римшот звучит на каждом шаге — слой Euclid не должен прятаться в нём
+        for seed in range(8):
+            base = gen(genre="Footwork", pattern_id=None, mutation=30, seed=seed, bars=1, euclid=0)
+            res = gen(genre="Footwork", pattern_id=None, mutation=30, seed=seed, bars=1, euclid=100)
+            self.assertGreaterEqual(len(res["notes"]) - len(base["notes"]), 4, seed)
+
     def test_half_time_stretches_the_pattern(self):
         normal = gen(genre="House", pattern_id=None, mutation=40, seed=9, bars=1, ghosts=0, euclid=0)
         half = gen(genre="House", pattern_id=None, mutation=40, seed=9, bars=2, ghosts=0, euclid=0, half=True)

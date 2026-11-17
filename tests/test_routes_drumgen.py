@@ -81,6 +81,20 @@ class DrumgenRoutes(RouteBase):
         self.assertEqual(st, 200)
         self.assertTrue(all(36 <= n["noteNumber"] <= 51 for n in g["notes"]))
 
+    def test_euclid_amount_reaches_generator(self):
+        st, d = self.js("GET", "/api/library/Kit/kit?track=0")
+        body = {"side": "lib", "id": "Kit", "track": 0, "genre": "House", "pattern": None, "mutation": 30, "seed": 4,
+                "bars": 1, "ghosts": 0, "pads": d["pads"]}
+        seen = []
+        saved = app.drumgen.generate
+        app.drumgen.generate = lambda *a, **kw: seen.append(kw["euclid"]) or saved(*a, **kw)
+        try:
+            for amount in (0, 30, 100):
+                self.assertEqual(self.js("POST", "/api/drumgen", body | {"euclid": amount})[0], 200)
+        finally:
+            app.drumgen.generate = saved
+        self.assertEqual(seen, [0, 30, 100])
+
     def test_bad_pads_rejected(self):
         st, _ = self.js("POST", "/api/drumgen", {"side": "lib", "id": "Kit", "track": 0, "genre": "House",
                                                   "pads": [{"note": 99, "role": "kick"}]})

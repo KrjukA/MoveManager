@@ -3525,7 +3525,7 @@ class Handler(BaseHTTPRequestHandler):
                 mutation=float(b.get("mutation", 35)), seed=int(b.get("seed") or 1), bars=int(b.get("bars") or 2),
                 swing=float(b.get("swing", 50)), deja_vu=float(b.get("deja_vu", 50)),
                 ghosts=b.get("ghosts", 30) if not isinstance(b.get("ghosts"), bool) else b.get("ghosts"),
-                euclid=bool(b.get("euclid", True)),
+                euclid=b.get("euclid", True) if isinstance(b.get("euclid", True), bool) else float(b.get("euclid")),
                 avoid=b.get("avoid"),
                 half=b.get("half") if b.get("half") in ("all", "kick", "kick+snare") else ("all" if b.get("half") is True else False))
                 | {"pads": pads})
