@@ -56,8 +56,8 @@ class Translate(unittest.TestCase):
         self.assertEqual(missing, [], "нет перевода для сообщений сервера")
 
     def test_buttons_and_tabs_stay_english(self):
-        # the author (17.11): короткие кнопки, вкладки и заголовки — по-английски; переводятся описания и сообщения
-        # the author (17.11): шапка остаётся английской; кнопки .mid и Generate — тоже
+        # 17.11: короткие кнопки, вкладки и заголовки — по-английски; переводятся описания и сообщения
+        # 17.11: шапка остаётся английской; кнопки .mid и Generate — тоже
         labels = ["Projects", "Samples", "Presets", "Refresh", "Report", "Enable pad control", "Save report",
                   "Report a problem", "Default input", "Save .mid", "Load .mid", "Generate…",
                   "Delete clip", "Swing", "Ghosts", "Euclid", "½ time: off", "½ time: kick + snare"]
@@ -138,10 +138,10 @@ class Serve(RouteBase):
 
 
 KEEP = re.compile(r"Xname|Move|Manager|KRJUK|Schwung|Drum Rack|Finder|SSH|MIDI|WAV|AIFF|FLAC|MP3|M4A|WebM|OGG|Samples/UPLOAD|"
-                  r"_Deleted|_edit|bpm|Wi-Fi|Camelot|the author|USB|ablbundle|Song\.abl|python3|Terminal|Ctrl|Recordings|Settings|"
+                  r"_Deleted|_edit|bpm|Wi-Fi|Camelot|USB|ablbundle|Song\.abl|python3|Terminal|Ctrl|Recordings|Settings|"
                   r"Pocket Operations|Paul Wenzel|Basic Drum Patterns|config\.json|meta\.json|Esc|Shift|Cmd|Wavetable|Drift|UPLOAD|"
                   r"Samples|Core Library|User Library|Track Presets|IP|Computer|Report|"
-                  # музыкальные термины остаются английскими и внутри русских фраз (the author, 17.11)
+                  # музыкальные термины остаются английскими и внутри русских фраз (17.11)
                   r"Pad control|Clips?|Tracks?|Scenes?|Loops?|Pads?|Presets?|Patterns?|Kit|Half time|Swing|Ghosts|Euclid|Mutation|Sample|Pad control|audio|Audio")
 
 

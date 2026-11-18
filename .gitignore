@@ -8,3 +8,8 @@ __pycache__/
 .DS_Store
 .cm-*
 history/
+
+# personal working notes (kept locally, not published)
+CLAUDE.md
+docs/superpowers/
+docs/ideas/

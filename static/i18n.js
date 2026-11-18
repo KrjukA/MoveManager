@@ -251,7 +251,7 @@ exact: {
     "Тоника и лад задают раскладку Pads; записанные ноты остаются на месте. ≈ после кода Camelot значит, что он приблизительный: лад не мажор и не минор.",
   "Delete this file from Move": "Удалить этот файл с Move", "Delete this folder and everything inside from Move": "Удалить эту папку со всем содержимым с Move",
   "Something inside is used — delete works only when nothing inside is used": "Что-то внутри используется — удалить можно, только если внутри ничего не используется",
-  // правая панель: кнопки и заголовки (the author, 17.11: переводить; кроме .mid и Generate)
+  // правая панель: кнопки и заголовки (17.11: переводить; кроме .mid и Generate)
   "on computer": "на компьютере", "on Move": "на Move", "To computer →": "На компьютер →", "← To Move": "← На Move", "with audio": "со звуком",
   "Show in Finder": "Показать в Finder", "Delete": "Удалить", "Group": "Группа", "Description": "Описание", "Notes": "Заметки",
   "Tracks": "Треки", "Clips": "Клипы", "History": "История", "Apply changes": "Применить", "Reset": "Сбросить", "Restore": "Вернуть", "Add loops…": "Добавить Loops…", "Export from Move": "Экспорт с Move", "Record input": "Записать вход",

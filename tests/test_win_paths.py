@@ -7,7 +7,7 @@ import app
 
 class WinPaths(unittest.TestCase):
     def test_ascii_path_unchanged(self):
-        p = r"C:\Users\the author\AppData\Roaming\KRJUK Move Manager\move_ssh_key"
+        p = r"C:\Users\User\AppData\Roaming\KRJUK Move Manager\move_ssh_key"
         self.assertEqual(app.ssh_safe_path(p, platform="win32", short=lambda s: "X"), p)
 
     def test_cyrillic_uses_short_parent(self):
