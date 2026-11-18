@@ -219,6 +219,9 @@ aside h3:first-child{margin-top:0}
 .clipgrid .sh{font:10px var(--mono);color:var(--faint);text-align:center}
 .clipcell{height:30px;padding:0;border-radius:3px;background:var(--panel);border:1px solid var(--line);font:10px var(--mono);color:var(--faint);line-height:1.1}
 .clipcell.on{background:var(--pad);border-color:var(--pad);color:var(--dev-text)}
+.clipcell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:hidden}
+.clipcell .roll{width:calc(100% - 6px);height:calc(100% - 8px);fill:currentColor;opacity:.85}
+.clipcell .wave{width:22px;height:9px;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;fill:none;opacity:.8}
 .clipcell.sel{outline:2px solid var(--pick);outline-offset:0}
 .clipcell.buf{border:1px dashed var(--pick)}
 .clipcell.no{opacity:.35;cursor:not-allowed}
@@ -242,7 +245,6 @@ aside h3:first-child{margin-top:0}
 .rec .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .rec .rs{font:10px var(--mono);color:var(--faint)}
 .recbtn.on{border-color:var(--bad);color:var(--bad)}
-#meter{width:100%;height:26px;display:block;margin:6px 0;border-radius:3px;background:var(--device)}
 .hint{color:var(--faint);font-size:11px;margin:4px 0}
 .warnline{font-size:11px;line-height:1.35;margin:10px 0 2px;padding:5px 8px;border-left:2px solid var(--pick);background:var(--panel);color:var(--text)}
 .hist{display:flex;flex-direction:column;gap:2px;margin-top:4px}
@@ -277,7 +279,7 @@ header .views{display:flex;gap:2px;align-self:center}header .views button{paddin
 #libGrid .tile.row .swb{grid-area:n;justify-self:end}
 .monbar{display:inline-flex;align-items:center;gap:6px}
 .monbar select{width:auto;max-width:180px;height:26px;padding:2px 22px 2px 6px!important;font-size:12px}
-#monMeter{background:var(--device);border-radius:2px}
+#monMeter{color:var(--text);image-rendering:pixelated}
 #monBtn.on{color:var(--accent);border-color:var(--accent)}
 .keyedit{margin-top:6px}
 .keyacts{display:flex;justify-content:flex-end;margin-top:4px}
@@ -297,10 +299,12 @@ footer .status{color:var(--dim);font:11px var(--mono);max-width:100%;overflow:hi
 footer .status.err{color:var(--bad)}
 
 .empty .addr{display:flex;gap:6px;justify-content:center;margin:10px auto 4px;max-width:320px}.empty .addr input{flex:1;min-width:0}
-#themeBtn[data-to="light"]{background:#ededea;color:#1a1a19;border-color:#cfcfca}
-#themeBtn[data-to="light"]:hover{background:#ffffff}
-#themeBtn[data-to="dark"]{background:#262624;color:#ededea;border-color:#262624}
-#themeBtn[data-to="dark"]:hover{background:#3a3a36}
+header button.hb{height:26px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:none;border-color:var(--line2);color:var(--dim)}
+header button.hb:hover{color:var(--text);border-color:var(--text)}
+#themeBtn::before,#monBtn::before{content:"";width:8px;height:8px;border-radius:50%;flex:none}
+#themeBtn[data-to="light"]::before{background:#ededea;border:1px solid #cfcfca}
+#themeBtn[data-to="dark"]::before{background:#262624;border:1px solid #5a5a55}
+#monBtn::before{background:var(--faint)}#monBtn.on::before{background:var(--accent)}
 #monInput{max-width:150px;text-overflow:ellipsis}
 .addwrap{position:relative;display:inline-flex}
 #addMenuBtn{min-width:30px;font-weight:600}
@@ -326,11 +330,11 @@ footer .status.err{color:var(--bad)}
   <div class="conn"><span class="dot" id="dot"></span><span id="connText">connecting…</span></div>
   <nav class="views" role="tablist" aria-label="Section"><button class="ghost on" data-view="projects" title="Projects on Move and on this computer">Projects</button><button class="ghost" data-view="samples" title="Samples: Move library and folders on this computer">Samples</button><button class="ghost" data-view="presets" title="Track presets: Move library and folders on this computer">Presets</button></nav>
   <div class="spacer"></div>
-  <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="ghost" title="Listen to the chosen input through the computer — independent of recording">🎧 Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
-  <button id="langBtn" class="ghost" title="Language">RU</button>
-  <button id="themeBtn" class="ghost" title="Switch theme">Dark</button>
-  <button id="reportBtn" class="ghost" title="Something went wrong? Save a short report to send to the author">Report</button>
-  <button id="refresh">Refresh</button>
+  <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="hb" title="Listen to the chosen input through the computer — independent of recording">Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
+  <button id="langBtn" class="hb" title="Language">RU</button>
+  <button id="themeBtn" class="hb" title="Switch theme">Dark</button>
+  <button id="reportBtn" class="hb" title="Something went wrong? Save a short report to send to the author">Report</button>
+  <button id="refresh" class="hb" title="Read Move and the computer folder again">Refresh</button>
 </header>
 
 <main>
@@ -387,8 +391,7 @@ footer .status.err{color:var(--bad)}
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, rec:null, multi:[], key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:"", view:"projects", pick:null, mv:{samples:{data:null, loading:false, err:"", tok:0}, presets:{data:null, loading:false, err:"", tok:0}}, P:{L:{kind:"move", dir:{}, q:"", unused:false}, R:{kind:"pc", dir:{}, q:"", unused:false, pc:{data:null, loading:false, err:"", tok:0}}}, withAudio:(()=>{ try{ return localStorage.getItem("mm-with-audio")!=="0"; }catch(e){ return true; } })(), audioFormat:"mp3"};
-try{ const g = JSON.parse(localStorage.getItem("mm-groups")||"{}"); S.groups = g.groups||[]; S.collapsed = g.collapsed||{}; S.inputId = localStorage.getItem("mm-input")||""; }catch(e){}
-S.inputChosen = !!S.inputId;
+try{ const g = JSON.parse(localStorage.getItem("mm-groups")||"{}"); S.groups = g.groups||[]; S.collapsed = g.collapsed||{}; }catch(e){}
 function saveGroups(){ try{ localStorage.setItem("mm-groups", JSON.stringify({groups:S.groups, collapsed:S.collapsed})); }catch(e){} }
 const BASE_SCALES = ["Major","Minor","Dorian","Phrygian","Mixolydian","Major Pentatonic","Minor Pentatonic"];
 const knownScales = () => [...new Set([...BASE_SCALES, ...[...S.move.sets, ...S.lib.items].map(x=>x.info?.scale).filter(Boolean)])];
@@ -613,6 +616,10 @@ function setKeyFromCamelot(code){
   const k = keyForCamelot(code, cur.scale); if(!k) return;
   S.key = {...cur, ...k}; S.keyEdit = true; renderInspector();
 }
+function samplesNote(n){   // сборка 58: сэмплы проекта, найденные в библиотеке Move по содержимому
+  if(!n) return "";
+  return (n.linked ? ` · samples found in the Move library: ${n.linked}` : "") + (n.kept ? ` · samples kept inside the project: ${n.kept}` : "");
+}
 function schwungNote(v){
   if(!v) return "";
   if(v==="copied") return " · Schwung state restored";
@@ -640,19 +647,24 @@ function wheelSVG(selCam){
 }
 
 const fmtSize = b => b>1048576 ? (b/1048576).toFixed(1)+" MB" : Math.max(1,Math.round(b/1024))+" KB";
+/* картинка в клетке клипа (сборка 58): MIDI — ноты как на пианоролле, аудио — значок волны и темп лупа */
+function clipRoll(cl){
+  const roll = cl.roll || [], len = cl.length || 4; if(!roll.length) return "";
+  const ps = [...new Set(roll.map(n => n[2]))].sort((a,b) => b-a), row = new Map(ps.map((p,i) => [p,i])), rows = Math.max(ps.length, 4);
+  const y0 = (rows - ps.length) / 2;
+  const r = roll.filter(n => n[0] < len).map(n => `<rect x="${n[0]}" y="${y0 + row.get(n[2])}" width="${Math.max(n[1], len/48)}" height="0.8"/>`).join("");
+  return `<svg class="roll" viewBox="0 0 ${len} ${rows}" preserveAspectRatio="none" aria-hidden="true">${r}</svg>`;
+}
+const clipWave = tempo => `<svg class="wave" viewBox="0 0 24 10" aria-hidden="true"><path d="M1 5h2M5 3v4M7 1v8M9 3v4M11 4v2M13 2v6M15 1v8M17 3v4M19 4v2M21 3v4M23 5h0"/></svg>${tempo?`<span>${tempo}</span>`:""}`;
 function soundHTML(side, it){
   if(side!=="lib") return "";
   const R = S.rec && S.rec.id===it.id ? S.rec : null;
   const onMove = S.move.state==="ok" && S.move.sets.some(x => x.id===it.sourceId || x.name===it.name);
-  const inputs = `<select id="inputSel" aria-label="Audio input for recording" ${R && R.state==="rec"?"disabled":""}><option value="">Default input</option>${S.inputs.map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===S.inputId?"selected":""}>${esc(d.label||"Input")}</option>`).join("")}${S.inputs.length?"":`<option value="__ask">Show all inputs… (allow access)</option>`}</select>`;
-  const panel = R ? `${inputs}
-      <canvas id="meter" width="600" height="52" aria-label="Input level"></canvas>
-      <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="monChk" ${R.monitor?"checked":""}> monitor input — use headphones</label>
-      <div class="acts" style="margin:0 0 6px">${R.state==="rec" ? `<button id="recStop" class="recbtn on">■ Stop and save</button>` : `<button id="recStart" class="primary">● Start recording</button>`}<button id="recCancel" class="ghost">Cancel</button></div>` : "";
+  const panel = R ? `<div class="acts" style="margin:6px 0"><button id="recStop" class="recbtn on">■ Stop and save</button><button id="recCancel" class="ghost">Cancel</button></div>` : "";
   return `<h3>Sound</h3>
     <div class="hint">${it.audio ? "Project audio: "+esc(it.audioSource||it.audio) : "No audio for this project yet."}</div>
     ${it.audioError ? `<div class="hint" style="color:var(--bad)">Last export failed: ${esc(it.audioError)}</div>` : ""}
-    ${R ? panel : `<div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move exports the project audio again":"The project must be on Move"}">Export from Move</button><button id="actRec">● Record input</button><button id="actAudio">File…</button></div>`}`;
+    ${R ? panel : `<div class="acts" style="margin:6px 0"><button id="actRender" ${onMove?"":"disabled"} title="${onMove?"Move exports the project audio again":"The project must be on Move"}">Export from Move</button><button id="actRec" title="Record the input chosen at the top as the project audio">● Record input</button><button id="actAudio" title="Attach an audio file from the computer as the project audio">File…</button></div>`}`;
 }
 function multiHTML(){
   const its = S.multi.map(id => S.lib.items.find(x=>x.id===id)).filter(Boolean);
@@ -679,12 +691,12 @@ function clipsHTML(side, it){
       const isBuf = buf && buf.t===t && buf.s===c, no = fromKind && tr.clipKind!==fromKind;
       const tempo = cl && cl.audio && cl.tempo ? (Math.abs(cl.tempo-Math.round(cl.tempo))<0.05 ? Math.round(cl.tempo) : cl.tempo.toFixed(1)) : "";
       const tip = !cl ? ": empty" : cl.audio ? `: ${cl.sample} · ${bars} bars · loop ${tempo} bpm${cl.transpose?` · ${cl.transpose>0?"+":""}${cl.transpose} st`:""}` : `: ${cl.notes} notes, ${bars} bars`;
-      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""} ${isBuf?"buf":""} ${no?"no":""}" ${cl?`draggable="true"`:""} data-t="${t}" data-s="${c}" data-audio="${tr.clipKind==="audio"?1:""}" title="${esc(`Track ${t+1}, scene ${c+1}${tip}`)}">${cl?(cl.audio?`${bars}b<br>${tempo}`:`${cl.notes}<br>${bars}b`):""}</button>`;
+      html += `<button class="clipcell ${cl?"on":""} ${sel?"sel":""} ${isBuf?"buf":""} ${no?"no":""}" ${cl?`draggable="true"`:""} data-t="${t}" data-s="${c}" data-audio="${tr.clipKind==="audio"?1:""}" title="${esc(`Track ${t+1}, scene ${c+1}${tip}`)}">${cl?(cl.audio?clipWave(tempo):clipRoll(cl)):""}</button>`;
     }
   });
   html += `</div>`;
   const keys = `<div class="hint" style="margin-top:6px">⌘C copy · ⌘X cut · ⌘V paste · ⌫ delete · arrows move · drag: move, onto a clip: swap, ⌥ drag: copy${buf?" · Esc: clear clipboard":""}${side==="move"?" · drop WAV, AIFF, FLAC or MP3 files on an audio track cell to add loops":""}</div>`;
-  if(!S.cell) return html + keys + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows note count and length in bars.</div>`;
+  if(!S.cell) return html + keys + `<div class="hint" style="margin-top:8px">Pick a cell: a filled one can be saved as .mid, any can take a .mid. The cell shows the notes; an audio cell shows the loop tempo.</div>`;
   const {t, s: sc} = S.cell, cl = (grid[t]||[])[sc], tr = tracks[t] || {};
   const noSsh = side==="move" && !padMode(), audioTr = tr.trackKind && tr.trackKind!=="midi";
   if(tr.clipKind==="audio"){                                  // аудиодорожка: лупы вместо MIDI
@@ -696,7 +708,7 @@ function clipsHTML(side, it){
   }
   const why = noSsh ? "Import to Move needs pad control enabled" : audioTr ? "This is an audio track; MIDI cannot go into it" : "";
   return html + keys + `<div class="clipacts"><span class="hint" style="margin:0">Track ${t+1}, scene ${sc+1}:</span>
-    ${cl ? `<button id="clipSave">Save .mid</button><button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
+    ${cl ? `<button id="clipSave" title="Save this clip as a .mid file">Save .mid</button><button id="clipDel" class="danger" ${noSsh?"disabled":""} title="${noSsh?"Deleting a clip on Move needs pad control enabled":"Remove the clip from this cell"}">Delete clip</button>` : ""}
     <button id="clipLoad" ${why?"disabled":""} title="${esc(why||"Notes from the MIDI file become the clip in this cell")}">Load .mid</button>
     <button id="genOpen" ${why||tr.kind!=="drumRack"?"disabled":""} title="${esc(why||(tr.kind!=="drumRack"?"The generator works on Drum Rack tracks":"Generate a drum pattern for this cell"))}">Generate…</button></div>
     ${S.gen && S.gen.t===t && S.gen.s===sc && S.gen.key===side+":"+it.id ? genHTML() : ""}
@@ -933,20 +945,20 @@ function genHTML(){
       Array.from({length:steps}, (_,i) => { const v = on[r+":"+i]; return `<span class="gc ${v?"on":""} ${i%16===0&&i?"bar":""}" ${v?`style="opacity:${(0.35+0.65*v/127).toFixed(2)}"`:""}></span>`; }).join("")).join("") + `</div>`;
   }
   return `<div class="genpanel" id="gen">
-    <select id="genSource" aria-label="Genre">${opts}</select>
-    <div class="genrow"><label for="genMut">Mutation</label><input type="range" id="genMut" min="0" max="100" value="${g.mutation}"><span class="v" id="genMutV">${g.mutation}</span></div>
-    <div class="genrow"><button id="genAnother">Another</button><button id="genPlay" class="icon" title="${g.playing?"Stop":"Play"}" aria-label="${g.playing?"Stop":"Play"}">${g.playing?"■":"▶"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"}>Put in cell</button></div>
+    <select id="genSource" aria-label="Genre" title="Genre: the pattern starts from drum patterns of this style">${opts}</select>
+    <div class="genrow" title="How far the pattern moves from the reference: 0 — the reference as is, 100 — new hits from the whole genre and other pads of the kit"><label for="genMut">Mutation</label><input type="range" id="genMut" min="0" max="100" value="${g.mutation}"><span class="v" id="genMutV">${g.mutation}</span></div>
+    <div class="genrow"><button id="genAnother" title="Take another reference pattern of this genre">Another</button><button id="genPlay" class="icon" title="${g.playing?"Stop":"Play"}" aria-label="${g.playing?"Stop":"Play"}">${g.playing?"■":"▶"}</button><span class="spacer"></span><button class="primary" id="genPut" ${res?"":"disabled"} title="Write the pattern into the selected cell">Put in cell</button></div>
     ${g.loading ? `<div class="hint">${esc(g.loading)}</div>` : ""}
     ${g.error ? `<div class="hint" style="color:var(--bad)">${esc(g.error)}</div>` : g.hint ? `<div class="hint">${esc(g.hint)}</div>` : ""}
     ${grid}
-    <details id="genMore" ${g.more?"open":""}><summary>More</summary>
-      <div class="genrow"><label for="genBars">Bars</label><select id="genBars">${[1,2,4].map(n=>`<option ${n===g.bars?"selected":""}>${n}</option>`).join("")}</select>
+    <details id="genMore" ${g.more?"open":""}><summary title="More settings: length, half time, swing, déjà vu, ghosts, euclid">More</summary>
+      <div class="genrow"><label for="genBars" title="Clip length in bars">Bars</label><select id="genBars" title="Clip length in bars">${[1,2,4].map(n=>`<option ${n===g.bars?"selected":""}>${n}</option>`).join("")}</select>
         <select id="genHalf" title="Half time: the rhythm plays at half speed — at 140 bpm it feels like 70" style="width:auto">${[["","½ time: off"],["all","½ time: all"],["kick","½ time: kick"],["kick+snare","½ time: kick + snare"]].map(([v,l])=>`<option value="${v}" ${(g.half||"")===v?"selected":""}>${l}</option>`).join("")}</select></div>
-      <div class="genrow"><label for="genSwing">Swing</label><input type="range" id="genSwing" min="50" max="75" value="${g.swing}"><span class="v">${g.swing}</span></div>
-      <div class="genrow"><label for="genDeja">Déjà vu</label><input type="range" id="genDeja" min="0" max="100" value="${g.deja}"><span class="v">${g.deja}</span></div>
-      <div class="genrow"><label for="genGhost" title="Quiet snare hits around the main ones">Ghosts</label><input type="range" id="genGhost" min="0" max="100" value="${g.ghosts}"><span class="v">${g.ghosts}</span></div>
-      <div class="genrow"><label for="genEuclid" title="Evenly spread hits on one hat/percussion pad (euclidean rhythm): 0 — off, higher — more hits">Euclid</label><input type="range" id="genEuclid" min="0" max="100" value="${g.euclid}"><span class="v">${g.euclid}</span></div>
-      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "Choose your folder with MIDI clips")}</span><button class="ghost small" id="midiFolderBtn">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
+      <div class="genrow" title="Delays every second 16th note: 50 — straight, 75 — strong shuffle"><label for="genSwing">Swing</label><input type="range" id="genSwing" min="50" max="75" value="${g.swing}"><span class="v">${g.swing}</span></div>
+      <div class="genrow" title="How different the bars are: 0 — every bar repeats the first one, 100 — each bar is a new variation"><label for="genDeja">Déjà vu</label><input type="range" id="genDeja" min="0" max="100" value="${g.deja}"><span class="v">${g.deja}</span></div>
+      <div class="genrow" title="Quiet snare hits around the backbeat (snare or clap): 0 — none, 100 — many"><label for="genGhost">Ghosts</label><input type="range" id="genGhost" min="0" max="100" value="${g.ghosts}"><span class="v">${g.ghosts}</span></div>
+      <div class="genrow" title="Evenly spread hits on a free hat or percussion pad (euclidean rhythm): 0 — off, 100 — 10 hits per bar"><label for="genEuclid">Euclid</label><input type="range" id="genEuclid" min="0" max="100" value="${g.euclid}"><span class="v">${g.euclid}</span></div>
+      <div class="genrow"><label title="A folder with drum .mid files to learn from; its subfolders become genres">MIDI</label><span class="hint" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pats.midiFolder||"")}">${esc(pats.midiFolder ? pats.midiFolder.split("/").filter(Boolean).pop() : "Choose your folder with MIDI clips")}</span><button class="ghost small" id="midiFolderBtn" title="Choose a folder with drum .mid files to learn from">${pats.midiFolder?"Change…":"Choose…"}</button>${pats.midiFolder?`<button class="ghost small" id="midiFolderClear" title="Stop using this folder">×</button>`:""}</div>
     </details>
     ${pats.mine && !pats.mine.ready ? `<div class="hint">Reading your projects ${pats.mine.done}/${pats.mine.total}… their genres appear when done.</div>` : ""}
     <div class="gencredit">${esc(pats.credit)}</div></div>`;
@@ -1133,9 +1145,9 @@ function renderInspectorNow(){
     const sub = isAudio ? ["Audio track", t.preset ? `effect: ${t.preset}` : "", t.clips?`clips: ${t.clips}`:""].filter(Boolean).join(" · ")
                         : [path, KIND_RU[t.kind]||t.kind, t.clips?`clips: ${t.clips}`:"", t.sampleCount?`samples: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
     const pv = panOf(t);
-    return `<div class="trk" data-pos="${pos}" title="${esc(t.samples?.length?"Samples: "+t.samples.join(", "):"")}">
-      <span class="n" draggable="true" title="Drag to reorder">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
-      <div class="b"><div class="t">${esc(isAudio ? t.name : (t.preset||t.name))}</div><div class="p" title="${esc(sub)}">${esc(sub)}</div>
+    return `<div class="trk" data-pos="${pos}">
+      <span class="n" draggable="true">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
+      <div class="b"><div class="t">${esc(isAudio ? t.name : (t.preset||t.name))}</div><div class="p">${esc(sub)}</div>
 </div></div>`; }).join("");
   // подсказки по Камелоту
   let sugg = "";
@@ -1159,16 +1171,16 @@ function renderInspectorNow(){
       ${(it.schwung || info?.schwung)?`<span class="fact" title="${side==="lib" ? (it.schwung ? "Schwung state is saved with this project and restored when uploading to Move" : "Uses Schwung presets; no Schwung state saved") : "Uses Schwung; its state is copied when you move the project to the computer (pad control on)"}">SCHWUNG</span>`:""}
     </div>
     <div class="acts">
-      ${side==="move" ? `<button class="primary" id="actPull">To computer →</button><span id="pullBox" class="pullbox"><label class="chk" style="margin:0" title="Move exports the project audio; if the export fails, the longest recording of this set from Recordings is used"><input type="checkbox" id="withAudio" ${S.withAudio?"checked":""}> with audio</label>${S.withAudio?`<select id="fmt" aria-label="Audio format">${["wav","mp3"].map(f=>`<option value="${f}" ${S.audioFormat===f?"selected":""}>${f.toUpperCase()}</option>`).join("")}</select>`:""}</span>` : `<button class="primary" id="actPush">← To Move</button>`}
-      ${side==="lib" ? `<button id="actReveal">Show in Finder</button>` : ""}
-      <button class="danger" id="actDel">Delete</button>
+      ${side==="move" ? `<button class="primary" id="actPull" title="Copy this project from Move to the computer">To computer →</button><span id="pullBox" class="pullbox"><label class="chk" style="margin:0" title="Move exports the project audio; if the export fails, the longest recording of this set from Recordings is used"><input type="checkbox" id="withAudio" ${S.withAudio?"checked":""}> with audio</label>${S.withAudio?`<select id="fmt" aria-label="Audio format">${["wav","mp3"].map(f=>`<option value="${f}" ${S.audioFormat===f?"selected":""}>${f.toUpperCase()}</option>`).join("")}</select>`:""}</span>` : `<button class="primary" id="actPush" title="Upload this project to a free pad on Move">← To Move</button>`}
+      ${side==="lib" ? `<button id="actReveal" title="Open the project folder in Finder">Show in Finder</button>` : ""}
+      <button class="danger" id="actDel" title="${side==='move'?'Delete this project from Move; a copy is saved on the computer first':'Move the project to the _Deleted folder'}">Delete</button>
     </div>
     ${soundHTML(side, it)}
     ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" translate="no" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
     ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
-    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history">History</button></div>
+    <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks" title="Tracks: instruments, presets, pan and order">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips" title="Clips: copy, move, load .mid, generate drums">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history" title="Saved versions of the project — restore an earlier one">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
-    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
+    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" title="Write the track changes into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
       ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <h3>Camelot</h3>
     ${wheelSVG(cam)}
@@ -1247,7 +1259,7 @@ async function push(id, slot, replaceId, quiet){
   const it = S.lib.items.find(x=>x.id===id); if(!it) return false;
   if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !confirm(`Move already has a project "${it.name}". Upload another one with the same name?`)) return false;
   status(`Uploading "${it.name}" to Move…`);
-  try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
+  try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${samplesNote(res?.samples)}${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
   catch(e){ fail(e); await loadMove(); return false; }
 }
 function dropOnMove(id, cell, slot){
@@ -1400,11 +1412,13 @@ async function monStart(){
     try{ stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
     catch(e){ if(!dev) throw e; delete audioC.deviceId; stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
     await loadInputs();
-    const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
-    an.fftSize = 1024; src.connect(an); src.connect(ctx.destination);
+    const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), split = ctx.createChannelSplitter(2);
+    src.connect(split); src.connect(ctx.destination);
+    const mono = (stream.getAudioTracks()[0]?.getSettings().channelCount || 2) < 2;
+    const an = [0,1].map(ch => { const a = ctx.createAnalyser(); a.fftSize = 1024; split.connect(a, mono ? 0 : ch); return a; });
     S.mon = {stream, ctx, an, buf:new Float32Array(1024), frames:0, dev:stream.getAudioTracks()[0]?.getSettings().deviceId || dev};
     monFillInputs(S.mon.dev);
-    $("#monMeter").hidden = false; $("#monBtn").classList.add("on"); $("#monBtn").textContent = "🎧 Monitoring";
+    $("#monMeter").hidden = false; $("#monBtn").classList.add("on"); $("#monBtn").textContent = "Monitoring";
     requestAnimationFrame(monMeter);
     status(`Monitoring: ${stream.getAudioTracks()[0]?.label || "default input"}. Use headphones to avoid feedback`);
   }catch(e){ status("No access to the audio input: "+e.message, true); }
@@ -1412,15 +1426,60 @@ async function monStart(){
 async function monStop(){
   const M = S.mon; if(!M) return; S.mon = null;
   M.stream.getTracks().forEach(t => t.stop()); try{ await M.ctx.close(); }catch(e){}
-  $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "🎧 Monitor";
+  $("#monMeter").hidden = true; $("#monBtn").classList.remove("on"); $("#monBtn").textContent = "Monitor";
+  levelStop();
 }
 function monMeter(){
   const M = S.mon; if(!M) return;
-  M.an.getFloatTimeDomainData(M.buf); let pk = 0; for(const v of M.buf) pk = Math.max(pk, Math.abs(v));
-  const cv = $("#monMeter"), g = cv.getContext("2d"), x = Math.max(0, Math.min(1, (20*Math.log10(pk||1e-5)+60)/60));
-  g.clearRect(0,0,cv.width,cv.height); g.fillStyle = x>0.9 ? "#ff5d5d" : x>0.75 ? "#d9c545" : "#5fd38d"; g.fillRect(0,0,cv.width*x,cv.height);
+  for(let ch=0; ch<2; ch++){
+    M.an[ch].getFloatTimeDomainData(M.buf);
+    let pk = 0; for(const v of M.buf){ const a = Math.abs(v); if(a > pk) pk = a; }
+    PM.ch[ch].clip = pk >= 0.99 ? 30 : Math.max(0, PM.ch[ch].clip - 1);
+    envelope(PM.ch[ch], 20*Math.log10(pk || 1e-5));
+  }
+  autoLevel();
+  pixelMeter();
   M.frames++; requestAnimationFrame(monMeter);
 }
+/* пиксельный индикатор у Monitor (сборка 58): два канала, клетки из «пикселей», плотность штриховки — громкость.
+   Автоуровень: громкость меряется относительно последних ~3 с, поэтому индикатор качается от динамики,
+   а не стоит у правого края на громком сигнале */
+const BAYER = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+const newCh = () => ({hist: new Float32Array(180), i: 0, n: 0, env: -100, lvl: 0, peak: 0, hold: 0, clip: 0});
+const PM = {ch: [newCh(), newCh()]};
+function envelope(C, db){
+  C.env = db > C.env ? db : C.env + (db - C.env) * 0.25;                       // мгновенный подъём, быстрый спад
+  C.hist[C.i] = C.env; C.i = (C.i + 1) % C.hist.length; C.n = Math.min(C.n + 1, C.hist.length);
+}
+function autoLevel(){                                                            // общий диапазон для двух каналов — баланс L/R виден
+  let lo = Infinity, hi = -Infinity;
+  for(const C of PM.ch) for(let k=0; k<C.n; k++){ const v = C.hist[k]; if(v < lo) lo = v; if(v > hi) hi = v; }
+  if(hi - lo < 9) lo = hi - 9;                                                   // ровный сигнал — небольшие колебания
+  for(const C of PM.ch){
+    const x = hi < -70 ? 0 : Math.max(0, Math.min(1, (C.env - lo) / (hi - lo)));
+    C.lvl = x > C.lvl ? x : C.lvl * 0.7 + x * 0.3;
+    if(C.lvl >= C.peak){ C.peak = C.lvl; C.hold = 30; } else if(C.hold > 0) C.hold--; else C.peak = Math.max(C.lvl, C.peak - 0.02);
+  }
+}
+function pixelMeter(){
+  const cv = $("#monMeter"), g = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const W = 96, H = 14, P = 2, CELLS = 12, CW = W / CELLS, RH = 6;
+  if(cv.width !== W*dpr || cv.height !== H*dpr){ cv.width = W*dpr; cv.height = H*dpr; cv.style.width = W+"px"; cv.style.height = H+"px"; }
+  const ink = getComputedStyle(cv).color || "#ededea";
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  PM.ch.forEach((C, ch) => {
+    const y0 = ch * (RH + 2), n = C.lvl * CELLS, pkCell = Math.min(CELLS-1, Math.floor(C.peak * CELLS));
+    g.fillStyle = C.clip ? "#ff5d5d" : ink;
+    for(let c=0; c<CELLS; c++){
+      let d = Math.max(0, Math.min(1, n - c));
+      if(c === pkCell && C.peak > 0.03) d = Math.max(d, 0.5);
+      const t = Math.round(d * 16);
+      for(let y=0; y<RH/P; y++) for(let xx=0; xx<(CW-P)/P; xx++)
+        if(BAYER[y%4][xx%4] < t) g.fillRect(c*CW + xx*P, y0 + y*P, P-0.4, P-0.4);
+    }
+  });
+}
+function levelStop(){ PM.ch = [newCh(), newCh()]; }
 $("#monBtn").onclick = () => S.mon ? monStop() : monStart();
 function monFillInputs(cur){
   if(cur===undefined){ try{ cur = localStorage.getItem("mm-mon-input") || ""; }catch(e){ cur = ""; } }
@@ -1429,7 +1488,6 @@ function monFillInputs(cur){
     + (S.inputs.length ? "" : `<option value="__ask">Show all inputs… (allow access)</option>`);
 }
 $("#monInput").addEventListener("mousedown", () => askInputs());
-document.addEventListener("mousedown", e => { if(e.target.id==="inputSel") askInputs(); });   // список входов записи — в правой панели
 $("#monInput").addEventListener("focus", () => askInputs());
 $("#monInput").onchange = e => { if(e.target.value==="__ask"){ e.target.value = ""; askInputs(); return; } try{ localStorage.setItem("mm-mon-input", e.target.value); }catch(err){} if(S.mon) monStart(); };
 loadInputs().then(() => monFillInputs());
@@ -1438,24 +1496,18 @@ async function recOpen(id){
   await recClose();
   try{
     const audioC = {echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:2};
-    if(S.inputId) audioC.deviceId = {exact:S.inputId};
+    let dev = S.mon?.dev || ""; if(!dev) try{ dev = localStorage.getItem("mm-mon-input") || ""; }catch(e){}   // вход — тот, что выбран вверху
+    if(dev) audioC.deviceId = {exact:dev};
     let stream;
     try{ stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
-    catch(e){ if(!S.inputId) throw e; S.inputId = ""; delete audioC.deviceId; stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
-    await loadInputs();
-    const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), split = ctx.createChannelSplitter(2);
-    src.connect(split);
-    const an = [0,1].map(ch => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, ch); return a; });
-    const mon = ctx.createGain();
-    S.rec = {id, stream, ctx, src, an, mon, state:"armed", monitor:false, hold:[0,0], holdAt:[0,0], clip:[0,0], buf:new Float32Array(2048),
-             mono: (stream.getAudioTracks()[0]?.getSettings().channelCount||2) < 2, label: stream.getAudioTracks()[0]?.label || "default input"};
-    renderInspector(); requestAnimationFrame(meterLoop);
-    status(`Input: ${S.rec.label}. Check the level and press Start recording`);
+    catch(e){ if(!dev) throw e; delete audioC.deviceId; stream = await navigator.mediaDevices.getUserMedia({audio:audioC}); }
+    S.rec = {id, stream, state:"armed", label: stream.getAudioTracks()[0]?.label || "default input"};
+    recStart();
   }catch(e){ status("No access to the audio input: "+e.message, true); }
 }
 async function recClose(){
   const R = S.rec; if(!R) return; S.rec = null;
-  clearInterval(R.timer); try{ R.stream.getTracks().forEach(t=>t.stop()); await R.ctx.close(); }catch(e){}
+  clearInterval(R.timer); try{ R.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
   renderInspector();
 }
 function recStart(){
@@ -1473,29 +1525,6 @@ function recStart(){
   rec.start(1000); renderInspector();
 }
 function recStop(save){ const R = S.rec; if(!R) return; if(R.state==="rec"){ R.save = save; R.recorder.stop(); } else recClose(); }
-function setMonitor(on){ const R = S.rec; if(!R) return; R.monitor = on; try{ if(on){ R.src.connect(R.mon); R.mon.connect(R.ctx.destination); } else { R.src.disconnect(R.mon); R.mon.disconnect(); } }catch(e){} }
-function meterLoop(){
-  const R = S.rec; if(!R) return;
-  const cv = $("#meter");
-  if(cv){
-    const g = cv.getContext("2d"), W = cv.width, H = cv.height, now = performance.now(), rowH = H/2 - 3;
-    g.clearRect(0,0,W,H);
-    for(let ch=0; ch<2; ch++){
-      R.an[R.mono?0:ch].getFloatTimeDomainData(R.buf);
-      let pk = 0; for(let i=0;i<R.buf.length;i++){ const v = Math.abs(R.buf[i]); if(v>pk) pk = v; }
-      const db = pk>0 ? 20*Math.log10(pk) : -100, x = Math.max(0, Math.min(1, (db+60)/60));       // шкала −60…0 дБ
-      if(x >= R.hold[ch] || now-R.holdAt[ch] > 1200){ R.hold[ch] = x; R.holdAt[ch] = now; }
-      if(pk >= 0.99) R.clip[ch] = now;
-      const y = ch*(H/2) + 2;
-      g.fillStyle = "#23262b"; g.fillRect(0,y,W,rowH);
-      g.fillStyle = x>0.9 ? "#ff5d5d" : x>0.75 ? "#d9c545" : "#5fd38d"; g.fillRect(0,y,W*x,rowH);
-      g.fillStyle = "#e8e6e1"; g.fillRect(Math.max(0,W*R.hold[ch]-2),y,2,rowH);
-      if(now-R.clip[ch] < 1500){ g.fillStyle = "#ff5d5d"; g.fillRect(W-10,y,10,rowH); }
-    }
-    g.fillStyle = "rgba(255,255,255,.18)"; for(const d of [-48,-36,-24,-12,-6]) g.fillRect(W*(d+60)/60,0,1,H);
-  }
-  requestAnimationFrame(meterLoop);
-}
 for(const ev of ["play","pause","ended"]) audio.addEventListener(ev, () => { if(ev==="ended") S.playing = null; render(); });
 
 /* ───────── события: плитки ───────── */
@@ -2066,7 +2095,6 @@ insp.addEventListener("click", async e => {
   if(t.id==="resetOrder"){ S.order = null; S.pans = {}; S.key = null; return renderInspector(); }
   if(t.id==="actAudio"){ $("#audioFile").value = ""; return $("#audioFile").click(); }
   if(t.id==="actRec") return recOpen(id);
-  if(t.id==="recStart") return recStart();
   if(t.id==="recStop") return recStop(true);
   if(t.id==="recCancel") return recStop(false);
   if(t.id==="actRender") return renderLib(id);
@@ -2097,9 +2125,6 @@ insp.addEventListener("change", async e => {
   if(g && id==="genSource"){ g.genre = e.target.value.slice(2); g.pattern = null; return genRun(); }
   if(g && ["genMut","genSwing","genDeja","genBars","genGhost","genEuclid"].includes(id)){ g[{genMut:"mutation",genSwing:"swing",genDeja:"deja",genBars:"bars",genGhost:"ghosts",genEuclid:"euclid"}[id]] = +e.target.value; return genRun(); }
   if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
-  if(e.target.id==="monChk") return setMonitor(e.target.checked);
-  if(e.target.id==="inputSel" && e.target.value==="__ask"){ e.target.value = ""; askInputs(); return; }
-  if(e.target.id==="inputSel"){ S.inputId = e.target.value; try{ localStorage.setItem("mm-input", S.inputId); }catch(err){} if(S.rec && S.rec.state==="armed") recOpen(S.rec.id); return; }
   if(e.target.id==="groupSel"){ const it = selItem(); if(!it || S.sel.side!=="lib") return; let g = e.target.value;
     if(g==="__new__"){ g = (prompt("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
     if(g!==(it.group||"")) setGroup(it.id, g); return; }
@@ -2261,6 +2286,10 @@ $("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); 
 
 render(); loadConfig(); loadLib(); loadMove();
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
+try{   // …кроме перезагрузки после смены языка
+  const back = JSON.parse(sessionStorage.getItem("mm-return") || "null"); sessionStorage.removeItem("mm-return");
+  if(back){ if(back.view && back.view!==S.view) setView(back.view); if(back.sel){ S.sel = back.sel; if(back.tab) S.tab = back.tab; render(); } }
+}catch(e){}
 
 function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; const b = $("#themeBtn");
   b.textContent = d ? "Light" : "Dark"; b.dataset.to = d ? "light" : "dark"; }   // кнопка — в цветах темы, на которую переключает
@@ -2274,7 +2303,10 @@ themeLabel();
 /* язык: кнопка подписана языком, на который переключает (сборка 56) */
 $("#langBtn").textContent = LANG === "ru" ? "EN" : "RU";
 $("#langBtn").setAttribute("translate", "no");
-$("#langBtn").onclick = () => setLang(LANG === "ru" ? "en" : "ru");
+$("#langBtn").onclick = () => {   // после перезагрузки вернуться на тот же экран, к тому же проекту и вкладке
+  try{ sessionStorage.setItem("mm-return", JSON.stringify({view:S.view, sel:S.sel, tab:S.tab})); }catch(e){}
+  setLang(LANG === "ru" ? "en" : "ru");
+};
 </script>
 </body>
 </html>

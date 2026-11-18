@@ -30,7 +30,7 @@ class StaleCacheTests(unittest.TestCase):
         old = app.parse_song(song())
         del old["clips"]
         (d / "meta.json").write_text(json.dumps({"bundleStamp": stamp, "info": old}))
-        self.assertEqual(app.lib_item(d)["info"]["clips"][0][0], {"notes": 3, "length": 4.0})
+        self.assertEqual(app.lib_item(d)["info"]["clips"][0][0], {"notes": 3, "length": 4.0, "roll": [[0.0, 0.25, 36], [1.0, 0.25, 36], [2.0, 0.25, 36]]})
 
     def test_device_cache_without_clips_is_stale(self):
         old = app.parse_song(song())

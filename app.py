@@ -71,7 +71,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "57"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "58"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.1"       # версия для друзей (релиз v1.1); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -275,6 +275,21 @@ def parse_song(song):
     }
 
 
+ROLL_MAX = 256   # нот в картинке клетки клипа — хватает с запасом, ответ остаётся маленьким
+
+
+def note_roll(clip, start):
+    """Картинка нот клипа для клетки: [[начало от начала клипа, длина, нота], ...] в долях."""
+    out = []
+    for n in (clip.get("notes") or [])[:ROLL_MAX]:
+        try:
+            out.append([round(float(n.get("startTime", 0)) - start, 3), round(float(n.get("duration", 0)), 3),
+                        int(n.get("noteNumber", 0))])
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def clips_grid(song):
     """Сетка клипов: по дорожкам, по сценам — {"notes", "length"} или None."""
     grid = []
@@ -290,7 +305,8 @@ def clips_grid(song):
                                 "tempo": (c.get("warping") or {}).get("tempoAfterLastMarker"),
                                 "transpose": c.get("transpose", 0), "notes": 0, "length": length})
                 else:
-                    row.append({"notes": len(c.get("notes") or []), "length": length})
+                    row.append({"notes": len(c.get("notes") or []), "length": length,
+                                "roll": note_roll(c, float(region.get("start", 0.0)))})
             else:
                 row.append(None)
         grid.append(row)
@@ -1529,7 +1545,8 @@ def cached_info(oid, stamp):
 
 def stale_info(info):
     """Разбор от старой сборки: без clips (до 20), без вида дорожки clipKind (до 51),
-    без пометки audio у клипов аудиодорожек (до 53), роль аудиодорожки по эффекту (до 54)."""
+    без пометки audio у клипов аудиодорожек (до 53), роль аудиодорожки по эффекту (до 54),
+    без картинки нот roll у MIDI-клипов (до 58)."""
     info = info or {}
     if "clips" not in info or any("clipKind" not in t for t in info.get("tracks") or []):
         return True
@@ -1537,6 +1554,8 @@ def stale_info(info):
     if any(t.get("trackKind") == "audio" and t.get("role") != "Audio" for t in tracks):   # до 54: роль по эффекту
         return True
     for i, row in enumerate(info.get("clips") or []):
+        if any(c and not c.get("audio") and "roll" not in c for c in row):                 # до 58: без картинки нот
+            return True
         if i < len(tracks) and tracks[i].get("clipKind") == "audio" and any(c and "audio" not in c for c in row):
             return True
     return False
@@ -1983,13 +2002,20 @@ def job_push(folder, slot=None, replace_id=None):
         before = {o["objectId"] for o in MOVE.list_sets()}
         if replace_id and replace_id not in before:
             raise AppError("The project to replace is no longer on Move")
-        stage("Uploading to Move")
         with zipfile.ZipFile(bundle) as zi:
             nested = unwrap_nested_racks(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")))[1]
-        if nested:      # копия для Move без лишней обёртки рэка; файл на компьютере не меняется
+        info, samples = None, None
+        if ssh_enabled():                 # сэмплы проекта ищутся в библиотеке Move по содержимому
+            stage("Looking for the project's samples on Move")
+            try:
+                info, samples = relink_bundle_samples(bundle)
+            except (SshError, AppError, OSError, ValueError, zipfile.BadZipFile) as e:
+                log_error("relink samples", e)     # не нашли — проект едет как есть, Move оставит копии внутри
+        stage("Uploading to Move")
+        if nested or info is not None:   # копия для Move; файл на компьютере не меняется
             fixed = CACHE_DIR / f"push-{uuid.uuid4().hex}.ablbundle"
             try:
-                transform_bundle(bundle, fixed, lambda song: unwrap_nested_racks(song)[0])
+                rebuild_bundle(bundle, fixed, (lambda song: unwrap_nested_racks(song)[0]) if nested else None, info)
                 MOVE.upload(fixed, f"{d.name}.ablbundle")
             finally:
                 fixed.unlink(missing_ok=True)
@@ -2033,8 +2059,99 @@ def job_push(folder, slot=None, replace_id=None):
             src_id = read_json(d / "meta.json", {}).get("sourceId")
             if not src_id or src_id == replace_id or src_id not in {o["objectId"] for o in MOVE.list_sets()}:
                 update_meta(d, sourceId=created[0])
-        return {"name": d.name, "slot": placed, "replaced": bool(replace_id), "schwung": schwung}
+        return {"name": d.name, "slot": placed, "replaced": bool(replace_id), "schwung": schwung, "samples": samples}
     return fn
+
+
+# ── сэмплы при загрузке проекта на Move (сборка 58) ──
+# Move берёт из BundleInfo.json → originalSampleUris, где сэмпл лежал на Move: если файл там есть — ссылается на него,
+# если нет — оставляет копию из бандла внутри сета (её не видно в разделе Samples). Перед загрузкой пути
+# поправляются по содержимому: перенесённый сэмпл находится, файл с тем же именем, но другим звуком не подставляется.
+SAMPLE_MD5_CACHE = "sample-md5.json"
+
+
+def plan_sample_links(bundled, orig, lib_md5):
+    """bundled {ключ в бандле: md5}, orig — прежние originalSampleUris, lib_md5 {путь в библиотеке Move: md5}.
+    Возвращает (новые originalSampleUris, {"found": на месте, "linked": найден в другом месте, "kept": не найден})."""
+    by_md5 = {}
+    for rel, h in sorted(lib_md5.items()):
+        by_md5.setdefault(h, []).append(rel)
+    info = {k: v for k, v in orig.items() if k not in bundled}
+    n = {"linked": 0, "kept": 0, "found": 0}
+    for key, h in bundled.items():
+        cands, was = by_md5.get(h, []), samplelib.uri_to_rel(orig.get(key))
+        if was in cands:
+            info[key] = orig[key]
+            n["found"] += 1
+        elif cands:
+            name = unquote(key).rsplit("/", 1)[-1]
+            pick = next((r for r in cands if r.rsplit("/", 1)[-1] == name), cands[0])
+            info[key] = samplelib.rel_to_uri(pick)
+            n["linked"] += 1
+        else:
+            n["kept"] += 1
+    return info, n
+
+
+def move_sample_md5s(sizes):
+    """md5 файлов библиотеки Move нужных размеров (кроме папки Sets). Суммы запоминаются по размеру и времени файла."""
+    cache_path = CACHE_DIR / SAMPLE_MD5_CACHE
+    cache = read_json(cache_path, {})
+    out = ssh_run(f"cd {shlex.quote(USERLIB_DIR)} && find . -type f ! -path './Sets/*' ! -name '.*' "
+                  "-exec stat -c '%s|%Y|%n' {} + ; exit 0", timeout=120).decode("utf-8", "replace")
+    files = {}
+    for line in out.splitlines():
+        parts = line.split("|", 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[2].startswith("./"):
+            files[parts[2][2:]] = (int(parts[0]), parts[1])
+    need = [r for r, (size, mt) in files.items() if size in sizes
+            and not (isinstance(cache.get(r), list) and cache[r][:2] == [size, mt])]
+    for i in range(0, len(need), 100):
+        chunk = need[i:i + 100]
+        res = ssh_run(f"cd {shlex.quote(USERLIB_DIR)} && md5sum -- " + " ".join(shlex.quote(r) for r in chunk) + "; exit 0",
+                      timeout=180).decode("utf-8", "replace")
+        for line in res.splitlines():
+            h, _, rel = line.partition("  ")
+            if rel in files and re.fullmatch(r"[0-9a-f]{32}", h):
+                cache[rel] = [files[rel][0], files[rel][1], h]
+    cache = {r: v for r, v in cache.items() if r in files}
+    write_json(cache_path, cache)
+    return {r: cache[r][2] for r, (size, _mt) in files.items() if size in sizes and r in cache}
+
+
+def relink_bundle_samples(bundle):
+    """Новый BundleInfo.json для загрузки (или None, если менять нечего) и счёт сэмплов."""
+    with zipfile.ZipFile(bundle) as zi:
+        names = set(zi.namelist())
+        refs = []
+        collect_uris(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")), refs)
+        data = {k: zi.read(unquote(k)) for k in dict.fromkeys(refs)
+                if not k.startswith("ableton:") and not k.startswith("/") and unquote(k) in names}
+        info = json.loads(zi.read("BundleInfo.json")) if "BundleInfo.json" in names else {}
+    if not data:
+        return None, None
+    orig = info.get("originalSampleUris") or {}
+    links, n = plan_sample_links({k: hashlib.md5(v).hexdigest() for k, v in data.items()}, orig,
+                                 move_sample_md5s({len(v) for v in data.values()}))
+    if links == orig:
+        return None, n
+    return {**info, "originalSampleUris": links}, n
+
+
+def rebuild_bundle(src, dst, song_fn=None, info=None):
+    """Копия бандла для загрузки: Song.abl через song_fn, BundleInfo.json — новый info; остальное как есть."""
+    with zipfile.ZipFile(src) as zi:
+        entry = find_song_entry(zi)
+        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zo:
+            for item in zi.infolist():
+                if item.filename == entry and song_fn:
+                    zo.writestr(item.filename, dump_song(song_fn(json.loads(zi.read(entry).decode("utf-8")))))
+                elif item.filename == "BundleInfo.json" and info is not None:
+                    zo.writestr(item.filename, json.dumps(info, indent=2, ensure_ascii=False))
+                else:
+                    zo.writestr(item.filename, zi.read(item.filename))
+            if info is not None and "BundleInfo.json" not in zi.namelist():
+                zo.writestr("BundleInfo.json", json.dumps(info, indent=2, ensure_ascii=False))
 
 
 def job_edit_move(oid, order, pans, replace, key=None):
@@ -3506,7 +3623,7 @@ class Handler(BaseHTTPRequestHandler):
                 mutation=float(b.get("mutation", 35)), seed=int(b.get("seed") or 1), bars=int(b.get("bars") or 2),
                 swing=float(b.get("swing", 50)), deja_vu=float(b.get("deja_vu", 50)),
                 ghosts=b.get("ghosts", 30) if not isinstance(b.get("ghosts"), bool) else b.get("ghosts"),
-                euclid=bool(b.get("euclid", True)),
+                euclid=b.get("euclid", True) if isinstance(b.get("euclid", True), bool) else float(b.get("euclid")),
                 avoid=b.get("avoid"),
                 half=b.get("half") if b.get("half") in ("all", "kick", "kick+snare") else ("all" if b.get("half") is True else False))
                 | {"pads": pads})

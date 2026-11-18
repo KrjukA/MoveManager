@@ -249,6 +249,9 @@ def generate(patterns, genre, pattern_id, pads, mutation=35, seed=1, bars=2, swi
 
     layer = None                                    # евклидов слой: одна роль на весь клип
     cand = [r for r in EUCLID_ROLES if pads_for_role(pads, r)]
+    # слой кладётся на роль, где ещё есть место: в густом ряду (римшот на каждом шаге) его не было бы слышно
+    dense = lambda r: sum(ref_hit(r, i) for i in range(16)) + sum(gmap.get(r, [0.0] * 16)) > 8
+    cand = [r for r in cand if not dense(r)] or cand
     e_role, e_rot, e_k = (rng.choice(cand) if cand else None), rng.randint(0, 15), rng.randint(3, 7)
     if euclid is True:                              # старый режим: слой с вероятностью Mutation
         if m > 0 and rng.random() < m and e_role:
@@ -270,13 +273,18 @@ def generate(patterns, genre, pattern_id, pads, mutation=35, seed=1, bars=2, swi
                 if p >= 1.0 or (p > 0 and rng.random() < p):
                     base = 112 if s in STRONG.get(role, ()) else (100 if s % 2 == 0 else 84)
                     bar[role][s] = max(1.0, min(127.0, base + rng.uniform(-8, 8) * (m > 0)))
-        if "snare" in bar:                          # ghost-ноты: ручка 0–100, от мутации не зависит
-            for s in range(16):
-                if bar["snare"][s] >= 90:
-                    for t in (s - 1, s + 1, s + 3):
-                        u, vel = rng.random(), rng.uniform(45, 60)     # жребий тянется всегда — ручка действует плавно
-                        if 0 <= t < 16 and not bar["snare"][t] and u < 0.6 * ghost_amt:
-                            bar["snare"][t] = vel
+        # ghost-ноты: тихие удары малого вокруг бэкбита (малый или клэп — в footwork и т. п. бэкбит — клэп);
+        # ручка 0–100, от мутации не зависит
+        g_role = "snare" if role_choices(pads, "snare") else ("clap" if role_choices(pads, "clap") else None)
+        anchors = [s for s in range(16) if any((bar.get(r) or [0.0] * 16)[s] >= 76 for r in ("snare", "clap"))]
+        if g_role and anchors:
+            row = bar.setdefault(g_role, [0.0] * 16)
+            taken = lambda t: any((bar.get(r) or [0.0] * 16)[t] for r in ("snare", "clap"))
+            for s in anchors:
+                for t in (s - 3, s - 1, s + 1, s + 3):
+                    u, vel = rng.random(), rng.uniform(45, 60)     # жребий тянется всегда — ручка действует плавно
+                    if 0 <= t < 16 and not taken(t) and u < 0.75 * ghost_amt:
+                        row[t] = vel
         if layer:
             role, hits = layer
             row = bar.setdefault(role, [0.0] * 16)
@@ -286,6 +294,9 @@ def generate(patterns, genre, pattern_id, pads, mutation=35, seed=1, bars=2, swi
         picked = {}                                 # выбор пэда — часть такта, чтобы дежавю повторяло и тембр
         for role, row in bar.items():
             choices = role_choices(pads, role)
+            # другой пэд роли — но не главный пэд другой основной роли (в наборе из одних бочек 38 и 42 — малый и хэт)
+            others = {role_choices(pads, r)[0] for r in CORE if r != role and role_choices(pads, r)}
+            choices = choices[:1] + [c for c in choices[1:] if c not in others]
             picked[role] = [None if not v or not choices else
                             (rng.choice(choices[1:]) if len(choices) > 1 and m > 0 and rng.random() < 0.5 * m
                              else choices[0]) for v in row]
