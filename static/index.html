@@ -616,6 +616,10 @@ function setKeyFromCamelot(code){
   const k = keyForCamelot(code, cur.scale); if(!k) return;
   S.key = {...cur, ...k}; S.keyEdit = true; renderInspector();
 }
+function samplesNote(n){   // сборка 58: сэмплы проекта, найденные в библиотеке Move по содержимому
+  if(!n) return "";
+  return (n.linked ? ` · samples found in the Move library: ${n.linked}` : "") + (n.kept ? ` · samples kept inside the project: ${n.kept}` : "");
+}
 function schwungNote(v){
   if(!v) return "";
   if(v==="copied") return " · Schwung state restored";
@@ -1255,7 +1259,7 @@ async function push(id, slot, replaceId, quiet){
   const it = S.lib.items.find(x=>x.id===id); if(!it) return false;
   if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !confirm(`Move already has a project "${it.name}". Upload another one with the same name?`)) return false;
   status(`Uploading "${it.name}" to Move…`);
-  try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
+  try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${samplesNote(res?.samples)}${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
   catch(e){ fail(e); await loadMove(); return false; }
 }
 function dropOnMove(id, cell, slot){

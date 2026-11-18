@@ -166,7 +166,7 @@ exact: {
   "Working…": "Выполняю…", "Reading…": "Читаю…", "Applying changes…": "Применяю изменения…", "Something went wrong": "Что-то пошло не так",
   "Did not work": "Не получилось",
   "Reading project on Move": "Читаю проект на Move", "Writing changes": "Записываю изменения", "Writing clip": "Записываю Clip", "Writing clips": "Записываю Clips",
-  "Removing clip": "Убираю Clip", "Downloading project": "Скачиваю проект", "Uploading to Move": "Загружаю на Move", "Applying changes": "Применяю изменения",
+  "Removing clip": "Убираю Clip", "Downloading project": "Скачиваю проект", "Uploading to Move": "Загружаю на Move", "Looking for the project's samples on Move": "Ищу сэмплы проекта на Move", "Applying changes": "Применяю изменения",
   "Replacing the original": "Заменяю оригинал", "Saving a copy of the original": "Сохраняю копию оригинала", "Saving a copy of the previous project": "Сохраняю копию прежнего проекта",
   "Saving a copy to the computer before deleting": "Сохраняю копию на компьютер перед удалением", "Deleting from Move": "Удаляю с Move",
   "Removing the previous project from the pad": "Убираю прежний проект с Pad", "Copying Schwung state": "Копирую состояние Schwung",
@@ -403,6 +403,8 @@ fragments: [
   ["Schwung state not restored", "состояние Schwung не восстановлено"], ["enable pad control (SSH)", "включите Pad control (SSH)"],
   ["the new set could not be identified", "новый проект не удалось опознать"],
   ["The project was not changed.", "Проект не изменён."],
+  ["samples found in the Move library:", "сэмплы найдены в библиотеке Move:"],
+  ["samples kept inside the project:", "сэмплы оставлены внутри проекта:"],
   ["clips:", "Clips:"], ["samples:", "Samples:"]
 ]
 }};
