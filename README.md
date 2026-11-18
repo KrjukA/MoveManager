@@ -5,7 +5,9 @@
 Локальный менеджер проектов, сэмплов и пресетов для Ableton Move: окно в браузере, сервер на Python.
 Независимый проект, не связан с Ableton.
 
-## Установка для друзей (Windows и Mac, без Python)
+**Скачать:** [последняя версия](https://github.com/KrjukA/MoveManager/releases/latest) — внизу страницы, раздел Assets.
+
+## Установка (Windows и Mac, без Python)
 
 1. Скачай архив для своей системы:
    - Windows — `KRJUK-Move-Manager-<версия>-windows.zip`;
@@ -109,3 +111,14 @@ GitHub → вкладка **Releases** → **Draft a new release** → тег в
 в ячейки этой дорожки вправо по порядку имён («2 …» раньше «10 …»). Темп лупа берётся из имени файла («160bpm»), без
 него луп подгоняется под целые такты, как это делает сам Move. FLAC и MP3 Move в клипах не играет — на Mac
 программа сама переводит их в WAV (на Windows сначала переведите в WAV сами). Перед записью версия сохраняется в History.
+
+## Ритмы генератора
+
+Барабанные рисунки генератора взяты из книги **Pocket Operations** (Paul Wenzel, 2019, https://shittyrecording.studio/)
+и таблицы **Basic Drum Patterns** (8 жанров). Сами книга и таблица в репозиторий не входят — в программе только разобранные
+из них рисунки (`pocket_operations.json`, `basic_8_genres.json`). Чтобы разобрать книгу заново, скачайте PDF с сайта автора
+и запустите `python3 tools/parse_pocket.py <путь к PDF>`.
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE). Ableton и Move — товарные знаки Ableton AG; проект с Ableton не связан.
