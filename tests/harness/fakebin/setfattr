@@ -1,3 +1,0 @@
-#!/bin/bash
-# setfattr -n NAME -v VAL FILE
-printf '%s' "$4" > "$5/.xattr_$2"

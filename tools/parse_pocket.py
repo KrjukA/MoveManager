@@ -1,5 +1,5 @@
 """Разовый разбор буклета Pocket Operations (P. Wenzel, 2019) в patterns/pocket_operations.json.
-Запуск: python3 tools/parse_pocket.py docs/sources/pocket-operations-2019.pdf (нужен pypdf)."""
+Запуск: python3 tools/parse_pocket.py <путь к PDF> (PDF — с сайта автора https://shittyrecording.studio/; нужен pypdf)."""
 import json
 import logging
 import re

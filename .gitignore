@@ -13,3 +13,5 @@ history/
 CLAUDE.md
 docs/superpowers/
 docs/ideas/
+tests/ui/
+tests/harness/
