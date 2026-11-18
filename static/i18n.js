@@ -6,6 +6,8 @@
 "use strict";
 const I18N = {ru: {
 exact: {
+  "Where should projects from Move go on this computer?": "Куда складывать проекты с Move на этом компьютере?",
+  "Use this folder": "Оставить эту папку", "Choose folder…": "Выбрать папку…",
   "Replace": "Заменить", "Update": "Обновить", "Upload": "Загрузить", "Rearrange": "Расставить", "Move here": "Перенести",
   "Restore without the missing samples?": "Вернуть без недостающих сэмплов?",
   "The project on Move is backed up first.": "Сначала сохраняется копия проекта на Move.",
@@ -260,6 +262,9 @@ exact: {
   "Empty folder. Drag files here from the other panel or from Finder.": "Пустая папка. Перетащите сюда файлы из другой панели или из Finder."
 },
 patterns: [
+  [/^Now: (.+)\nYou can change it later: \+ at the top of the Computer column → Choose library folder…$/,
+    "Сейчас: $1\nПоменять можно позже: + вверху колонки Computer → «Выбрать папку библиотеки…»"],
+  [/^Folder: (\/.*|[A-Za-z]:\\.*)$/, "Папка: $1"],
   // окна-подтверждения сборки 59: первый абзац — вопрос, дальше — подробности (каждый абзац переводится отдельно)
   [/^Replace the clip in track (\d+), scene (\d+)\?$/, "Заменить Clip (Track $1, Scene $2)?"],
   [/^Restore the version from (.+)\?$/, "Вернуть версию от $1?"],

@@ -72,7 +72,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "59"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "60"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.3"       # версия для друзей (релиз v1.3); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -3474,6 +3474,7 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError as e:
                     raise AppError(f"Cannot use this folder: {e}")
                 CFG["library"] = str(p)
+                CFG["library_chosen"] = True
             if b.get("audioFormat") in ("wav", "mp3"):
                 CFG["audio_format"] = b["audioFormat"]
             if "moveUrl" in b:
@@ -3498,6 +3499,7 @@ class Handler(BaseHTTPRequestHandler):
             p = choose_folder_dialog()
             if p:
                 CFG["library"] = p
+                CFG["library_chosen"] = True
                 save_config()
             return self.send_json({"library": CFG["library"], "chosen": bool(p)})
 
@@ -3733,7 +3735,10 @@ class Handler(BaseHTTPRequestHandler):
                                   (q.get("group") or [None])[0])
             return self.send_json({"ok": True, "id": final})
         if seg == ["library"] and m == "GET":
-            return self.send_json({"items": list_library(), "path": str(lib_root())})
+            items = list_library()
+            # папка «выбрана»: человек сам выбрал/подтвердил её или в ней уже есть проекты (сборка 60)
+            return self.send_json({"items": items, "path": str(lib_root()),
+                                   "chosen": bool(CFG.get("library_chosen") or items)})
         if len(seg) >= 2 and seg[0] == "library":
             folder = seg[1]
             act = seg[2] if len(seg) > 2 else None

@@ -412,15 +412,17 @@ function ask(msg, o = {}){
     yes.textContent = window.tr ? window.tr(o.ok || (danger ? "Delete" : "OK")) : (o.ok || "OK");
     yes.classList.toggle("danger", danger);
     no.hidden = o.cancel === false;
+    no.textContent = window.tr ? window.tr(o.no || "Cancel") : (o.no || "Cancel");
+    const dismissed = o.no ? null : (withInput ? null : false);     // Esc / щелчок мимо: при своей второй кнопке — null
     inp.hidden = !withInput; inp.value = withInput ? o.input : "";
     const done = v => { m.classList.remove("on"); document.removeEventListener("keydown", key, true); res(v); };
     const key = e => {
-      if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(withInput ? null : false); }
+      if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(dismissed); }
       else if(e.key === "Enter" && document.activeElement !== no){ e.preventDefault(); e.stopPropagation(); yes.click(); }
     };
     yes.onclick = () => done(withInput ? inp.value : true);
     no.onclick = () => done(withInput ? null : false);
-    m.onclick = e => { if(e.target === m) no.onclick(); };
+    m.onclick = e => { if(e.target === m) done(dismissed); };
     document.addEventListener("keydown", key, true);
     m.classList.add("on");
     if(withInput){ inp.focus(); inp.select(); } else yes.focus();
@@ -522,7 +524,7 @@ async function analyzeQueue(){
   }finally{ analyzing = false; }
 }
 async function loadLib(){
-  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path}; S.hist = null; }
+  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path, chosen:d.chosen !== false}; S.hist = null; }
   catch(e){ fail(e); }
   render();
 }
@@ -1246,8 +1248,28 @@ async function runJob(key, startFn){
     return job.result || {};
   } finally { delete S.jobs[key]; render(); }
 }
+/* первый перенос с Move: где держать проекты на компьютере (сборка 60) */
+async function chooseLibFirst(){
+  const r = await ask(`Where should projects from Move go on this computer?\n\nNow: ${S.lib.path}\nYou can change it later: + at the top of the Computer column → Choose library folder…`,
+                      {ok:"Choose folder…", no:"Use this folder"});
+  if(r === null) return false;                                   // Esc — ничего не переносим
+  try{
+    if(r){
+      status("Choose a folder in the Finder window…");
+      let c;
+      try{ c = await api("POST", "/api/choose-folder"); }
+      catch(e){                                                   // нет системного окна выбора — путь вручную
+        const p = (await askText("Path to the projects folder:", S.lib.path) ?? "").trim(); if(!p) return false;
+        c = await api("POST", "/api/config", {library:p}); c.chosen = true;
+      }
+      if(!c.chosen){ status(""); return false; }
+    } else await api("POST", "/api/config", {library:S.lib.path});
+    await loadLib(); status("Folder: " + S.lib.path); return true;
+  }catch(e){ fail(e); return false; }
+}
 async function pull(id, group){
   const it = S.move.sets.find(x=>x.id===id); if(!it) return;
+  if(!S.lib.chosen && !await chooseLibFirst()) return;
   const ex = S.lib.items.find(x=>x.sourceId===id);          // тот же проект; другой с таким же именем ляжет в «Имя 2»
   if(ex && !await ask(`Update “${it.name}” on the computer?\n\nThe project and its audio are replaced; description and notes are kept.`, {ok:"Update"})) return;
   status(`Copying "${it.name}" to the computer…`);
