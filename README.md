@@ -2,94 +2,95 @@
 
 ![KRJUK](static/logo.png)
 
-Программа для работы с проектами, сэмплами и пресетами Ableton Move прямо с компьютера. Открывается в браузере, к Move подключается по Wi-Fi.
+An app for managing Ableton Move projects, samples and presets right from your computer. It opens in your browser and connects to Move over Wi-Fi.
 
-**Скачать:** [последняя версия](https://github.com/KrjukA/MoveManager/releases/latest) — внизу страницы, раздел Assets. Как установить — [в конце страницы](#установка).
+**Download:** [latest version](https://github.com/KrjukA/MoveManager/releases/latest) — at the bottom of the page, under Assets. How to install — [at the end of this page](#installation).
 
-## Проекты
+## Projects
 
-- Проекты показаны так же, как на Move: сетка 4×8 с тем же расположением.
-- Проекты перетаскиваются с компьютера на Move и обратно, а внутри Move их можно переставлять с пэда на пэд.
-- На компьютере проекты можно раскладывать по группам, переименовывать и добавлять к ним описание и заметки.
-- Виден состав проекта: дорожки, инструменты и пресеты вместе с папкой, откуда они взяты.
+- Projects are shown just like on Move: a 4×8 grid with the same layout.
+- Drag projects from the computer to Move and back, and move them from pad to pad on Move.
+- On the computer, sort projects into groups, rename them and add a description and notes.
+- See what's inside a project: tracks, instruments and presets, along with the folder they come from.
 
-## Тональность и темп
+## Key and tempo
 
-- У каждого проекта видны тональность, лад и темп.
-- Колесо Камелота подсказывает, какие проекты сочетаются по тональности. Это помогает выстроить порядок треков для лайва.
-- Тональность, темп и название можно менять прямо из менеджера.
+- Every project shows its key, scale and tempo.
+- The Camelot wheel shows which projects go well together by key — handy for planning the order of a live set.
+- Change key, tempo and name right from the manager.
 
-## Прослушивание
+## Listening
 
-- При сохранении проекта переносится или записывается аудио в WAV или MP3, так что демку можно быстро послушать без Ableton.
-- Monitor позволяет слушать вход через компьютер, например Move по USB.
+- When a project is saved, its audio is copied or recorded as WAV or MP3, so you can play a demo without Ableton.
+- Monitor lets you listen to an input through the computer, for example Move over USB.
 
-## Внутри проекта
+## Inside a project
 
-- Можно менять порядок треков.
-- MIDI-клипы загружаются в слоты проекта и выгружаются из них.
-- Клипы можно копировать, вырезать и вставлять (⌘C / ⌘X / ⌘V), удалять, переносить между дорожками и менять местами.
-- Аудиоклипы загружаются в слоты аудиотреков, их можно перемещать и удалять.
+- Reorder tracks.
+- Load MIDI clips into a project's slots and export them.
+- Copy, cut and paste clips (⌘C / ⌘X / ⌘V), delete them, move them between tracks and swap them.
+- Load audio clips into audio track slots, move and delete them.
 
-## Генератор ударных
+## Drum generator
 
-- Создаёт drum-клипы в стиле разных жанров и может учиться на твоих собственных MIDI-клипах.
-- Ручками настраиваются мутации, ghost-ноты, евклидовы ритмы и half-time.
-- Результат можно послушать до того, как он ляжет в ячейку.
+- Creates drum clips in the style of different genres and can learn from your own MIDI clips.
+- Knobs for mutation, ghost notes, euclidean rhythms and half time.
+- Listen to the result before it goes into a cell.
 
-## Сэмплы и пресеты
+## Samples and presets
 
-- Сэмплы удобно переносить между компьютером и Move в обе стороны.
-- Можно навести порядок в коллекции прямо на Move.
-- При переносе и переименовании сэмплов проекты не теряют звук.
-- Можно найти и удалить сэмплы, которые не нужны ни одному проекту.
+- Move samples between the computer and Move in both directions.
+- Tidy up your collection right on Move.
+- Projects keep their sound when samples are moved or renamed.
+- Find and delete samples that no project uses.
 
-## Поддержка Schwung
+## Schwung support
 
-- При копировании проектов менеджер учитывает устройства из фоновой прошивки Schwung.
+- When copying projects, the manager takes devices from the Schwung background firmware into account.
 
-## История и откат
+## History and undo
 
-- Хранятся последние 20 изменений каждого проекта.
-- К любой версии можно вернуться, и сам откат тоже можно отменить.
+- The last 20 changes of every project are kept.
+- Go back to any version — and the restore itself can be undone too.
 
-## Безопасность и удобство
+## Safety and comfort
 
-- Подключение к Move идёт через собственный SSH-ключ, который Move принимает только после подтверждения колесом.
-- Есть тёмная и светлая темы.
-- Работает на Mac и Windows.
+- The app connects to Move with its own SSH key, which Move accepts only after you confirm it with the wheel.
+- Dark and light themes.
+- English and Russian interface.
+- Works on Mac and Windows.
 
-## Установка
+## Installation
 
-Подробная инструкция — в файлах `KRJUK-Move-Manager-install-RU.txt` (русский) и `KRJUK-Move-Manager-install-EN.txt` (English) на странице [последней версии](https://github.com/KrjukA/MoveManager/releases/latest).
+Step-by-step guides: `KRJUK-Move-Manager-install-EN.txt` (English) and `KRJUK-Move-Manager-install-RU.txt` (Russian) on the [latest version](https://github.com/KrjukA/MoveManager/releases/latest) page.
 
-1. Скачай архив для своей системы:
-   - Windows — `KRJUK-Move-Manager-<версия>-windows.zip`;
-   - Mac с чипом Apple (M1 и новее) — `KRJUK-Move-Manager-<версия>-mac-apple-silicon.zip`;
-   - Mac с Intel — `KRJUK-Move-Manager-<версия>-mac-intel.zip`.
-2. Распакуй архив. На Mac перетащи программу в «Программы».
-3. Первый запуск — система предупредит, что разработчик неизвестен (у программы нет платной подписи):
-   - **Windows:** «Windows защитила ваш компьютер» → «Подробнее» → «Выполнить в любом случае».
-   - **Mac (macOS 15 и новее):** открой программу, закрой предупреждение, затем
-     «Системные настройки → Конфиденциальность и безопасность» → внизу «Всё равно открыть».
-   - **Mac (macOS 14 и старше):** правый щелчок по программе → «Открыть» → «Открыть».
-   - **Mac: «Не удаётся открыть программу» и кнопки «Всё равно открыть» нет** — открой Терминал
-     (Программы → Утилиты → Терминал), вставь строку и нажми Enter:
+1. Download the archive for your system:
+   - Windows — `KRJUK-Move-Manager-<version>-windows.zip`;
+   - Mac with Apple chip (M1 and newer) — `KRJUK-Move-Manager-<version>-mac-apple-silicon.zip`;
+   - Mac with Intel — `KRJUK-Move-Manager-<version>-mac-intel.zip`.
+2. Unzip it. On a Mac, drag the app into Applications.
+3. First launch — the system warns that the developer is unknown (the app has no paid signature):
+   - **Windows:** "Windows protected your PC" → More info → Run anyway.
+   - **Mac (macOS 15 and newer):** open the app, close the warning, then
+     System Settings → Privacy & Security → scroll down → **Open Anyway**.
+   - **Mac (macOS 14 and older):** right-click the app → Open → Open.
+   - **Mac says "can't be opened" and there is no Open Anyway button** — open Terminal
+     (Applications → Utilities → Terminal), paste this line and press Enter:
 
      ```bash
      xattr -dr com.apple.quarantine "/Applications/KRJUK Move Manager.app"
      ```
 
-     Команда только снимает с программы пометку «скачано из интернета».
-4. Откроется маленькое окно «Move Manager is running» и браузер с менеджером. Пока пользуешься — окно не закрывай; «Quit» — выход.
-5. Move должен быть включён и в той же Wi-Fi сети. При первом подключении введи код с экрана Move.
-   Если Move не находится — введи его IP-адрес (на Move: Settings → Wi-Fi); на Mac разреши программе доступ
-   в «Конфиденциальность и безопасность → Локальная сеть».
+     It only removes the "downloaded from the internet" mark.
+4. A small "Move Manager is running" window opens, and the manager opens in your browser. Keep the small window open while you work; Quit closes the app.
+5. Move must be on and on the same Wi-Fi network. The first time, enter the code shown on Move's screen.
+   If Move isn't found, type its IP address (on Move: Settings → Wi-Fi); on a Mac, also allow the app under
+   Privacy & Security → Local Network.
 
-**Что-то пошло не так?** Нажми **Report** вверху справа, опиши в двух словах, что делал, и нажми «Отправить отчёт» — он уйдёт разработчику.
+**Something went wrong?** Click **Report** at the top right, describe in a few words what you did and click Send report — it goes to the developer.
 
 ---
 
-Ритмы генератора разобраны из книги [Pocket Operations](https://shittyrecording.studio/) (Paul Wenzel, 2019) и таблицы Basic Drum Patterns.
-Лицензия MIT — см. [LICENSE](LICENSE). Ableton и Move — товарные знаки Ableton AG; проект с Ableton не связан.
-Для разработчиков — [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+The drum generator's patterns come from the book [Pocket Operations](https://shittyrecording.studio/) (Paul Wenzel, 2019) and the Basic Drum Patterns chart.
+MIT license — see [LICENSE](LICENSE). Ableton and Move are trademarks of Ableton AG; this project is not affiliated with Ableton.
+For developers — [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

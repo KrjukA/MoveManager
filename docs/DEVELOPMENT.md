@@ -1,80 +1,89 @@
-# KRJUK Move Manager — для разработки
+# KRJUK Move Manager — development notes
 
-Внутреннее устройство, запуск из исходников и выпуск версий. Описание для пользователей — в [README](../README.md).
+How the app works inside, running it from source, and releasing versions. The user description is in the [README](../README.md).
 
-Свои настройки, вход на Move и SSH-ключ программа хранит в папке пользователя:
+The app keeps its settings, Move sign-in and SSH key in the user folder:
 Windows — `%APPDATA%\KRJUK Move Manager`, Mac — `~/Library/Application Support/KRJUK Move Manager`.
 
-## Как выпустить новую версию
+## Releasing a new version
 
-GitHub → вкладка **Releases** → **Draft a new release** → тег вида `v1.1` → **Publish**.
-Через 10–15 минут к релизу сами добавятся три архива. Без релиза: **Actions → Build apps → Run workflow** —
-архивы появятся внизу страницы запуска в разделе *Artifacts*.
+GitHub → **Releases** → **Draft a new release** → tag like `v1.4` → **Publish**.
+In 10–15 minutes three archives are attached to the release automatically (the version in their names comes from `VERSION` in `app.py`).
+Without a release: **Actions → Build apps → Run workflow** — the archives appear at the bottom of the run page under *Artifacts*.
 
-## Запуск
+## Running from source
 
-    python3 ~/CODING/MoveManager/app.py
+    python3 app.py
 
-Откроется http://127.0.0.1:8765. Нужен пакет `requests` (`python3 -m pip install requests`).
-При первом подключении программа попросит код с экрана Move и запомнит вход.
+Opens http://127.0.0.1:8765. Needs the `requests` package (`python3 -m pip install requests`).
+On the first connection the app asks for the code from Move's screen and remembers the sign-in.
 
-## Что где лежит
+Tests: `PYTHONHASHSEED=0 python3 -m unittest discover -s tests` (on a Mac, install GNU tools once: `brew install coreutils findutils gnu-tar`).
 
-- `app.py` — сервер: связь с Move, разбор `Song.abl`, библиотека на диске.
-- `static/index.html` — интерфейс.
-- `config.json` — создаётся сам: папка библиотеки, вход на Move, порядок плиток, заметки к проектам на Move.
-- `cache/` — кэш разобранных проектов, можно удалять.
+## Where things are
 
-Библиотека: одна папка на проект — `Название.ablbundle`, `Название.wav` (или `.mp3`), `meta.json` с описанием и заметками.
-Удалённые из библиотеки проекты переезжают в подпапку `_Deleted` (проекты, удалённые до сборки 22, остались в `_Удалённые`).
+- `app.py` — the server: talking to Move, reading `Song.abl`, the library on disk.
+- `static/index.html` — the interface; `static/i18n.js` — the Russian translation.
+- `config.json` — created automatically: library folder, Move sign-in, tile order, notes for projects on Move.
+- `cache/` — cache of parsed projects, safe to delete.
 
-## Пэды и правка проекта на месте (SSH)
+Library: one folder per project — `Name.ablbundle`, `Name.wav` (or `.mp3`), `meta.json` with the description and notes.
+Projects deleted from the library move into the `_Deleted` subfolder.
 
-Кнопка «Включить» над списком Move создаёт отдельный SSH-ключ (`move_ssh_key` в этой папке) и просит Move принять его —
-подтверждается колесом на устройстве. После этого программа:
+## Pads and editing a project in place (SSH)
 
-- показывает проекты сеткой 4×8, как пэды на Move (пэд 1 — левый нижний);
-- переставляет проекты по пэдам (атрибут `user.song-index` папки сета);
-- меняет порядок и панораму дорожек прямо в `Song.abl` на устройстве, не трогая пэд и цвет.
+The Enable button above the Move list creates a separate SSH key (`move_ssh_key`) and asks Move to accept it —
+you confirm with the wheel on the device. After that the app:
 
-Перед каждой правкой проекта (на Move и на компьютере) прежняя версия сохраняется в историю — см. ниже.
+- shows projects as a 4×8 grid like the pads on Move (pad 1 is bottom left);
+- moves projects between pads (the `user.song-index` attribute of the set folder);
+- changes track order and pan right in `Song.abl` on the device, keeping the pad and colour.
 
-## Клипы: копия, перенос, обмен
+Before every change to a project (on Move and on the computer) the previous version is saved to History — see below.
 
-Вкладка **Clips** в правой панели проекта (и на Move, и на компьютере). Всё работает внутри одного проекта:
+## Clips: copy, move, swap
 
-- `⌘C` / `⌘X` / `⌘V` — копировать, вырезать, вставить клип выбранной ячейки (в занятую ячейку — с вопросом);
-- `⌫` — удалить клип; стрелки — двигать выделение по сетке; `Esc` — очистить буфер;
-- перетащить клип: в пустую ячейку — перенос, на другой клип — обмен местами, с `⌥` — копия.
+The **Clips** tab in the project panel (on Move and on the computer). Everything works within one project:
 
-Клип ударных ложится только на дорожку с Drum Rack, мелодический — только на мелодическую; аудиоклипы пока не переносятся.
-На Move нужна включённая работа с пэдами (SSH); перед записью сохраняется резервная копия.
+- `⌘C` / `⌘X` / `⌘V` — copy, cut, paste the clip of the selected cell (into a filled cell — after asking);
+- `⌫` — delete the clip; arrow keys move the selection; `Esc` clears the buffer;
+- drag a clip: onto an empty cell — move, onto another clip — swap, with `⌥` — copy.
 
-## История и откат
+A drum clip goes only to a Drum Rack track, a melodic clip only to a melodic track.
+On Move this needs pad control (SSH); a backup is saved before writing.
 
-Вкладка **History** в правой панели проекта: версии с датой и временем и действием, которое шло следом
-(«before: Clip moved T2 S7 → T2 S8»). **Restore** возвращает проект к выбранной версии; текущая версия
-сначала сохраняется, поэтому откат можно отменить. Хранятся 20 последних версий проекта.
+## History and undo
 
-- проекты на Move — в папке программы `history/move/<ID сета>/` (нужна работа с пэдами — SSH);
-- проекты на компьютере — в скрытой папке `.history/` внутри папки проекта.
+The **History** tab in the project panel: versions with date, time and the action that followed
+("before: Clip moved T2 S7 → T2 S8"). **Restore** brings the project back to the chosen version; the current version
+is saved first, so a restore can be undone. The last 20 versions are kept.
 
-Если сэмплов из старой версии уже нет, программа покажет их список и спросит, откатывать ли всё равно.
+- projects on Move — in the app folder `history/move/<set ID>/` (needs pad control — SSH);
+- projects on the computer — in the hidden `.history/` folder inside the project folder.
 
-**Важно для проектов на Move:** выйдите из проекта на девайсе, прежде чем менять его из программы. Move сам
-сохраняет открытый проект через несколько секунд после любого действия на девайсе и запишет свою версию поверх.
+If samples of the old version are gone, the app lists them and asks whether to restore anyway.
 
-## Лупы в аудиоячейки
+**Important for projects on Move:** leave the project on the device before changing it from the app. Move saves
+the open project a few seconds after any action on the device and would write its own version on top.
 
-Для подготовки лайва: во вкладке **Clips** проекта на Move перетащите один или несколько WAV/AIFF/FLAC/MP3 из Finder на ячейку
-аудиодорожки (или выберите ячейку и нажмите **Add loops…**). Файлы загружаются в `Samples/UPLOAD/` на Move, клипы встают
-в ячейки этой дорожки вправо по порядку имён («2 …» раньше «10 …»). Темп лупа берётся из имени файла («160bpm»), без
-него луп подгоняется под целые такты, как это делает сам Move. FLAC и MP3 Move в клипах не играет — на Mac
-программа сама переводит их в WAV (на Windows сначала переведите в WAV сами). Перед записью версия сохраняется в History.
+## Loops into audio cells
 
-## Ритмы генератора (источники)
+For live prep: on the **Clips** tab of a project on Move, drag one or more WAV/AIFF/FLAC/MP3 files from Finder onto a cell
+of an audio track (or pick a cell and click **Add loops…**). Files are uploaded to `Samples/UPLOAD/` on Move and the clips
+fill the cells of that track to the right in file-name order ("2 …" before "10 …"). The loop tempo comes from the file name
+("160bpm"); without it the loop is fitted to whole bars, like Move does. Move doesn't play FLAC and MP3 in clips — on a Mac
+the app converts them to WAV (on Windows, convert to WAV first). A version is saved to History before writing.
 
-Барабанные рисунки генератора взяты из книги **Pocket Operations** (Paul Wenzel, 2019, https://shittyrecording.studio/)
-и таблицы **Basic Drum Patterns** (8 жанров). Сами книга и таблица в репозиторий не входят — в программе только разобранные
-из них рисунки (`pocket_operations.json`, `basic_8_genres.json`). Чтобы разобрать книгу заново, скачайте PDF с сайта автора
-и запустите `python3 tools/parse_pocket.py <путь к PDF>`.
+## Samples when uploading a project
+
+A computer project (`.ablbundle`) carries its own sample copies; `BundleInfo.json` → `originalSampleUris` tells Move where
+each sample used to live. If a file is there, Move links to it; otherwise the copy stays inside the set. Before uploading,
+the app finds each sample in the Move library by content (MD5) and rewrites these paths, so moved or renamed samples
+are found and no hidden duplicate is created. A file with the same name but a different sound is never linked.
+
+## Drum generator patterns (sources)
+
+The generator's patterns come from the book **Pocket Operations** (Paul Wenzel, 2019, https://shittyrecording.studio/)
+and the **Basic Drum Patterns** chart (8 genres). The book and the chart are not in the repository — only the patterns
+parsed from them (`pocket_operations.json`, `basic_8_genres.json`). To parse the book again, download the PDF from the
+author's site and run `python3 tools/parse_pocket.py <path to PDF>`.
