@@ -6,6 +6,8 @@ An app for managing Ableton Move projects, samples and presets right from your c
 
 **Download:** [latest version](https://github.com/KrjukA/MoveManager/releases/latest) — at the bottom of the page, under Assets. How to install — [at the end of this page](#installation).
 
+![Projects on Move and on the computer](docs/screenshots/projects.png)
+
 ## Projects
 
 - Projects are shown just like on Move: a 4×8 grid with the same layout.
@@ -31,6 +33,8 @@ An app for managing Ableton Move projects, samples and presets right from your c
 - Copy, cut and paste clips (⌘C / ⌘X / ⌘V), delete them, move them between tracks and swap them.
 - Load audio clips into audio track slots, move and delete them.
 
+![Clips and the drum generator](docs/screenshots/clips-generator.png)
+
 ## Drum generator
 
 - Creates drum clips in the style of different genres and can learn from your own MIDI clips.
@@ -43,6 +47,8 @@ An app for managing Ableton Move projects, samples and presets right from your c
 - Tidy up your collection right on Move.
 - Projects keep their sound when samples are moved or renamed.
 - Find and delete samples that no project uses.
+
+![Samples on Move and on the computer](docs/screenshots/samples.png)
 
 ## Schwung support
 
