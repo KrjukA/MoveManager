@@ -1685,14 +1685,14 @@ function setView(v){
   $("#moveTitle").textContent = cmd ? `Move · ${v==="presets"?"Presets":"Samples"}` : "Move";
   if(cmd){
     if(!mvData()) mvLoad();
-    if(S.P.R.kind==="pc") pcLoad(S.P.R.pc.data?.path || "");
+    if(S.P.R.kind==="pc") pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || "");
   }
   render();
 }
 function setRKind(k){
   S.P.R.kind = k; if(S.pick?.panel==="R") pickNone();
   document.querySelectorAll("[data-rkind]").forEach(b => b.classList.toggle("on", b.dataset.rkind===k));
-  if(k==="pc") pcLoad(S.P.R.pc.data?.path || ""); else if(!mvData()) mvLoad();
+  if(k==="pc") pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || ""); else if(!mvData()) mvLoad();
   render();
 }
 async function mvLoad(manual, quiet){
@@ -1953,7 +1953,7 @@ async function transfer(srcs, dest){
     if(kind==="pc" && dest.kind==="pc"){
       const list = srcs.map(x => x.path).filter(p => pcDir(p)!==dest.dir && dest.dir!==p && !dest.dir.startsWith(p+"/"));
       for(const p of list) await api("POST", "/api/fs/move", {src:p, dst:dest.dir});
-      pickNone(); status(`${list.length>1 ? list.length+" items" : `"${pcName(list[0]||"")}"`} moved to ${dest.dir}`); return pcLoad(S.P.R.pc.data?.path || "");
+      pickNone(); status(`${list.length>1 ? list.length+" items" : `"${pcName(list[0]||"")}"`} moved to ${dest.dir}`); return pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || "");
     }
     if(kind==="pc"){
       status(`Copying ${label} to Move…`); S.cmdBusy = `Copying ${label} to Move…`;
@@ -1962,7 +1962,7 @@ async function transfer(srcs, dest){
     } else {
       status(`Copying ${label} to the computer…`); S.cmdBusy = `Copying ${label} to the computer…`;
       let r; try{ r = await runJob("xfer", () => api("POST", "/api/xfer/to-pc", {mode, rels:srcs.map(x => x.path), dir:dest.dir})); } finally { S.cmdBusy = null; }
-      await pcLoad(S.P.R.pc.data?.path || ""); status(`Copied to ${dest.dir}: ${r.copied} file${r.copied===1?"":"s"}`);
+      await pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || ""); status(`Copied to ${dest.dir}: ${r.copied} file${r.copied===1?"":"s"}`);
     }
   }catch(e){ fail(e); }
 }
@@ -2102,7 +2102,7 @@ async function pcRename(pk, name){
   name = (name||"").trim(); const cur = pcName(pk.path);
   if(!name || name===cur) return renderInspector();
   if(pk.type==="file"){ const ext = cur.match(/\.[^.]+$/)?.[0] || ""; if(ext && !name.toLowerCase().endsWith(ext.toLowerCase())) name += ext; }
-  try{ const r = await api("POST", "/api/fs/rename", {path:pk.path, name}); pk.path = r.path; status(`Renamed to "${pcName(r.path)}"`); await pcLoad(S.P.R.pc.data?.path || ""); }
+  try{ const r = await api("POST", "/api/fs/rename", {path:pk.path, name}); pk.path = r.path; status(`Renamed to "${pcName(r.path)}"`); await pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || ""); }
   catch(err){ fail(err); renderInspector(); }
 }
 async function ulDeleteMany(rels){
@@ -2259,7 +2259,7 @@ $("#refresh").onclick = async () => {
   btn.disabled = true; btn.textContent = "Refreshing…"; status("Reading Move and the computer folder…");
   S.recs = {};
   const jobs = [loadConfig(), loadMove(), loadLib()];
-  if(isCmd()){ jobs.push(mvLoad()); if(S.P.R.kind==="pc") jobs.push(pcLoad(S.P.R.pc.data?.path || "")); }
+  if(isCmd()){ jobs.push(mvLoad()); if(S.P.R.kind==="pc") jobs.push(pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || "")); }
   await Promise.allSettled(jobs);
   btn.disabled = false; btn.textContent = "Refresh";
   if(!$("#status").classList.contains("err")) status(`Updated ${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`);
@@ -2326,7 +2326,17 @@ render(); loadConfig(); loadLib(); loadMove();
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
 try{   // …кроме перезагрузки после смены языка
   const back = JSON.parse(sessionStorage.getItem("mm-return") || "null"); sessionStorage.removeItem("mm-return");
-  if(back){ if(back.view && back.view!==S.view) setView(back.view); if(back.sel){ S.sel = back.sel; if(back.tab) S.tab = back.tab; render(); } }
+  if(back){
+    if(back.L) Object.assign(S.P.L, {dir:back.L.dir||{}, q:back.L.q||"", unused:!!back.L.unused});
+    if(back.R){ Object.assign(S.P.R, {dir:back.R.dir||{}, q:back.R.q||"", unused:!!back.R.unused}); S.P.R.pc.want = back.R.pcPath || ""; }
+    if(back.view && back.view!==S.view) setView(back.view);
+    if(back.R?.kind && back.R.kind!==S.P.R.kind && isCmd()) setRKind(back.R.kind); else if(back.R?.kind) S.P.R.kind = back.R.kind;
+    if(back.pick){ S.pick = back.pick; S.picks = back.picks || [back.pick]; }
+    for(const k of ["L","R"]){ const bar = document.querySelector(`.pbar[data-panel="${k}"]`); if(!bar) continue;
+      const q = bar.querySelector("[data-act=q]"), u = bar.querySelector("[data-act=unused]"); if(q) q.value = S.P[k].q; if(u) u.checked = S.P[k].unused; }
+    if(back.sel){ S.sel = back.sel; if(back.tab) S.tab = back.tab; }
+    render();
+  }
 }catch(e){}
 
 function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; const b = $("#themeBtn");
@@ -2342,7 +2352,9 @@ themeLabel();
 $("#langBtn").textContent = LANG === "ru" ? "EN" : "RU";
 $("#langBtn").setAttribute("translate", "no");
 $("#langBtn").onclick = () => {   // после перезагрузки вернуться на тот же экран, к тому же проекту и вкладке
-  try{ sessionStorage.setItem("mm-return", JSON.stringify({view:S.view, sel:S.sel, tab:S.tab})); }catch(e){}
+  try{ sessionStorage.setItem("mm-return", JSON.stringify({view:S.view, sel:S.sel, tab:S.tab, pick:S.pick, picks:S.picks,
+    L:{dir:S.P.L.dir, q:S.P.L.q, unused:S.P.L.unused},                         // Samples/Presets: открытые папки, поиск, выбор
+    R:{kind:S.P.R.kind, dir:S.P.R.dir, q:S.P.R.q, unused:S.P.R.unused, pcPath:S.P.R.pc.data?.path || S.P.R.pc.want || ""}})); }catch(e){}
   setLang(LANG === "ru" ? "en" : "ru");
 };
 </script>
