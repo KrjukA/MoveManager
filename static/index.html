@@ -316,6 +316,9 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
+.askbox{width:400px;max-width:calc(100vw - 32px)}.askbox h4{white-space:pre-line;line-height:1.35}
+.askbox p{white-space:pre-line;max-height:45vh;overflow:auto;line-height:1.45}.askbox p:empty{display:none}
+.askbox button.primary.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .modal h4{margin:0 0 6px;font-size:15px;font-weight:500}
 .modal p{color:var(--dim);margin:0 0 12px}
 .modal input{font:500 22px var(--mono)!important;letter-spacing:.3em;text-align:center}
@@ -385,11 +388,46 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
   <div class="row"><button id="authCancel">Later</button><button class="primary" id="authOk">Connect</button></div>
 </div></div>
 
+<div class="modal" id="ask" role="dialog" aria-modal="true"><div class="box askbox">
+  <h4 id="askTitle"></h4>
+  <p id="askBody"></p>
+  <input type="text" id="askInput" autocomplete="off" hidden>
+  <div class="row"><button id="askNo">Cancel</button><button class="primary" id="askYes">OK</button></div>
+</div></div>
+
 <script src="/static/i18n.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/* своё окно вместо confirm/prompt браузера (сборка 59): без «127.0.0.1:8765» в заголовке, в стиле программы.
+   Первый абзац — заголовок, остальное — текст. ask → true/false, askText → строка или null */
+function ask(msg, o = {}){
+  return new Promise(res => {
+    const m = $("#ask"), yes = $("#askYes"), no = $("#askNo"), inp = $("#askInput"), withInput = o.input !== undefined;
+    const text = window.tr ? window.tr(String(msg)) : String(msg), cut = text.indexOf("\n\n");
+    $("#askTitle").textContent = cut < 0 ? text : text.slice(0, cut);
+    $("#askBody").textContent = cut < 0 ? "" : text.slice(cut + 2).trim();
+    const danger = !withInput && (o.danger || /^(Delete|Remove)\b/.test(String(msg)));
+    yes.textContent = window.tr ? window.tr(o.ok || (danger ? "Delete" : "OK")) : (o.ok || "OK");
+    yes.classList.toggle("danger", danger);
+    no.hidden = o.cancel === false;
+    inp.hidden = !withInput; inp.value = withInput ? o.input : "";
+    const done = v => { m.classList.remove("on"); document.removeEventListener("keydown", key, true); res(v); };
+    const key = e => {
+      if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(withInput ? null : false); }
+      else if(e.key === "Enter" && document.activeElement !== no){ e.preventDefault(); e.stopPropagation(); yes.click(); }
+    };
+    yes.onclick = () => done(withInput ? inp.value : true);
+    no.onclick = () => done(withInput ? null : false);
+    m.onclick = e => { if(e.target === m) no.onclick(); };
+    document.addEventListener("keydown", key, true);
+    m.classList.add("on");
+    if(withInput){ inp.focus(); inp.select(); } else yes.focus();
+  });
+}
+const askText = (msg, value = "") => ask(msg, {input: value ?? ""});
+window.ask = ask;
 const S = {move:{state:"loading", sets:[], msg:""}, lib:{items:[], path:""}, sel:null, order:null, pans:{}, jobs:{}, playing:null, replace:false, ssh:{enabled:false, ok:false, error:null}, recs:{}, recording:null, uiStamp:null, rec:null, multi:[], key:null, tab:"tracks", groups:[], collapsed:{}, inputs:[], inputId:"", view:"projects", pick:null, mv:{samples:{data:null, loading:false, err:"", tok:0}, presets:{data:null, loading:false, err:"", tok:0}}, P:{L:{kind:"move", dir:{}, q:"", unused:false}, R:{kind:"pc", dir:{}, q:"", unused:false, pc:{data:null, loading:false, err:"", tok:0}}}, withAudio:(()=>{ try{ return localStorage.getItem("mm-with-audio")!=="0"; }catch(e){ return true; } })(), audioFormat:"mp3"};
 try{ const g = JSON.parse(localStorage.getItem("mm-groups")||"{}"); S.groups = g.groups||[]; S.collapsed = g.collapsed||{}; }catch(e){}
 function saveGroups(){ try{ localStorage.setItem("mm-groups", JSON.stringify({groups:S.groups, collapsed:S.collapsed})); }catch(e){} }
@@ -742,7 +780,7 @@ async function clipOp(op, from, to){
   try{
     let r = await send(false);
     if(r.status===409){
-      if(!confirm(`The cell (track ${to.t+1}, scene ${to.s+1}) already has a clip. Replace it?`)) return false;
+      if(!await ask(`Replace the clip in track ${to.t+1}, scene ${to.s+1}?`, {ok:"Replace"})) return false;
       r = await send(true);
     }
     const d = await r.json().catch(()=>({}));
@@ -820,14 +858,14 @@ async function loadHistory(side, it){
 async function restoreVersion(vid){
   const it = selItem(); if(!it) return; const {side, id} = S.sel;
   const v = (S.hist?.versions||[]).find(x=>x.id===vid); if(!v) return;
-  if(!confirm(`Restore the project to ${v.when}? The current version is saved to History first.${side==="move"?"\nIf the project is open on Move, leave it and open it again.":""}`)) return;
+  if(!await ask(`Restore the version from ${v.when}?\n\nThe current version is saved to History first.${side==="move"?" If the project is open on Move, leave it and open it again.":""}`, {ok:"Restore"})) return;
   const send = force => fetch(`${clipURL(side,it)}/history/restore`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({id: vid, force})});
   try{
     let r = await send(false);
     if(r.status===409){
       const d = await r.json().catch(()=>({})), miss = d.missing||[];
       const list = miss.slice(0,12).map(x=>"• "+x).join("\n") + (miss.length>12 ? `\n…and ${miss.length-12} more` : "");
-      if(!confirm(`These samples of the ${v.when} version are no longer ${side==="move"?"on Move":"in the project"}:\n\n${list}\n\nThey will be missing in the project. Restore anyway?`)) return;
+      if(!await ask(`Restore without the missing samples?\n\nThese samples of the ${v.when} version are no longer ${side==="move"?"on Move":"in the project"}:\n${list}`, {ok:"Restore"})) return;
       r = await send(true);
     }
     const d = await r.json().catch(()=>({}));
@@ -853,7 +891,7 @@ async function addLoops(fileList, t, s){
   const busy = files.map((_,i) => s+i).filter(c => c < scenes && row[c]);
   let replace = 0;
   if(busy.length){
-    if(!confirm(`Replace ${busy.length} clip${busy.length>1?"s":""} in track ${t+1}, scene${busy.length>1?"s":""} ${busy.map(c=>c+1).join(", ")}?`)) return;
+    if(!await ask(`Replace clips in track ${t+1}?\n\nScenes with clips: ${busy.map(c=>c+1).join(", ")}.`, {ok:"Replace"})) return;
     replace = 1;
   }
   const send = rep => { const fd = new FormData(); files.forEach(f => fd.append("file", f, f.name)); return fetch(`${clipURL("move",it)}/loops?track=${t}&scene=${s}&replace=${rep}`, {method:"POST", body:fd}); };
@@ -862,7 +900,7 @@ async function addLoops(fileList, t, s){
     let r = await send(replace);
     if(r.status===409){
       const d = await r.json().catch(()=>({}));
-      if(!confirm(`Replace ${(d.cells||[]).length} clip(s) in track ${t+1}?`)) return;
+      if(!await ask(`Replace clips in track ${t+1}?\n\nCells with clips: ${(d.cells||[]).length}.`, {ok:"Replace"})) return;
       r = await send(1);
     }
     const d = await r.json().catch(()=>({}));
@@ -878,7 +916,7 @@ async function addLoops(fileList, t, s){
 }
 async function deleteClip(){
   const it = selItem(); if(!it || !S.cell) return; const {side, id} = S.sel, {t, s: sc} = S.cell;
-  if(!confirm(`Delete the clip in track ${t+1}, scene ${sc+1}?${side==="move"?" The project on Move is backed up first.":""}`)) return;
+  if(!await ask(`Delete the clip in track ${t+1}, scene ${sc+1}?${side==="move"?"\n\nThe project on Move is backed up first.":""}`)) return;
   try{
     const r = await fetch(`${clipURL(side,it)}/clip?track=${t}&scene=${sc}`, {method:"DELETE"});
     const d = await r.json().catch(()=>({}));
@@ -910,7 +948,7 @@ async function uploadClip(file){
   try{
     let r = await fetch(url(0), {method:"POST", body});
     if(r.status===409){
-      if(!confirm(`The cell (track ${t+1}, scene ${sc+1}) already has a clip. Replace it with notes from "${file.name}"?`)) return;
+      if(!await ask(`Replace the clip in track ${t+1}, scene ${sc+1}?\n\nThe new notes come from “${file.name}”.`, {ok:"Replace"})) return;
       r = await fetch(url(1), {method:"POST", body});
     }
     const d = await r.json().catch(()=>({}));
@@ -994,7 +1032,7 @@ async function chooseMidiFolder(){
     const r = await api("POST","/api/choose-midi-folder");
     if(r.chosen){ S.genPats = await api("GET","/api/drumgen/patterns"); status(`Learning from MIDI folder: ${r.midiFolder}`); return renderInspector(); }
   }catch(e){ /* не macOS — спросим путь */ }
-  const p = (prompt("Path to a folder with drum .mid files:", S.genPats?.midiFolder || "") || "").trim();
+  const p = (await askText("Path to a folder with drum .mid files:", S.genPats?.midiFolder || "") || "").trim();
   if(p) await setMidiFolder(p);
 }
 async function genRun(another=false){
@@ -1020,7 +1058,7 @@ async function genPut(){
   try{
     let r = await fetch(url(0), {method:"POST", body});
     if(r.status===409){
-      if(!confirm(`The cell (track ${g.t+1}, scene ${g.s+1}) already has a clip. Replace it with the generated pattern?`)) return;
+      if(!await ask(`Replace the clip in track ${g.t+1}, scene ${g.s+1}?\n\nThe generated pattern goes in its place.`, {ok:"Replace"})) return;
       r = await fetch(url(1), {method:"POST", body});
     }
     const d = await r.json().catch(()=>({}));
@@ -1211,7 +1249,7 @@ async function runJob(key, startFn){
 async function pull(id, group){
   const it = S.move.sets.find(x=>x.id===id); if(!it) return;
   const ex = S.lib.items.find(x=>x.sourceId===id);          // тот же проект; другой с таким же именем ляжет в «Имя 2»
-  if(ex && !confirm(`"${it.name}" is already on the computer. Update the project and its audio? Description and notes are kept.`)) return;
+  if(ex && !await ask(`Update “${it.name}” on the computer?\n\nThe project and its audio are replaced; description and notes are kept.`, {ok:"Update"})) return;
   status(`Copying "${it.name}" to the computer…`);
   try{
     let seen = false;
@@ -1232,7 +1270,7 @@ async function setGroup(id, group){
   catch(e){ fail(e); }
 }
 async function renameGroup(old){
-  const n = (prompt("New group name:", old) ?? "").trim(); if(!n || n===old) return;
+  const n = (await askText("New group name:", old) ?? "").trim(); if(!n || n===old) return;
   try{
     for(const x of S.lib.items.filter(x=>x.group===old)) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:n});
     S.groups = S.groups.filter(g=>g!==old); if(!S.groups.includes(n)) S.groups.push(n);
@@ -1241,7 +1279,7 @@ async function renameGroup(old){
 }
 async function disbandGroup(g){
   const its = S.lib.items.filter(x=>x.group===g);
-  if(its.length && !confirm(`Delete group "${g}"? Its projects (${its.length}) are not deleted — they move to Ungrouped.`)) return;
+  if(its.length && !await ask(`Delete group “${g}”?\n\nIts projects (${its.length}) are kept and move to Ungrouped.`)) return;
   try{
     for(const x of its) await api("PATCH", `/api/library/${encodeURIComponent(x.id)}`, {group:""});
     S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Group "${g}" deleted, projects moved to Ungrouped`);
@@ -1249,7 +1287,7 @@ async function disbandGroup(g){
 }
 async function deleteGroup(g){
   const its = S.lib.items.filter(x=>x.group===g);
-  if(its.length && !confirm(`Delete group "${g}" with its projects (${its.length})? The projects move to the "_Deleted" subfolder.`)) return;
+  if(its.length && !await ask(`Delete group “${g}” with its projects (${its.length})?\n\nThe projects move to the _Deleted folder.`)) return;
   try{
     for(const x of its){ stopIfPlaying(x.id); await api("DELETE", `/api/library/${encodeURIComponent(x.id)}`); if(S.sel && S.sel.side==="lib" && S.sel.id===x.id) S.sel = null; }
     S.groups = S.groups.filter(x=>x!==g); delete S.collapsed[g]; saveGroups(); await loadLib(); status(`Group "${g}" deleted`);
@@ -1257,22 +1295,22 @@ async function deleteGroup(g){
 }
 async function push(id, slot, replaceId, quiet){
   const it = S.lib.items.find(x=>x.id===id); if(!it) return false;
-  if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !confirm(`Move already has a project "${it.name}". Upload another one with the same name?`)) return false;
+  if(!quiet && !replaceId && S.move.sets.some(x=>x.name===it.name) && !await ask(`Upload another “${it.name}”?\n\nMove already has a project with this name.`, {ok:"Upload"})) return false;
   status(`Uploading "${it.name}" to Move…`);
   try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${samplesNote(res?.samples)}${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
   catch(e){ fail(e); await loadMove(); return false; }
 }
-function dropOnMove(id, cell, slot){
+async function dropOnMove(id, cell, slot){
   if(!cell || slot==null) return push(id, null);
   if(cell.classList.contains("slot")) return push(id, slot);
   const old = S.move.sets.find(x=>x.id===cell.dataset.id), it = S.lib.items.find(x=>x.id===id); if(!old || !it) return push(id, null);
-  if(!confirm(`Pad ${slot+1} holds "${old.name}". Delete it from Move and put "${it.name}" in its place? A copy of "${old.name}" is saved first to the "_Deleted" folder on the computer.`)) return;
+  if(!await ask(`Replace “${old.name}” on pad ${slot+1} with “${it.name}”?\n\n“${old.name}” is deleted from Move; a copy is saved first to the _Deleted folder on the computer.`, {ok:"Replace", danger:true})) return;
   return push(id, slot, old.id);
 }
 async function deleteSelected(){
   if(S.multi.length>1){
     const its = S.multi.map(id => S.lib.items.find(x=>x.id===id)).filter(Boolean);
-    if(!confirm(`Remove the selected projects (${its.length}) from the folder? They move to the "_Deleted" subfolder.`)) return;
+    if(!await ask(`Remove the selected projects (${its.length})?\n\nThey move to the _Deleted folder.`)) return;
     try{ for(const x of its){ stopIfPlaying(x.id); await api("DELETE", `/api/library/${encodeURIComponent(x.id)}`); } S.multi = []; S.sel = null; await loadLib(); status(`Moved to "_Deleted": ${its.length}`); }
     catch(err){ fail(err); await loadLib(); }
     return;
@@ -1280,13 +1318,13 @@ async function deleteSelected(){
   const it = selItem(); if(!it) return; const {side, id} = S.sel;
   try{
     if(side==="move"){
-      if(!confirm(`Delete "${it.name}" from Move? A copy is saved first to the "_Deleted" folder on the computer.`)) return;
+      if(!await ask(`Delete “${it.name}” from Move?\n\nA copy is saved first to the _Deleted folder on the computer.`)) return;
       status(`Saving a copy of "${it.name}" before deleting…`);
       const res = await runJob("move:"+id, () => api("DELETE", `/api/move/sets/${id}`));
       S.sel = null; await loadMove(); await loadLib();
       status(`"${it.name}" deleted from Move. A copy is in the "_Deleted" folder on the computer${res?.backup ? `: ${res.backup}` : ""}`);
     } else {
-      if(!confirm(`Remove "${it.name}" from the folder? The project moves to the "_Deleted" subfolder.`)) return;
+      if(!await ask(`Remove “${it.name}”?\n\nThe project moves to the _Deleted folder.`)) return;
       stopIfPlaying(id);
       await api("DELETE", `/api/library/${encodeURIComponent(id)}`); S.sel = null; await loadLib(); status(`"${it.name}" moved to "_Deleted"`);
     }
@@ -1305,7 +1343,7 @@ async function pushMany(){
   const ids = S.multi.filter(id => S.lib.items.some(x=>x.id===id)); if(!ids.length) return;
   const taken = new Set(S.move.sets.map(x=>x.slot).filter(x=>x!=null));
   const free = padMode() ? [...Array(32).keys()].filter(i=>!taken.has(i)) : [];
-  if(padMode() && free.length < ids.length && !confirm(`Move has ${free.length} free pads but ${ids.length} projects are selected. Upload only the first ${free.length}?`)) return;
+  if(padMode() && free.length < ids.length && !await ask(`Upload only the first ${free.length}?\n\nMove has ${free.length} free pads, ${ids.length} projects are selected.`, {ok:"Upload"})) return;
   const todo = padMode() ? ids.slice(0, free.length) : ids;
   let ok = 0;
   for(let i=0;i<todo.length;i++){ if(await push(todo[i], padMode()?free[i]:null, null, true)) ok++; else break; }
@@ -1316,7 +1354,7 @@ async function applyOrder(){
   const {side,id} = S.sel, order = S.order, pans = S.pans;
   try{
     if(side==="move"){
-      if(S.replace && !padMode() && !confirm(`Replace "${it.name}" on Move with the edited version? The old version is deleted and the project lands on another pad.`)) return;
+      if(S.replace && !padMode() && !await ask(`Replace “${it.name}” on Move with the edited version?\n\nThe old version is deleted and the project lands on another pad.`, {ok:"Replace", danger:true})) return;
       status("Applying changes…");
       const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/edit`, {order, pans, replace:S.replace, key:keyPayload(it)}));
       S.order = null; S.pans = {}; S.key = null; await loadMove();
@@ -1343,7 +1381,7 @@ async function setupSsh(){
   catch(e){ fail(e); await loadMove(); }
 }
 async function saveOrder(side){ try{ await api("POST","/api/order",{side, ids: items(side).map(x=>x.id)}); }catch(e){ fail(e); } }
-function autoOrder(side){
+async function autoOrder(side){
   const list = items(side).slice(); if(list.length<2) return;
   const start = (S.sel && S.sel.side===side && list.find(x=>x.id===S.sel.id)) || list.find(x=>camelot(x.info)) || list[0];
   const out = [start]; const rest = list.filter(x=>x!==start);
@@ -1354,7 +1392,7 @@ function autoOrder(side){
   }
   if(side==="move" && padMode()){
     const slotted = out.filter(x=>x.slot!=null), free = slotted.map(x=>x.slot).sort((a,b)=>visPos(a)-visPos(b));
-    if(!confirm(`Rearrange ${slotted.length} projects on Move pads by Camelot, starting from "${start.name}"?`)) return;
+    if(!await ask(`Rearrange pads by Camelot?\n\n${slotted.length} projects, starting from “${start.name}”.`, {ok:"Rearrange"})) return;
     const moves = slotted.map((x,i)=>({id:x.id, slot:free[i]})).filter((m,i)=>slotted[i].slot!==m.slot);
     api("POST","/api/move/slots",{moves}).then(()=>{ status("Pads rearranged by Camelot"); return loadMove(); }).catch(e=>{ fail(e); loadMove(); });
     return;
@@ -1603,7 +1641,7 @@ $("#addMenuBtn").onclick = e => {
 $("#addMenu").addEventListener("click", () => { $("#addMenu").hidden = true; });
 document.addEventListener("click", e => { if(!e.target.closest("#addWrap")) $("#addMenu").hidden = true; });
 document.addEventListener("keydown", e => { if(e.key === "Escape") $("#addMenu").hidden = true; });
-$("#newGroup").onclick = () => { const n = (prompt("New group name:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Group "${n}" created — drag projects into it`); };
+$("#newGroup").onclick = async () => { const n = (await askText("New group name:")||"").trim(); if(!n) return; if(!S.groups.includes(n)) S.groups.push(n); saveGroups(); render(); status(`Group "${n}" created — drag projects into it`); };
 
 /* ───────── события: инспектор ───────── */
 const insp = $("#insp"); let trkDrag = null, saveTimer = null;
@@ -1647,14 +1685,14 @@ function setView(v){
   $("#moveTitle").textContent = cmd ? `Move · ${v==="presets"?"Presets":"Samples"}` : "Move";
   if(cmd){
     if(!mvData()) mvLoad();
-    if(S.P.R.kind==="pc") pcLoad(S.P.R.pc.data?.path || "");
+    if(S.P.R.kind==="pc") pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || "");
   }
   render();
 }
 function setRKind(k){
   S.P.R.kind = k; if(S.pick?.panel==="R") pickNone();
   document.querySelectorAll("[data-rkind]").forEach(b => b.classList.toggle("on", b.dataset.rkind===k));
-  if(k==="pc") pcLoad(S.P.R.pc.data?.path || ""); else if(!mvData()) mvLoad();
+  if(k==="pc") pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || ""); else if(!mvData()) mvLoad();
   render();
 }
 async function mvLoad(manual, quiet){
@@ -1839,11 +1877,11 @@ async function ulApply(moves, what){
     if(plan.conflicts?.length){ status(`Can't do that: "${ulBase(plan.conflicts[0])}" already exists there or the name is not allowed`, true); return false; }
     const touch = Object.keys(plan.touch||{}), projects = plan.projects||[];
     const others = touch.filter(p => !/\/Sets\//.test(p)).map(p => p.includes("/schwung/") ? "Schwung state" : ulBase(p));
-    const lines = [...projects.map(p => `• ${p} (project)`), ...[...new Set(others)].map(p => `• ${p}`)];
+    const lines = [...projects, ...new Set(others)].map(p => `• ${p}`);
     const files = plan.moves.length;
-    const msg = `${what}${files>1?` (${files} files)`:""}\n\n` + (lines.length ? `References will be rewritten in:\n${lines.join("\n")}\n\nA backup of every changed file is saved on the computer first.\n\nLeave these projects on Move first — Move saves an open project on its own and would put the old sample paths back.` : "Nothing uses it, so no project changes. A backup record is saved on the computer.")
-      + (projects.length ? `\n\nIf one of these projects is open on Move, open another project first: Move would save the open one with the old paths.` : "");
-    if(!confirm(msg)) return false;
+    const msg = `${what}?${files>1?` (${files} files)`:""}\n\n` + (lines.length ? `Links are updated in:\n${lines.join("\n")}`
+      + (projects.length ? `\n\nLeave these projects on Move first, or Move will save the old links back.` : "") : "Nothing uses it.");
+    if(!await ask(msg, {ok: what.startsWith("Rename") ? "Rename" : "Move here"})) return false;
     if(plan.moves.some(([o]) => "ul:"+o===S.playing)) stopLibAudio();
     status(what + "…"); S.cmdBusy = what + "…";
     try{ await runJob("userlib", () => api("POST", "/api/userlib/apply", {mode, moves})); } finally { S.cmdBusy = null; }
@@ -1879,7 +1917,7 @@ function ulMove(rel, dest){
 }
 async function ulDelete(rel){
   const f = ulFile(rel); if(!f || f.used.length) return;
-  if(!confirm(`Delete "${ulBase(f.rel)}" from Move?\n\nNothing uses it. The file is removed from the device and can't be restored from Move.`)) return;
+  if(!await ask(`Delete “${ulBase(f.rel)}” from Move?\n\nNothing uses it. The file is removed from the device for good.`)) return;
   try{
     if(S.playing==="ul:"+f.rel) stopLibAudio();
     await api("POST", "/api/userlib/delete", {mode:cmode(), rels:[f.rel]});
@@ -1915,7 +1953,7 @@ async function transfer(srcs, dest){
     if(kind==="pc" && dest.kind==="pc"){
       const list = srcs.map(x => x.path).filter(p => pcDir(p)!==dest.dir && dest.dir!==p && !dest.dir.startsWith(p+"/"));
       for(const p of list) await api("POST", "/api/fs/move", {src:p, dst:dest.dir});
-      pickNone(); status(`${list.length>1 ? list.length+" items" : `"${pcName(list[0]||"")}"`} moved to ${dest.dir}`); return pcLoad(S.P.R.pc.data?.path || "");
+      pickNone(); status(`${list.length>1 ? list.length+" items" : `"${pcName(list[0]||"")}"`} moved to ${dest.dir}`); return pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || "");
     }
     if(kind==="pc"){
       status(`Copying ${label} to Move…`); S.cmdBusy = `Copying ${label} to Move…`;
@@ -1924,7 +1962,7 @@ async function transfer(srcs, dest){
     } else {
       status(`Copying ${label} to the computer…`); S.cmdBusy = `Copying ${label} to the computer…`;
       let r; try{ r = await runJob("xfer", () => api("POST", "/api/xfer/to-pc", {mode, rels:srcs.map(x => x.path), dir:dest.dir})); } finally { S.cmdBusy = null; }
-      await pcLoad(S.P.R.pc.data?.path || ""); status(`Copied to ${dest.dir}: ${r.copied} file${r.copied===1?"":"s"}`);
+      await pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || ""); status(`Copied to ${dest.dir}: ${r.copied} file${r.copied===1?"":"s"}`);
     }
   }catch(e){ fail(e); }
 }
@@ -1942,7 +1980,7 @@ for(const bar of document.querySelectorAll(".pbar")){
     if(a==="up"){ if(kind==="move"){ const dir = pdir(k); if(dir!==ulRoot()){ P.dir[cmode()] = ulDir(dir); render(); } } else if(P.pc.data?.parent) pcLoad(P.pc.data.parent); }
     if(a==="reload") kind==="move" ? mvLoad(true) : pcLoad(P.pc.data?.path || "", true);
     if(a==="newfolder"){
-      const n = (prompt("New folder name:", "New folder")||"").trim(); if(!n) return;
+      const n = (await askText("New folder name:", "New folder")||"").trim(); if(!n) return;
       if(/[\/\\]/.test(n)){ status("A folder name can't contain / or \\", true); return; }
       try{
         if(kind==="move"){ await api("POST", "/api/userlib/folder", {mode:cmode(), rel:pdir(k)+"/"+n}); await mvLoad(); }
@@ -2064,7 +2102,7 @@ async function pcRename(pk, name){
   name = (name||"").trim(); const cur = pcName(pk.path);
   if(!name || name===cur) return renderInspector();
   if(pk.type==="file"){ const ext = cur.match(/\.[^.]+$/)?.[0] || ""; if(ext && !name.toLowerCase().endsWith(ext.toLowerCase())) name += ext; }
-  try{ const r = await api("POST", "/api/fs/rename", {path:pk.path, name}); pk.path = r.path; status(`Renamed to "${pcName(r.path)}"`); await pcLoad(S.P.R.pc.data?.path || ""); }
+  try{ const r = await api("POST", "/api/fs/rename", {path:pk.path, name}); pk.path = r.path; status(`Renamed to "${pcName(r.path)}"`); await pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || ""); }
   catch(err){ fail(err); renderInspector(); }
 }
 async function ulDeleteMany(rels){
@@ -2075,7 +2113,7 @@ async function ulDeleteMany(rels){
   if(used.length){ status(`"${ulBase(used[0].rel)}" is used — delete works only for things nothing uses`, true); return; }
   const nFiles = rels.flatMap(inside).length, nFolders = rels.filter(r => d.folders.includes(r)).length;
   const what = rels.length===1 ? `"${ulBase(rels[0])}"${nFolders ? ` and everything inside (${nFiles} file${nFiles===1?"":"s"})` : ""}` : `${rels.length} items (${nFiles} file${nFiles===1?"":"s"})`;
-  if(!confirm(`Delete ${what} from Move?\n\nNothing uses ${rels.length===1 && !nFolders ? "it" : "them"}. Removed from the device; can't be restored from Move.`)) return;
+  if(!await ask(`Delete ${what} from Move?\n\nNothing uses ${rels.length===1 && !nFolders ? "it" : "them"}. Removed from the device for good.`)) return;
   try{ stopLibAudio(); await api("POST", "/api/userlib/delete", {mode:cmode(), rels}); pickNone(); await mvLoad(); status(`Deleted from Move: ${what}`); }
   catch(e){ fail(e); }
 }
@@ -2126,7 +2164,7 @@ insp.addEventListener("change", async e => {
   if(g && ["genMut","genSwing","genDeja","genBars","genGhost","genEuclid"].includes(id)){ g[{genMut:"mutation",genSwing:"swing",genDeja:"deja",genBars:"bars",genGhost:"ghosts",genEuclid:"euclid"}[id]] = +e.target.value; return genRun(); }
   if(e.target.id==="replaceChk"){ S.replace = e.target.checked; return; }
   if(e.target.id==="groupSel"){ const it = selItem(); if(!it || S.sel.side!=="lib") return; let g = e.target.value;
-    if(g==="__new__"){ g = (prompt("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
+    if(g==="__new__"){ g = (await askText("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
     if(g!==(it.group||"")) setGroup(it.id, g); return; }
   if(e.target.id==="keyRoot" || e.target.id==="keyScale"){ const it = selItem(); if(!it) return;
     S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat($("#keyTempo").value)}; return renderInspector(); }
@@ -2221,7 +2259,7 @@ $("#refresh").onclick = async () => {
   btn.disabled = true; btn.textContent = "Refreshing…"; status("Reading Move and the computer folder…");
   S.recs = {};
   const jobs = [loadConfig(), loadMove(), loadLib()];
-  if(isCmd()){ jobs.push(mvLoad()); if(S.P.R.kind==="pc") jobs.push(pcLoad(S.P.R.pc.data?.path || "")); }
+  if(isCmd()){ jobs.push(mvLoad()); if(S.P.R.kind==="pc") jobs.push(pcLoad(S.P.R.pc.data?.path || S.P.R.pc.want || "")); }
   await Promise.allSettled(jobs);
   btn.disabled = false; btn.textContent = "Refresh";
   if(!$("#status").classList.contains("err")) status(`Updated ${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`);
@@ -2231,7 +2269,7 @@ $("#chooseFolder").onclick = async () => {
     status("Choose a folder in the Finder window…");
     const r = await api("POST","/api/choose-folder"); status(r.chosen ? "Folder: "+r.library : ""); await loadLib();
   }catch(e){
-    const p = prompt("Path to the projects folder:", S.lib.path);
+    const p = await askText("Path to the projects folder:", S.lib.path);
     if(p){ try{ await api("POST","/api/config",{library:p}); await loadLib(); status("Folder: "+p); }catch(err){ fail(err); } }
   }
 };
@@ -2288,7 +2326,17 @@ render(); loadConfig(); loadLib(); loadMove();
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
 try{   // …кроме перезагрузки после смены языка
   const back = JSON.parse(sessionStorage.getItem("mm-return") || "null"); sessionStorage.removeItem("mm-return");
-  if(back){ if(back.view && back.view!==S.view) setView(back.view); if(back.sel){ S.sel = back.sel; if(back.tab) S.tab = back.tab; render(); } }
+  if(back){
+    if(back.L) Object.assign(S.P.L, {dir:back.L.dir||{}, q:back.L.q||"", unused:!!back.L.unused});
+    if(back.R){ Object.assign(S.P.R, {dir:back.R.dir||{}, q:back.R.q||"", unused:!!back.R.unused}); S.P.R.pc.want = back.R.pcPath || ""; }
+    if(back.view && back.view!==S.view) setView(back.view);
+    if(back.R?.kind && back.R.kind!==S.P.R.kind && isCmd()) setRKind(back.R.kind); else if(back.R?.kind) S.P.R.kind = back.R.kind;
+    if(back.pick){ S.pick = back.pick; S.picks = back.picks || [back.pick]; }
+    for(const k of ["L","R"]){ const bar = document.querySelector(`.pbar[data-panel="${k}"]`); if(!bar) continue;
+      const q = bar.querySelector("[data-act=q]"), u = bar.querySelector("[data-act=unused]"); if(q) q.value = S.P[k].q; if(u) u.checked = S.P[k].unused; }
+    if(back.sel){ S.sel = back.sel; if(back.tab) S.tab = back.tab; }
+    render();
+  }
 }catch(e){}
 
 function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; const b = $("#themeBtn");
@@ -2304,7 +2352,9 @@ themeLabel();
 $("#langBtn").textContent = LANG === "ru" ? "EN" : "RU";
 $("#langBtn").setAttribute("translate", "no");
 $("#langBtn").onclick = () => {   // после перезагрузки вернуться на тот же экран, к тому же проекту и вкладке
-  try{ sessionStorage.setItem("mm-return", JSON.stringify({view:S.view, sel:S.sel, tab:S.tab})); }catch(e){}
+  try{ sessionStorage.setItem("mm-return", JSON.stringify({view:S.view, sel:S.sel, tab:S.tab, pick:S.pick, picks:S.picks,
+    L:{dir:S.P.L.dir, q:S.P.L.q, unused:S.P.L.unused},                         // Samples/Presets: открытые папки, поиск, выбор
+    R:{kind:S.P.R.kind, dir:S.P.R.dir, q:S.P.R.q, unused:S.P.R.unused, pcPath:S.P.R.pc.data?.path || S.P.R.pc.want || ""}})); }catch(e){}
   setLang(LANG === "ru" ? "en" : "ru");
 };
 </script>
