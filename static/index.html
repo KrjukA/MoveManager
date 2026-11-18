@@ -336,7 +336,7 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="hb" title="Listen to the chosen input through the computer — independent of recording">Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
   <button id="langBtn" class="hb" title="Language">RU</button>
   <button id="themeBtn" class="hb" title="Switch theme">Dark</button>
-  <button id="reportBtn" class="hb" title="Something went wrong? Save a short report to send to the author">Report</button>
+  <button id="reportBtn" class="hb" title="Something went wrong? Send a short report to the developer">Report</button>
   <button id="refresh" class="hb" title="Read Move and the computer folder again">Refresh</button>
 </header>
 
@@ -375,10 +375,11 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
 
 <div class="modal" id="report"><div class="box">
   <h4>Report a problem</h4>
-  <p>What did you do, and what went wrong? A report file is saved to your Desktop — send it to the author. It contains this text, the app version, your system and recent errors; no passwords or keys.</p>
+  <p>What did you do, and what went wrong? The report goes to the developer: this text, the app version, your system and recent errors. No passwords or keys. Without internet it is saved to your Desktop.</p>
   <textarea id="reportText" rows="5" maxlength="5000" placeholder="E.g. I dragged two loops onto track 2 of “My Song” and got an error…" aria-label="What happened"></textarea>
   <div class="err" id="reportErr"></div>
-  <div class="row"><button id="reportCancel">Cancel</button><button class="primary" id="reportOk">Save report</button></div>
+  <label class="chk"><input type="checkbox" id="autoRep"> Send error reports automatically</label>
+  <div class="row"><button id="reportCancel">Cancel</button><button class="primary" id="reportOk">Send report</button></div>
 </div></div>
 <div class="modal" id="auth"><div class="box">
   <h4>Confirmation code</h4>
@@ -491,11 +492,11 @@ async function api(method, url, body){
   let data = {};
   try{ data = await r.json(); }catch(e){}
   if(r.status===401){ showAuth(); const e = new Error("auth"); e.auth = true; throw e; }
-  if(!r.ok){ const e = new Error(data.message || data.error || ("Error "+r.status)); e.offline = data.error==="offline"; throw e; }
+  if(!r.ok){ const e = new Error(data.message || data.error || ("Error "+r.status)); e.offline = data.error==="offline"; e.internal = !!data.internal; throw e; }
   return data;
 }
 function status(msg, err){ const el=$("#status"); el.textContent = msg||""; el.classList.toggle("err", !!err); }
-const fail = e => { if(!e.auth) status(e.message, true); };
+const fail = e => { if(!e.auth) status(e.message, true); if(e.internal) askAutoReport(); };
 
 /* ───────── загрузка данных ───────── */
 async function loadMove(){
@@ -532,7 +533,8 @@ async function loadConfig(){
   try{
     const c = await api("GET","/api/config");
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
-    S.uiStamp = c.uiStamp; S.cfg = c; S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
+    S.uiStamp = c.uiStamp; S.cfg = c; S.autoReport = c.autoReport ?? null;
+    if(c.autoReport === true) api("POST", "/api/config", {lang: LANG}).catch(() => {});   // язык автоотчётов S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
     if(c.stale) status("The app was updated on disk. Restart it in Terminal: Ctrl+C, then python3 app.py again", true);
   }catch(e){}
 }
@@ -1244,7 +1246,7 @@ async function runJob(key, startFn){
       await new Promise(r => setTimeout(r, 600));
       job = await api("GET", "/api/jobs/"+job.id);
     }
-    if(job.status==="error"){ if(job.error==="auth"){ showAuth(); throw Object.assign(new Error("auth"),{auth:true}); } throw new Error(job.error); }
+    if(job.status==="error"){ if(job.error==="auth"){ showAuth(); throw Object.assign(new Error("auth"),{auth:true}); } throw Object.assign(new Error(job.error), {internal: !!job.internal}); }
     return job.result || {};
   } finally { delete S.jobs[key]; render(); }
 }
@@ -2313,8 +2315,24 @@ async function setMoveAddr(v){                         // адрес Move вру
   catch(e){ fail(e); }
 }
 /* ───────── отчёт о проблеме (сборка 55) ───────── */
-$("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#report").classList.add("on"); $("#reportText").focus(); };
+$("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#autoRep").checked = S.autoReport === true; $("#report").classList.add("on"); $("#reportText").focus(); };
 $("#reportCancel").onclick = () => $("#report").classList.remove("on");
+$("#autoRep").onchange = e => setAutoReport(e.target.checked);
+/* автоотправка ошибок разработчику (сборка 60): спрашиваем один раз, при первой внутренней ошибке */
+async function setAutoReport(on){
+  S.autoReport = !!on;
+  try{ await api("POST", "/api/config", {autoReport: !!on, lang: LANG}); }catch(e){}
+}
+let autoAsked = false;
+async function askAutoReport(){
+  if(autoAsked || S.autoReport === true || S.autoReport === false) return;
+  autoAsked = true;
+  const r = await ask("Send error reports to the developer automatically?\n\nWhen something goes wrong, the app sends a short report: version, system and the error. No passwords, keys or Move sign-in. You can turn this off in Report.",
+                      {ok: "Send automatically", no: "Don't send"});
+  if(r === null) return;                                    // Esc — спросим в следующий раз
+  await setAutoReport(r);
+  if(r) try{ await api("POST", "/api/report", {text: "[auto] first error after consent", send: true, lang: LANG}); }catch(e){}
+}
 document.addEventListener("keydown", e => {
   if(!$("#report").classList.contains("on")) return;
   if(e.key==="Escape"){ e.preventDefault(); $("#report").classList.remove("on"); }
@@ -2323,11 +2341,13 @@ document.addEventListener("keydown", e => {
 $("#reportOk").onclick = async () => {
   $("#reportOk").disabled = true;
   try{
-    const r = await api("POST", "/api/report", {text: $("#reportText").value, reveal: true});
+    $("#reportOk").textContent = "Sending…";
+    const r = await api("POST", "/api/report", {text: $("#reportText").value, send: true, lang: LANG, reveal: true});
     $("#report").classList.remove("on"); $("#reportText").value = "";
-    status(`Report saved: ${r.name} (${/Desktop/.test(r.path) ? "on your Desktop" : r.path}). Send this file to the author.`);
+    status(r.sent ? "Report sent to the developer. Thank you!"
+                  : `No internet — report saved: ${r.name} (${/Desktop/.test(r.path) ? "on your Desktop" : r.path}). Send this file to the developer.`);
   }catch(e){ $("#reportErr").textContent = e.message || "Could not save the report"; }
-  finally{ $("#reportOk").disabled = false; }
+  finally{ $("#reportOk").textContent = "Send report"; $("#reportOk").disabled = false; }
 };
 async function submitCode(){
   const code = $("#code").value.trim(); if(!code) return;

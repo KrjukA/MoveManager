@@ -6,6 +6,12 @@
 "use strict";
 const I18N = {ru: {
 exact: {
+  "Send report": "Отправить отчёт", "Sending…": "Отправляю…", "Send error reports automatically": "Отправлять отчёты об ошибках автоматически",
+  "Report sent to the developer. Thank you!": "Отчёт отправлен разработчику. Спасибо!",
+  "Send error reports to the developer automatically?": "Отправлять отчёты об ошибках разработчику автоматически?",
+  "When something goes wrong, the app sends a short report: version, system and the error. No passwords, keys or Move sign-in. You can turn this off in Report.":
+    "Когда что-то пойдёт не так, программа отправит короткий отчёт: версию, систему и ошибку. Без паролей, ключей и входа на Move. Выключить можно в окне Report.",
+  "Send automatically": "Отправлять", "Don't send": "Не отправлять",
   "Where should projects from Move go on this computer?": "Куда складывать проекты с Move на этом компьютере?",
   "Use this folder": "Оставить эту папку", "Choose folder…": "Выбрать папку…",
   "Replace": "Заменить", "Update": "Обновить", "Upload": "Загрузить", "Rearrange": "Расставить", "Move here": "Перенести",
@@ -27,7 +33,7 @@ exact: {
   "Switch theme": "Сменить тему",
   "Show all inputs… (allow access)": "Показать все входы… (разрешить доступ)", "Input to monitor (e.g. Move over USB)": "Какой вход слушать (например, Move по USB)",
   "Listen to the chosen input through the computer — independent of recording": "Слушать выбранный вход через компьютер — независимо от записи", "App build number": "Номер сборки программы",
-  "Something went wrong? Save a short report to send to the author": "Что-то не так? Сохраните короткий отчёт и отправьте the author",
+  "Something went wrong? Send a short report to the developer": "Что-то не так? Отправьте короткий отчёт разработчику",
   // колонки
   "Add .ablbundle projects that are already on this computer": "Добавить проекты .ablbundle, которые уже есть на этом компьютере",
   "Create a project group": "Создать группу проектов",
@@ -46,8 +52,8 @@ exact: {
   "Move shows a code on its screen. Enter it to connect.": "Move показывает код на экране. Введите его, чтобы подключиться.",
   "Code from the Move screen": "Код с экрана Move", "Move is not responding": "Move не отвечает",
   "Move did not show a code. Make sure it is on and not booting.": "Move не показал код. Убедитесь, что он включён и не загружается.",
-  "What did you do, and what went wrong? A report file is saved to your Desktop — send it to the author. It contains this text, the app version, your system and recent errors; no passwords or keys.":
-    "Что вы делали и что пошло не так? Файл-отчёт сохранится на Рабочий стол — отправьте его the author. В нём этот текст, версия программы, система и последние ошибки; без паролей и ключей.",
+  "What did you do, and what went wrong? The report goes to the developer: this text, the app version, your system and recent errors. No passwords or keys. Without internet it is saved to your Desktop.":
+    "Что вы делали и что пошло не так? Отчёт уйдёт разработчику: этот текст, версия программы, система и последние ошибки. Без паролей и ключей. Без интернета он сохранится на Рабочий стол.",
   "E.g. I dragged two loops onto track 2 of “My Song” and got an error…": "Например: перетащил два Loops на Track 2 в «Моей песне» и получил ошибку…",
   "Could not save the report": "Не удалось сохранить отчёт",
   // правая панель проекта
@@ -342,8 +348,8 @@ patterns: [
   [/^Pattern generated T(\d+) S(\d+)$/, "Pattern сгенерирован: Track $1, Scene $2"],
   [/^Key changed to (.+)$/, "Тональность изменена на $1"],
   [/^Tempo changed to (.+) bpm$/, "Темп изменён на $1 bpm"],
-  [/^Report saved: (.+) \(on your Desktop\)\. Send this file to the author\.$/, "Отчёт сохранён: $1 (на Рабочем столе). Отправьте этот файл the author."],
-  [/^Report saved: (.+) \((.+)\)\. Send this file to the author\.$/, "Отчёт сохранён: $1 ($2). Отправьте этот файл the author."],
+  [/^No internet — report saved: (.+) \(on your Desktop\)\. Send this file to the developer\.$/, "Нет интернета — отчёт сохранён: $1 (на Рабочем столе). Отправьте этот файл разработчику."],
+  [/^No internet — report saved: (.+) \((.+)\)\. Send this file to the developer\.$/, "Нет интернета — отчёт сохранён: $1 ($2). Отправьте этот файл разработчику."],
   [/^Audio inputs found: (\d+)\. Pick one in the list$/, "Найдено аудиовходов: $1. Выберите нужный в списке"],
   [/^Monitoring: (.+)\. Use headphones to avoid feedback$/, "Слушаю: $1. Наденьте наушники, чтобы не было фидбэка"],
   [/^No access to the audio input: (.+)$/, "Нет доступа к аудиовходу: $1"],
