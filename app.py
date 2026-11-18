@@ -15,6 +15,7 @@ import platform
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import tarfile
 import traceback
@@ -72,7 +73,7 @@ PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
 BUILD = "59"          # номер сборки: виден в шапке программы и в журнале экспорта
-VERSION = "1.2"       # версия для друзей (релиз v1.2); в свойствах Mac-приложения и в отчёте
+VERSION = "1.3"       # версия для друзей (релиз v1.3); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
 
@@ -3817,19 +3818,55 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"error": "not found"}, 404)
 
 
+class QuietHTTPServer(ThreadingHTTPServer):
+    """Браузер оборвал соединение (перезагрузка, закрытая вкладка) — это не ошибка: в Терминал не печатаем."""
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
+
+def port_busy(port):
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def running_build(url):
+    """Сборка уже работающей программы на этом адресе (или None)."""
+    try:
+        r = requests.get(url + "/api/config", timeout=2)
+        return str(r.json().get("build") or "") or None
+    except Exception:  # noqa: BLE001  — там не наша программа или она не отвечает
+        return None
+
+
 def make_server():
     """Сервер программы, ещё не запущенный: (сервер, адрес)."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     for f in CACHE_DIR.glob("tmp-*"):
         f.unlink(missing_ok=True)
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    srv = QuietHTTPServer(("127.0.0.1", PORT), Handler)
     srv.daemon_threads = True
     start_mine_scan()                     # свои барабанные клипы для генератора — в фоне, с первой секунды
     return srv, f"http://127.0.0.1:{PORT}"
 
 
 def main():
+    url = f"http://127.0.0.1:{PORT}"
+    if port_busy(PORT):                   # программа уже запущена (в другой вкладке Терминала) — открыть её
+        other = running_build(url)
+        if other is None:
+            print(f"Port {PORT} is taken by another program. Close it, or start with MOVE_MANAGER_PORT=8766 python3 app.py")
+            return
+        print(f"{APP_NAME} is already running: {url} — opened in the browser.")
+        if other != BUILD:
+            print(f"That copy is build {other}, this one is build {BUILD}. To switch: press Ctrl+C in the Terminal tab "
+                  "where it runs, then start python3 app.py again.")
+        if not os.environ.get("MOVE_MANAGER_NO_BROWSER"):
+            webbrowser.open(url)
+        return
     srv, url = make_server()
     print(f"{APP_NAME} (build {BUILD}) running: {url}\nStop with Ctrl+C")
     if not os.environ.get("MOVE_MANAGER_NO_BROWSER"):
