@@ -8,9 +8,9 @@
 ## Установка для друзей (Windows и Mac, без Python)
 
 1. Скачай архив для своей системы:
-   - Windows — `KRJUK-Move-Manager-windows.zip`;
-   - Mac с процессором Apple (M1 и новее) — `KRJUK-Move-Manager-mac-apple-silicon.zip`;
-   - Mac с процессором Intel — `KRJUK-Move-Manager-mac-intel.zip`.
+   - Windows — `KRJUK-Move-Manager-<версия>-windows.zip`;
+   - Mac с процессором Apple (M1 и новее) — `KRJUK-Move-Manager-<версия>-mac-apple-silicon.zip`;
+   - Mac с процессором Intel — `KRJUK-Move-Manager-<версия>-mac-intel.zip`.
 2. Распакуй архив куда удобно (например, на Рабочий стол или в «Программы»).
 3. Первый запуск — система предупредит, что программа от неизвестного разработчика (у неё нет платной подписи):
    - **Windows:** «Windows защитила ваш компьютер» → «Подробнее» → «Выполнить в любом случае».
