@@ -34,6 +34,7 @@ import requests
 import drumgen
 import history
 import loops
+import report_labels
 import samplelib
 from midi import MidiError, _no_overlaps, clip_to_midi, midi_to_notes
 
@@ -72,7 +73,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "59"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "60"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.3"       # версия для друзей (релиз v1.3); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -1768,6 +1769,7 @@ def log_error(title, exc):
             h.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [build {BUILD}] {title}: {exc}\n{tb}\n---\n")
     except OSError:
         pass
+    auto_report_error(title, exc)
 
 
 REPORT_DIR = Path.home() / "Desktop"
@@ -1792,32 +1794,36 @@ def normalize_move_url(value):
     return "http://" + name.lower()
 
 
-def build_report(text):
+REPORT_LABELS = report_labels.LABELS   # язык отчёта — язык интерфейса (сборка 60)
+
+
+def build_report(text, lang="en"):
     """Текст отчёта: что написал человек, сборка, система, состояние подключения, последние ошибки.
-    Без cookies, ключей и паролей; домашняя папка заменена на «~»."""
+    Без cookies, ключей и паролей; домашняя папка заменена на «~». Подписи — на языке интерфейса."""
+    L = REPORT_LABELS.get(lang) or REPORT_LABELS["en"]
     def tail(name, chars):
         f = CACHE_DIR / name
         try:
-            return f.read_text("utf-8", "replace")[-chars:] if f.exists() else "(empty)"
+            return f.read_text("utf-8", "replace")[-chars:] if f.exists() else L["empty"]
         except OSError:
-            return "(could not read)"
+            return L["unread"]
     lines = [
-        f"{APP_NAME} — problem report",
-        f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Version: {VERSION} · Build: {BUILD}",
-        f"System: {platform.platform()} · Python {platform.python_version()} · {'app' if FROZEN else 'source'}",
-        f"Move address: {CFG.get('move_url')}",
-        f"Signed in to Move: {'yes' if CFG.get('cookies') else 'no'} · pad control (SSH): {'on' if ssh_enabled() else 'off'}",
-        f"Library folder: {CFG.get('library')}",
-        f"Data folder: {DATA_DIR}",
+        f"{APP_NAME} — {L['title']}",
+        f"{L['time']}: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"{L['version']}: {VERSION} · {L['build']}: {BUILD}",
+        f"{L['system']}: {platform.platform()} · Python {platform.python_version()} · {L['app'] if FROZEN else L['source']}",
+        f"{L['move']}: {CFG.get('move_url')}",
+        f"{L['signed']}: {L['yes'] if CFG.get('cookies') else L['no']} · {L['ssh']}: {L['on'] if ssh_enabled() else L['off']}",
+        f"{L['lib']}: {CFG.get('library')}",
+        f"{L['data']}: {DATA_DIR}",
         "",
-        "What happened:",
-        (str(text or "").strip() or "(no description)"),
+        L["what"],
+        (str(text or "").strip() or L["nodesc"]),
         "",
-        "Recent errors (cache/errors.log):",
+        L["errors"],
         tail("errors.log", 20_000),
         "",
-        "Slow Move commands (cache/ssh-timing.log):",
+        L["slow"],
         tail("ssh-timing.log", 3_000),
     ]
     rep = "\n".join(lines) + "\n"
@@ -1830,7 +1836,56 @@ def build_report(text):
     return rep
 
 
-def save_report(text):
+# ── отчёт разработчику через Google Форму (сборка 60) ──
+# Форма в аккаунте разработчика, ответы — в Google-таблицу. Ключей нет: адрес формы публичный.
+REPORT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdYDkc0kmA_T3D43NUZ3_iEy68Cm0k0SsUZLUkflSZVU8Vycw/formResponse"
+REPORT_FIELDS = {"what": "entry.644955242", "version": "entry.878022453", "system": "entry.980352311",
+                 "report": "entry.1214414934"}
+REPORT_MAX = 30_000
+_REAL_POST = requests.post
+
+
+def send_report(text, lang="en"):
+    """Отправить отчёт в форму. Ошибка сети — исключение (requests.RequestException)."""
+    if os.environ.get("MOVE_MANAGER_TESTING") and requests.post is _REAL_POST:
+        raise requests.ConnectionError("tests never reach the network")
+    rep = build_report(text, lang)
+    data = {REPORT_FIELDS["what"]: str(text or "").strip()[:2000] or "(no description)",
+            REPORT_FIELDS["version"]: f"{VERSION} · build {BUILD}",
+            REPORT_FIELDS["system"]: f"{platform.platform()} · {'app' if FROZEN else 'source'}",
+            REPORT_FIELDS["report"]: rep[-REPORT_MAX:]}
+    r = requests.post(REPORT_FORM_URL, data=data, timeout=15)
+    r.raise_for_status()
+
+
+AUTO_REPORT = {"last": 0.0, "seen": set(), "lang": "en"}
+AUTO_REPORT_GAP = 600                    # не чаще раза в 10 минут
+
+
+def auto_report_error(title, exc):
+    """Ошибка программы — разработчику, если человек разрешил (CFG["auto_report"] is True). Поток или None."""
+    if CFG.get("auto_report") is not True or isinstance(exc, (AppError, AuthRequired, MoveOffline)):
+        return None
+    key = f"{title}: {type(exc).__name__}: {exc}"[:500]
+    now = time.time()
+    if key in AUTO_REPORT["seen"] or now - AUTO_REPORT["last"] < AUTO_REPORT_GAP:
+        return None
+    if len(AUTO_REPORT["seen"]) > 200:
+        AUTO_REPORT["seen"].clear()
+    AUTO_REPORT["seen"].add(key)
+    AUTO_REPORT["last"] = now
+
+    def run():
+        try:
+            send_report("[auto] " + key, AUTO_REPORT["lang"])
+        except Exception:  # noqa: BLE001  — нет сети: ошибка всё равно в errors.log
+            pass
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+    return th
+
+
+def save_report(text, lang="en"):
     folder = REPORT_DIR
     try:
         folder.mkdir(exist_ok=True)                  # Рабочий стол; если его нет — папка данных программы
@@ -1838,7 +1893,7 @@ def save_report(text):
         folder = DATA_DIR
         folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{APP_NAME} report {time.strftime('%Y-%m-%d %H-%M-%S')}.txt"
-    path.write_text(build_report(text), "utf-8")
+    path.write_text(build_report(text, lang), "utf-8")
     return path
 
 
@@ -1879,7 +1934,7 @@ def start_job(title, fn):
             job.update(status="error", error="Move is unreachable. Check that it is on and on the same network.")
         except Exception as e:  # noqa: BLE001
             log_error(title, e)
-            job.update(status="error", error=str(e))
+            job.update(status="error", error=str(e), internal=not isinstance(e, AppError))
 
     threading.Thread(target=run, daemon=True).start()
     return job
@@ -3426,7 +3481,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
         except Exception as e:  # noqa: BLE001
             log_error(f"{self.command} {urlparse(self.path).path}", e)
-            self.send_json({"error": "app", "message": f"Internal error: {e}"}, 500)
+            self.send_json({"error": "app", "message": f"Internal error: {e}", "internal": True}, 500)
         finally:
             # ответ отправлен, а тело запроса так и не прочитано — его байты сломали бы следующий запрос
             if not self._body_read and int(self.headers.get("Content-Length") or 0) > 0:
@@ -3452,17 +3507,25 @@ class Handler(BaseHTTPRequestHandler):
         # ── настройки
         if seg == ["report"] and m == "POST":
             b = self.body()
-            path = save_report(str(b.get("text") or "")[:5000])
+            lang = "ru" if b.get("lang") == "ru" else "en"
+            AUTO_REPORT["lang"] = lang
+            if b.get("send"):
+                try:
+                    send_report(str(b.get("text") or "")[:5000], lang)
+                    return self.send_json({"ok": True, "sent": True})
+                except requests.RequestException:
+                    pass                                     # нет сети — как раньше, файлом
+            path = save_report(str(b.get("text") or "")[:5000], lang)
             if b.get("reveal"):
                 try:
                     reveal(path, select=True)
                 except Exception:  # noqa: BLE001  — открыть папку не вышло: файл всё равно сохранён
                     pass
-            return self.send_json({"ok": True, "path": str(path), "name": path.name})
+            return self.send_json({"ok": True, "sent": False, "path": str(path), "name": path.name})
         if seg == ["config"] and m == "GET":
             return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),
-                                   "build": BUILD,
+                                   "build": BUILD, "autoReport": CFG.get("auto_report"),
                                    "uiStamp": int((STATIC_DIR / "index.html").stat().st_mtime),
                                    "stale": _code_changed()})
         if seg == ["config"] and m == "POST":
@@ -3474,6 +3537,11 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError as e:
                     raise AppError(f"Cannot use this folder: {e}")
                 CFG["library"] = str(p)
+                CFG["library_chosen"] = True
+            if "autoReport" in b:
+                CFG["auto_report"] = bool(b["autoReport"])
+            if b.get("lang") in ("en", "ru"):
+                AUTO_REPORT["lang"] = b["lang"]
             if b.get("audioFormat") in ("wav", "mp3"):
                 CFG["audio_format"] = b["audioFormat"]
             if "moveUrl" in b:
@@ -3498,6 +3566,7 @@ class Handler(BaseHTTPRequestHandler):
             p = choose_folder_dialog()
             if p:
                 CFG["library"] = p
+                CFG["library_chosen"] = True
                 save_config()
             return self.send_json({"library": CFG["library"], "chosen": bool(p)})
 
@@ -3733,7 +3802,10 @@ class Handler(BaseHTTPRequestHandler):
                                   (q.get("group") or [None])[0])
             return self.send_json({"ok": True, "id": final})
         if seg == ["library"] and m == "GET":
-            return self.send_json({"items": list_library(), "path": str(lib_root())})
+            items = list_library()
+            # папка «выбрана»: человек сам выбрал/подтвердил её или в ней уже есть проекты (сборка 60)
+            return self.send_json({"items": items, "path": str(lib_root()),
+                                   "chosen": bool(CFG.get("library_chosen") or items)})
         if len(seg) >= 2 and seg[0] == "library":
             folder = seg[1]
             act = seg[2] if len(seg) > 2 else None
