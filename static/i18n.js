@@ -6,6 +6,21 @@
 "use strict";
 const I18N = {ru: {
 exact: {
+  "Replace": "Заменить", "Update": "Обновить", "Upload": "Загрузить", "Rearrange": "Расставить", "Move here": "Перенести",
+  "Restore without the missing samples?": "Вернуть без недостающих сэмплов?",
+  "The project on Move is backed up first.": "Сначала сохраняется копия проекта на Move.",
+  "The generated pattern goes in its place.": "На его место встанет сгенерированный Pattern.",
+  "The project and its audio are replaced; description and notes are kept.": "Проект и его звук заменятся; описание и заметки останутся.",
+  "The projects move to the _Deleted folder.": "Проекты переедут в папку _Deleted.",
+  "Move already has a project with this name.": "На Move уже есть проект с таким именем.",
+  "They move to the _Deleted folder.": "Они переедут в папку _Deleted.",
+  "A copy is saved first to the _Deleted folder on the computer.": "Сначала копия сохранится в папке _Deleted на компьютере.",
+  "The project moves to the _Deleted folder.": "Проект переедет в папку _Deleted.",
+  "The old version is deleted and the project lands on another pad.": "Старая версия удалится, а проект встанет на другой Pad.",
+  "Rearrange pads by Camelot?": "Расставить Pads по Camelot?",
+  "Nothing uses it. The file is removed from the device for good.": "Им ничего не пользуется. Файл удалится с девайса навсегда.",
+  "Leave these projects on Move first, or Move will save the old links back.": "Сначала выйдите из этих проектов на Move, иначе Move вернёт старые ссылки.",
+  "Nothing uses it.": "Этим ничего не пользуется.",
   // шапка и разделы
   "Switch theme": "Сменить тему",
   "Show all inputs… (allow access)": "Показать все входы… (разрешить доступ)", "Input to monitor (e.g. Move over USB)": "Какой вход слушать (например, Move по USB)",
@@ -245,6 +260,43 @@ exact: {
   "Empty folder. Drag files here from the other panel or from Finder.": "Пустая папка. Перетащите сюда файлы из другой панели или из Finder."
 },
 patterns: [
+  // окна-подтверждения сборки 59: первый абзац — вопрос, дальше — подробности (каждый абзац переводится отдельно)
+  [/^Replace the clip in track (\d+), scene (\d+)\?$/, "Заменить Clip (Track $1, Scene $2)?"],
+  [/^Restore the version from (.+)\?$/, "Вернуть версию от $1?"],
+  [/^The current version is saved to History first\.( If the project is open on Move, leave it and open it again\.)?$/,
+    (m, a) => "Текущая версия сначала сохранится в истории." + (a ? " Если проект открыт на Move, выйдите из него и откройте снова." : "")],
+  [/^These samples of the (.+) version are no longer (on Move|in the project):\n([\s\S]*)$/,
+    (m, w, where, l) => `Этих сэмплов версии от ${w} больше нет ${where === "on Move" ? "на Move" : "в проекте"}:\n${l}`],
+  [/^Replace clips in track (\d+)\?$/, "Заменить Clips на Track $1?"],
+  [/^Scenes with clips: ([\d, ]+)\.$/, "Занятые Scenes: $1."],
+  [/^Cells with clips: (\d+)\.$/, "Занятых ячеек: $1."],
+  [/^The new notes come from “(.+)”\.$/, "Новые ноты — из «$1»."],
+  [/^Update “(.+)” on the computer\?$/, "Обновить «$1» на компьютере?"],
+  [/^Delete group “(.+)” with its projects \((\d+)\)\?$/, "Удалить группу «$1» вместе с проектами ($2)?"],
+  [/^Delete group “(.+)”\?$/, "Удалить группу «$1»?"],
+  [/^Its projects \((\d+)\) are kept and move to Ungrouped\.$/, "Её проекты ($1) останутся и перейдут в «Без группы»."],
+  [/^Upload another “(.+)”\?$/, "Загрузить ещё один «$1»?"],
+  [/^Replace “(.+)” on pad (\d+) with “(.+)”\?$/, "Заменить «$1» на Pad $2 проектом «$3»?"],
+  [/^“(.+)” is deleted from Move; a copy is saved first to the _Deleted folder on the computer\.$/,
+    "«$1» удалится с Move; сначала копия сохранится в папке _Deleted на компьютере."],
+  [/^Remove the selected projects \((\d+)\)\?$/, "Убрать выбранные проекты ($1)?"],
+  [/^Delete “(.+)” from Move\?$/, "Удалить «$1» с Move?"],
+  [/^Remove “(.+)”\?$/, "Убрать «$1»?"],
+  [/^Upload only the first (\d+)\?$/, "Загрузить только первые $1?"],
+  [/^Move has (\d+) free pads, (\d+) projects are selected\.$/, "На Move свободных Pads: $1, выбрано проектов: $2."],
+  [/^Replace “(.+)” on Move with the edited version\?$/, "Заменить «$1» на Move исправленной версией?"],
+  [/^(\d+) projects, starting from “(.+)”\.$/, "Проектов: $1, начиная с «$2»."],
+  [/^Delete "(.+)" and everything inside \((\d+) files?\) from Move\?$/, "Удалить «$1» со всем содержимым (файлов: $2) с Move?"],
+  [/^Delete (\d+) items \((\d+) files?\) from Move\?$/, "Удалить $1 шт. (файлов: $2) с Move?"],
+  [/^Delete "(.+)" from Move\?$/, "Удалить «$1» с Move?"],
+  [/^Delete (.+) from Move\?$/, "Удалить $1 с Move?"],
+  [/^Nothing uses (it|them)\. Removed from the device for good\.$/,
+    (m, w) => w === "it" ? "Этим ничего не пользуется. Удалится с девайса навсегда." : "Ими ничего не пользуется. Удалятся с девайса навсегда."],
+  [/^Rename "(.+)" → "(.+)"\?$/, "Переименовать «$1» → «$2»?"],
+  [/^Rename folder "(.+)" → "(.+)"\?(?: \((\d+) files\))?$/, (m, a, b, n) => `Переименовать папку «${a}» → «${b}»?${n ? ` (файлов: ${n})` : ""}`],
+  [/^Move "(.+)" to (.+?)\?(?: \((\d+) files\))?$/, (m, a, b, n) => `Перенести «${a}» в ${b}?${n ? ` (файлов: ${n})` : ""}`],
+  [/^Move (\d+) items to (.+?)\?(?: \((\d+) files\))?$/, (m, a, b, n) => `Перенести ${a} шт. в ${b}?${n ? ` (файлов: ${n})` : ""}`],
+  [/^Links are updated in:\n([\s\S]*)$/, (m, l) => "Ссылки обновятся в:\n" + l.replace(/^• Schwung state$/m, "• состояние Schwung")],
   // сообщения с именами и числами (группы $1… переносятся как есть)
   [/^Clip deleted: track (\d+), scene (\d+)(.*)$/s, "Clip удалён: Track $1, Scene $2$3"],
   [/^Clip saved: (.*)$/s, "Clip сохранён: $1"],
@@ -448,6 +500,7 @@ function _tr(s){
   if(out === undefined){
     out = null;
     for(const [re, rep] of d.patterns){ re.lastIndex = 0; if(re.test(core)){ re.lastIndex = 0; out = core.replace(re, rep); break; } }
+    if(out === null && core.includes("\n\n")) return m[1] + core.split("\n\n").map(tr).join("\n\n") + m[3];   // по абзацам
     if(out === null) out = core;
     out = _outsideQuotes(out, part => {
       const ex = d.exact[part.trim()]; if(ex !== undefined && part.trim()) return part.replace(part.trim(), ex);
@@ -508,7 +561,8 @@ if(LANG !== "en"){
   if(document.body) start(); else document.addEventListener("DOMContentLoaded", start);
 }
 function setLang(l){
-  if(typeof S !== "undefined" && S.rec && S.rec.state === "rec"){ alert(l === "ru" ? "Stop the recording first" : "Сначала остановите запись"); return; }
+  if(typeof S !== "undefined" && S.rec && S.rec.state === "rec"){ const msg = l === "ru" ? "Stop the recording first" : "Сначала остановите запись";
+    window.ask ? window.ask(msg, {cancel: false}) : alert(msg); return; }
   try{ localStorage.setItem("mm-lang", l); }catch(e){}
   location.reload();
 }

@@ -47,7 +47,7 @@ def ui_samples():
     src = (ROOT / "static" / "index.html").read_text("utf-8")
     script = src[src.index("<script>\n"):]
     out = set()
-    for m in re.finditer(r"\b(?:status|confirm|prompt)\(\s*(`(?:[^`\\]|\\.)*`|\"(?:[^\"\\]|\\.)*\")", script):
+    for m in re.finditer(r"\b(?:status|confirm|prompt|ask|askText)\(\s*(`(?:[^`\\]|\\.)*`|\"(?:[^\"\\]|\\.)*\")", script):
         out.add(_fill(m.group(1)[1:-1]))
     for m in re.finditer(r'class="hint"[^>]*>([^<$`]{20,})', src):     # абзацы-подсказки
         out.add(m.group(1))
