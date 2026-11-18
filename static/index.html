@@ -1141,9 +1141,9 @@ function renderInspectorNow(){
     const sub = isAudio ? ["Audio track", t.preset ? `effect: ${t.preset}` : "", t.clips?`clips: ${t.clips}`:""].filter(Boolean).join(" · ")
                         : [path, KIND_RU[t.kind]||t.kind, t.clips?`clips: ${t.clips}`:"", t.sampleCount?`samples: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
     const pv = panOf(t);
-    return `<div class="trk" data-pos="${pos}" title="${esc(t.samples?.length?"Samples: "+t.samples.join(", "):"")}">
-      <span class="n" draggable="true" title="${esc(window.tr ? window.tr("Drag to reorder") : "Drag to reorder")}">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
-      <div class="b"><div class="t">${esc(isAudio ? t.name : (t.preset||t.name))}</div><div class="p" title="${esc(sub)}">${esc(sub)}</div>
+    return `<div class="trk" data-pos="${pos}">
+      <span class="n" draggable="true">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
+      <div class="b"><div class="t">${esc(isAudio ? t.name : (t.preset||t.name))}</div><div class="p">${esc(sub)}</div>
 </div></div>`; }).join("");
   // подсказки по Камелоту
   let sugg = "";
@@ -2282,6 +2282,10 @@ $("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); 
 
 render(); loadConfig(); loadLib(); loadMove();
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
+try{   // …кроме перезагрузки после смены языка
+  const back = JSON.parse(sessionStorage.getItem("mm-return") || "null"); sessionStorage.removeItem("mm-return");
+  if(back){ if(back.view && back.view!==S.view) setView(back.view); if(back.sel){ S.sel = back.sel; if(back.tab) S.tab = back.tab; render(); } }
+}catch(e){}
 
 function themeLabel(){ const d = document.documentElement.dataset.theme==="dark"; const b = $("#themeBtn");
   b.textContent = d ? "Light" : "Dark"; b.dataset.to = d ? "light" : "dark"; }   // кнопка — в цветах темы, на которую переключает
@@ -2295,7 +2299,10 @@ themeLabel();
 /* язык: кнопка подписана языком, на который переключает (сборка 56) */
 $("#langBtn").textContent = LANG === "ru" ? "EN" : "RU";
 $("#langBtn").setAttribute("translate", "no");
-$("#langBtn").onclick = () => setLang(LANG === "ru" ? "en" : "ru");
+$("#langBtn").onclick = () => {   // после перезагрузки вернуться на тот же экран, к тому же проекту и вкладке
+  try{ sessionStorage.setItem("mm-return", JSON.stringify({view:S.view, sel:S.sel, tab:S.tab})); }catch(e){}
+  setLang(LANG === "ru" ? "en" : "ru");
+};
 </script>
 </body>
 </html>
