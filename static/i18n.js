@@ -6,6 +6,7 @@
 "use strict";
 const I18N = {ru: {
 exact: {
+  "Support the project — opens PayPal in your browser": "Поддержать проект — откроется PayPal в браузере",
   "Send report": "Отправить отчёт", "Sending…": "Отправляю…", "Send error reports automatically": "Отправлять отчёты об ошибках автоматически",
   "Report sent to the developer. Thank you!": "Отчёт отправлен разработчику. Спасибо!",
   "Send error reports to the developer automatically?": "Отправлять отчёты об ошибках разработчику автоматически?",

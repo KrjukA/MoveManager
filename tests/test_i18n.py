@@ -140,7 +140,7 @@ class Serve(RouteBase):
 KEEP = re.compile(r"Xname|Move|Manager|KRJUK|Schwung|Drum Rack|Finder|SSH|MIDI|WAV|AIFF|FLAC|MP3|M4A|WebM|OGG|Samples/UPLOAD|"
                   r"_Deleted|_edit|bpm|Wi-Fi|Camelot|USB|ablbundle|Song\.abl|python3|Terminal|Ctrl|Recordings|Settings|"
                   r"Pocket Operations|Paul Wenzel|Basic Drum Patterns|config\.json|meta\.json|Esc|Shift|Cmd|Wavetable|Drift|UPLOAD|"
-                  r"Samples|Core Library|User Library|Track Presets|IP|Computer|Report|"
+                  r"Samples|Core Library|User Library|Track Presets|IP|Computer|Report|PayPal|"
                   # музыкальные термины остаются английскими и внутри русских фраз (17.11)
                   r"Pad control|Clips?|Tracks?|Scenes?|Loops?|Pads?|Presets?|Patterns?|Kit|Half time|Swing|Ghosts|Euclid|Mutation|Sample|Pad control|audio|Audio")
 

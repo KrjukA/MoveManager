@@ -301,6 +301,7 @@ footer .status.err{color:var(--bad)}
 .empty .addr{display:flex;gap:6px;justify-content:center;margin:10px auto 4px;max-width:320px}.empty .addr input{flex:1;min-width:0}
 header button.hb{height:26px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:none;border-color:var(--line2);color:var(--dim)}
 header button.hb:hover{color:var(--text);border-color:var(--text)}
+#supportBtn::before{content:"\2665";color:#e5484d;font-size:12px;line-height:1}
 #themeBtn::before,#monBtn::before{content:"";width:8px;height:8px;border-radius:50%;flex:none}
 #themeBtn[data-to="light"]::before{background:#ededea;border:1px solid #cfcfca}
 #themeBtn[data-to="dark"]::before{background:#262624;border:1px solid #5a5a55}
@@ -336,6 +337,7 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="hb" title="Listen to the chosen input through the computer — independent of recording">Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
   <button id="langBtn" class="hb" title="Language">RU</button>
   <button id="themeBtn" class="hb" title="Switch theme">Dark</button>
+  <button id="supportBtn" class="hb" title="Support the project — opens PayPal in your browser">Support</button>
   <button id="reportBtn" class="hb" title="Something went wrong? Send a short report to the developer">Report</button>
   <button id="refresh" class="hb" title="Read Move and the computer folder again">Refresh</button>
 </header>
@@ -2315,6 +2317,8 @@ async function setMoveAddr(v){                         // адрес Move вру
   catch(e){ fail(e); }
 }
 /* ───────── отчёт о проблеме (сборка 55) ───────── */
+const SUPPORT_URL = "https://paypal.me/krjuk";       // донат разработчику (сборка 61): страница PayPal в браузере
+$("#supportBtn").onclick = () => window.open(SUPPORT_URL, "_blank", "noopener");
 $("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#autoRep").checked = S.autoReport === true; $("#report").classList.add("on"); $("#reportText").focus(); };
 $("#reportCancel").onclick = () => $("#report").classList.remove("on");
 $("#autoRep").onchange = e => setAutoReport(e.target.checked);
