@@ -6,7 +6,7 @@ An app for managing Ableton Move projects, samples and presets right from your c
 
 **Download:** [latest version](https://github.com/KrjukA/MoveManager/releases/latest) — at the bottom of the page, under Assets. How to install — [at the end of this page](#installation).
 
-**Like it?** The app is free. You can support it here: (https://ko-fi.com/krjuk) — or with the Support button in the app.
+**Like it?** The app is free. You can support it here: https://ko-fi.com/krjuk — or with the Support button in the app.
 
 ![Projects on Move and on the computer](docs/screenshots/projects.png)
 
