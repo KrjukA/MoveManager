@@ -6,7 +6,17 @@
 "use strict";
 const I18N = {ru: {
 exact: {
-  "Support the project — opens PayPal in your browser": "Поддержать проект — откроется PayPal в браузере",
+  "The copy was uploaded but could not be identified": "Копия загружена, но её не удалось опознать",
+  "Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.":
+    "Перетащите пэд на другой пэд, чтобы перенести проект; удерживайте ⌥ Option (Alt на Windows), когда отпускаете, — получится копия.",
+  "Camelot code: pick one and the root and scale follow": "Код Камелота: выберите — тоника и лад подставятся сами",
+  "Camelot code": "Код Камелота",
+  "Pick a Camelot code — root and scale follow it (A — minor, B — major). Or set root and scale directly. They set the pad layout; recorded notes stay where they are. ≈ means the scale is neither major nor minor.":
+    "Выберите код Камелота — тоника и лад подставятся сами (A — минор, B — мажор). Или задайте тонику и лад напрямую. Они определяют раскладку пэдов; записанные ноты остаются на месте. ≈ — лад не мажор и не минор.",
+  "Duplicate": "Дублировать",
+  "Replace it with the copy from Move, or keep it and add a duplicate? The replaced version is saved to History.":
+    "Заменить его копией с Move или оставить и добавить дубликат? Заменённая версия сохранится в истории.",
+  "Support the project — opens Ko-fi in your browser": "Поддержать проект — откроется Ko-fi в браузере",
   "Send report": "Отправить отчёт", "Sending…": "Отправляю…", "Send error reports automatically": "Отправлять отчёты об ошибках автоматически",
   "Report sent to the developer. Thank you!": "Отчёт отправлен разработчику. Спасибо!",
   "Send error reports to the developer automatically?": "Отправлять отчёты об ошибках разработчику автоматически?",
@@ -58,7 +68,8 @@ exact: {
   "E.g. I dragged two loops onto track 2 of “My Song” and got an error…": "Например: перетащил два Loops на Track 2 в «Моей песне» и получил ошибку…",
   "Could not save the report": "Не удалось сохранить отчёт",
   // правая панель проекта
-  "Pick a project on the left or right. Drag within a pane to reorder, between panes to copy.": "Выберите проект слева или справа. Перетаскивание внутри колонки меняет порядок, между колонками — копирует.", "In short: what this project is": "Коротко: что это за проект",
+  "Pick a project on the left or right. Drag within a pane to reorder, between panes to copy. On Move, hold ⌥ Option (Alt on Windows) while dropping to make a copy of the project.":
+    "Выберите проект слева или справа. Перетаскивание внутри колонки меняет порядок, между колонками — копирует. На Move удерживайте ⌥ Option (Alt на Windows), когда отпускаете проект, — получится его копия.", "In short: what this project is": "Коротко: что это за проект",
   "Ideas, to-dos, where it was played…": "Идеи, что доделать, где играл…", "Notes saved": "Заметки сохранены",
   "Saved in meta.json in the project folder.": "Хранится в meta.json в папке проекта.",
   "Descriptions and notes for projects on Move are stored on the computer in the app's config.json, not on the device. They move into the project folder when you copy it.":
@@ -269,6 +280,9 @@ exact: {
   "Empty folder. Drag files here from the other panel or from Finder.": "Пустая папка. Перетащите сюда файлы из другой панели или из Finder."
 },
 patterns: [
+  [/^Copying "(.+)" on Move…$/, "Копирую «$1» на Move…"],
+  [/^Copy created on Move: "(.+)"( · pad (\d+))?(.*)$/s, (m, n, p, pad, rest) => `Копия создана на Move: «${n}»${pad ? " · Pad " + pad : ""}${rest}`],
+  [/^“(.+)” is already on the computer\.$/, "«$1» уже есть на компьютере."],
   [/^Now: (.+)\nYou can change it later: \+ at the top of the Computer column → Choose library folder…$/,
     "Сейчас: $1\nПоменять можно позже: + вверху колонки Computer → «Выбрать папку библиотеки…»"],
   [/^Folder: (\/.*|[A-Za-z]:\\.*)$/, "Папка: $1"],

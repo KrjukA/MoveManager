@@ -188,6 +188,7 @@ aside h3:first-child{margin-top:0}
 .keyrow select,.keyrow input{height:26px;padding:2px 6px!important;font-size:12px}
 .keyrow select{padding-right:22px!important;background-position:right 7px center}
 .keyrow #keyRoot{width:60px;flex:none}
+.keyrow #keyCamSel{width:auto;flex:none;color:#111;font-weight:600;border-color:transparent}
 .keyrow #keyScale{width:auto;flex:1;min-width:0}
 .keyrow #keyTempo{width:60px!important}
 .tabs{display:flex;gap:2px;margin:16px 0 8px;border-bottom:1px solid var(--line)}
@@ -337,7 +338,7 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="hb" title="Listen to the chosen input through the computer — independent of recording">Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
   <button id="langBtn" class="hb" title="Language">RU</button>
   <button id="themeBtn" class="hb" title="Switch theme">Dark</button>
-  <button id="supportBtn" class="hb" title="Support the project — opens PayPal in your browser">Support</button>
+  <button id="supportBtn" class="hb" title="Support the project — opens Ko-fi in your browser">Support</button>
   <button id="reportBtn" class="hb" title="Something went wrong? Send a short report to the developer">Report</button>
   <button id="refresh" class="hb" title="Read Move and the computer folder again">Refresh</button>
 </header>
@@ -556,6 +557,13 @@ function select(side,id){ pickNone(); genStop(); S.gen = null; S.keyEdit = false
 /* ───────── отрисовка ───────── */
 /* мини-сетка клипов проекта: строки — треки, колонки — сцены; занятый слот — в цвете трека (сборка 57) */
 function trackColor(t){ return PAD_COLORS[t?.color] ? `rgb(${PAD_COLORS[t.color]})` : (ROLE_COLORS[t?.role] || "#9a9a95"); }
+/* сборка 62: подписи дорожек — цветом дорожки на Move (как в мини-сетке), а не цветом её роли; текст — тёмный или светлый по яркости */
+function trackInk(t){
+  const c = PAD_COLORS[t?.color]; if(!c) return "#111";
+  const [r,g,b] = c.split(",").map(Number);
+  return (0.2126*r + 0.7152*g + 0.0722*b) / 255 < 0.5 ? "#fff" : "#111";
+}
+const trackChip = t => `background:${trackColor(t)};color:${trackInk(t)}`;
 function miniHTML(info){
   const g = info.clips, tr = info.tracks || [], sc = Math.max(1, ...g.map(r => r.length));
   let cells = "";
@@ -577,7 +585,7 @@ function tileHTML(side, it, pad){
   }
   if(S.playing==="lib:"+it.id && side==="lib") cls.push("playing");
   const job = S.jobs[side+":"+it.id];
-  const roles = (info?.tracks||[]).map(t => `<span class="role" style="background:${ROLE_COLORS[t.role]||"#888"}" title="${esc(t.name)}">${esc(ROLE_SHORT[t.role]||"—")}</span>`).join("");
+  const roles = (info?.tracks||[]).map(t => `<span class="role" style="${trackChip(t)}" title="${esc(t.name)}">${esc(ROLE_SHORT[t.role]||"—")}</span>`).join("");
   const onOther = side==="move" ? S.lib.items.some(x => x.sourceId===it.id || x.name===it.name) : false;
   const pc = pad && PAD_COLORS[it.color] ? ` style="--pc:rgb(${PAD_COLORS[it.color]})"` : "";
   return `<div class="${cls.join(" ")}" draggable="true" data-side="${side}" data-id="${esc(it.id)}"${side==="lib"?` data-group="${esc(it.group||"")}"`:""}${pad?` data-slot="${it.slot}"`:""}${pc} tabindex="0">
@@ -654,6 +662,17 @@ function keyForCamelot(code, scale){
 }
 const keyEditing = info => !!(info && typeof info.rootNote==="number" && S.keyEdit);
 const keyView = info => S.key && info ? {...info, rootNote:S.key.rootNote, scale:S.key.scale, tempo:isFinite(S.key.tempo)?S.key.tempo:info.tempo} : info;
+/* сборка 62: тональность выбирается кодом Камелота — 1A…12B с подписью «тоника лад», чтобы не считать в уме */
+function camSelect(info){
+  const kc = camelot(info); if(!kc) return "";
+  let opts = "";
+  for(let n=1;n<=12;n++) for(const L of ["A","B"]){
+    const code = n+L, k = keyForCamelot(code, L===kc.letter ? info.scale : null);
+    const label = `${code}${code===kc.code && kc.approx ? "≈" : ""} · ${k ? keyName(k) : ""}`;
+    opts += `<option value="${code}" ${code===kc.code?"selected":""}>${esc(label)}</option>`;
+  }
+  return `<select id="keyCamSel" class="keycam" style="background:${camColor(kc)}" aria-label="Camelot code" title="Camelot code: pick one and the root and scale follow">${opts}</select>`;
+}
 function setKeyFromCamelot(code){
   const it = selItem(); if(!it?.info || typeof it.info.rootNote!=="number") return;
   const cur = S.key || {rootNote:it.info.rootNote, scale:it.info.scale, tempo:it.info.tempo};
@@ -728,7 +747,7 @@ function clipsHTML(side, it){
   for(let c=0;c<scenes;c++) html += `<span class="sh">${c+1}</span>`;
   grid.forEach((row,t) => {
     const tr = tracks[t] || {};
-    html += `<span class="rl" style="background:${ROLE_COLORS[tr.role]||"#888"}" title="${esc(tr.preset||tr.name||"")}">${esc(ROLE_SHORT[tr.role]||t+1)}</span>`;
+    html += `<span class="rl" style="${trackChip(tr)}" title="${esc(tr.preset||tr.name||"")}">${esc(ROLE_SHORT[tr.role]||t+1)}</span>`;
     for(let c=0;c<scenes;c++){
       const cl = row[c], sel = S.cell && S.cell.t===t && S.cell.s===c;
       const bars = cl ? Math.round(cl.length/bar*10)/10 : 0;
@@ -1176,7 +1195,7 @@ function renderInspectorNow(){
   const el = $("#insp"), it = selItem();
   if(S.multi.length>1){ el.dataset.key = "multi"; el.innerHTML = multiHTML(); return; }
   if(document.activeElement && el.contains(document.activeElement) && ["TEXTAREA","INPUT"].includes(document.activeElement.tagName) && !["checkbox","range"].includes(document.activeElement.type) && it && el.dataset.key===S.sel.side+":"+S.sel.id) return;
-  if(!it){ el.dataset.key=""; el.innerHTML = `<h3>Project</h3><div class="hint">Pick a project on the left or right. Drag within a pane to reorder, between panes to copy.</div>`; return; }
+  if(!it){ el.dataset.key=""; el.innerHTML = `<h3>Project</h3><div class="hint">Pick a project on the left or right. Drag within a pane to reorder, between panes to copy. On Move, hold ⌥ Option (Alt on Windows) while dropping to make a copy of the project.</div>`; return; }
   el.dataset.key = S.sel.side+":"+S.sel.id;
   const side = S.sel.side, info = it.info, cam = camelot(info);
   const tracks = info?.tracks || [];
@@ -1190,7 +1209,7 @@ function renderInspectorNow(){
                         : [path, KIND_RU[t.kind]||t.kind, t.clips?`clips: ${t.clips}`:"", t.sampleCount?`samples: ${t.sampleCount}`:""].filter(Boolean).join(" · ");
     const pv = panOf(t);
     return `<div class="trk" data-pos="${pos}">
-      <span class="n" draggable="true">⠿ ${pos+1}</span><span class="r" style="background:${ROLE_COLORS[t.role]||"#888"}">${esc(ROLE_SHORT[t.role]||"—")}</span>
+      <span class="n" draggable="true">⠿ ${pos+1}</span><span class="r" style="${trackChip(t)}">${esc(ROLE_SHORT[t.role]||"—")}</span>
       <div class="b"><div class="t">${esc(isAudio ? t.name : (t.preset||t.name))}</div><div class="p">${esc(sub)}</div>
 </div></div>`; }).join("");
   // подсказки по Камелоту
@@ -1202,10 +1221,10 @@ function renderInspectorNow(){
   el.innerHTML = `
     <div class="where">${side==="move"?"on Move"+(it.slot!=null?` · pad ${it.slot+1}`:""):"on computer"}</div>
     <input type="text" class="namein" id="nameIn" value="${esc(it.name)}" aria-label="Project name">
-    ${keyEditing(info) ? `<div class="keyedit"><div class="keyrow">${(() => { const kc = camelot(S.key ? {rootNote:S.key.rootNote, scale:S.key.scale} : info); return kc ? `<span class="keycam" id="keyCam" style="background:${camColor(kc)}" title="Camelot code of this key">${kc.code}${kc.approx?"≈":""}</span>` : ""; })()}<select id="keyRoot" aria-label="Root">${NOTES.map((n,i)=>`<option value="${i}" ${i===(S.key?S.key.rootNote:info.rootNote)?"selected":""}>${n}</option>`).join("")}</select>
+    ${keyEditing(info) ? `<div class="keyedit"><div class="keyrow">${camSelect(S.key ? {rootNote:S.key.rootNote, scale:S.key.scale} : info)}<select id="keyRoot" aria-label="Root">${NOTES.map((n,i)=>`<option value="${i}" ${i===(S.key?S.key.rootNote:info.rootNote)?"selected":""}>${n}</option>`).join("")}</select>
       <select id="keyScale" aria-label="Scale">${knownScales().map(sc=>`<option ${sc===(S.key?S.key.scale:info.scale)?"selected":""}>${esc(sc)}</option>`).join("")}</select>
       <input type="number" id="keyTempo" min="40" max="300" step="0.1" value="${S.key && isFinite(S.key.tempo) ? S.key.tempo : Math.round((info.tempo||120)*100)/100}" aria-label="Tempo, bpm" title="Tempo, bpm" style="flex:none"></div>
-      <div class="hint">Root and scale set the pad layout; recorded notes stay where they are. ≈ after a Camelot code means it is approximate: the scale is neither major nor minor.</div>
+      <div class="hint">Pick a Camelot code — root and scale follow it (A — minor, B — major). Or set root and scale directly. They set the pad layout; recorded notes stay where they are. ≈ means the scale is neither major nor minor.</div>
       <div class="keyacts"><button class="ghost" id="keyDone">Done</button></div></div>` : ""}
     <div class="facts" ${info && typeof info.rootNote==="number" && !keyEditing(info) ? `title="Double-click to change key, scale and tempo" data-keyedit="1"` : ""}>
       ${keyEditing(info) ? "" : (() => { const kv = keyView(info), kc = camelot(kv); return `${kc?`<span class="keyb" style="background:${camColor(kc)}">${kc.code}${kc.approx?"≈":""}</span>`:""}
@@ -1222,6 +1241,7 @@ function renderInspectorNow(){
     ${soundHTML(side, it)}
     ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" translate="no" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
     ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
+    ${side==="move" ? `<div class="hint">Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.</div>` : ""}
     <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks" title="Tracks: instruments, presets, pan and order">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips" title="Clips: copy, move, load .mid, generate drums">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history" title="Saved versions of the project — restore an earlier one">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
     ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" title="Write the track changes into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
@@ -1274,12 +1294,19 @@ async function chooseLibFirst(){
 async function pull(id, group){
   const it = S.move.sets.find(x=>x.id===id); if(!it) return;
   if(!S.lib.chosen && !await chooseLibFirst()) return;
-  const ex = S.lib.items.find(x=>x.sourceId===id);          // тот же проект; другой с таким же именем ляжет в «Имя 2»
-  if(ex && !await ask(`Update “${it.name}” on the computer?\n\nThe project and its audio are replaced; description and notes are kept.`, {ok:"Update"})) return;
+  // сборка 62: проект (тот же или с тем же именем) уже есть на компьютере — заменить или положить рядом копию
+  const ex = S.lib.items.find(x=>x.sourceId===id) || S.lib.items.find(x=>x.name===it.name);
+  let mode = null;
+  if(ex){
+    const r = await ask(`“${it.name}” is already on the computer.\n\nReplace it with the copy from Move, or keep it and add a duplicate? The replaced version is saved to History.`,
+                        {ok:"Replace", no:"Duplicate"});
+    if(r === null) return;                                   // Esc — ничего не переносим
+    mode = r ? "replace" : "duplicate";
+  }
   status(`Copying "${it.name}" to the computer…`);
   try{
     let seen = false;
-    const res = await runJob("move:"+id, async () => { const j = await api("POST", `/api/move/sets/${id}/pull`, {audio: S.withAudio, group: group ?? null}); return j; });
+    const res = await runJob("move:"+id, async () => { const j = await api("POST", `/api/move/sets/${id}/pull`, {audio: S.withAudio, group: group ?? null, mode}); return j; });
     await loadLib();
     const sw = res.schwung ? " · Schwung state copied" : "";
     status(res.audioError ? `"${it.name}" saved without audio: ${res.audioError}${sw}` : `"${it.name}" saved on the computer${sw}`, !!res.audioError);
@@ -1325,6 +1352,16 @@ async function push(id, slot, replaceId, quiet){
   status(`Uploading "${it.name}" to Move…`);
   try{ const res = await runJob("lib:"+id, () => api("POST", `/api/library/${encodeURIComponent(id)}/push`, {slot: slot ?? null, replace: replaceId ?? null})); await loadMove(); status(`"${it.name}" uploaded to Move${samplesNote(res?.samples)}${schwungNote(res?.schwung)}`, !!res?.schwung && res.schwung!=="copied"); return true; }
   catch(e){ fail(e); await loadMove(); return false; }
+}
+/* сборка 62: копия проекта на Move — новый сет «Имя copy» на выбранном пэде (если занят — на первом свободном) */
+async function copyOnMove(id, slot){
+  const it = S.move.sets.find(x=>x.id===id); if(!it) return;
+  status(`Copying "${it.name}" on Move…`);
+  try{
+    const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/copy`, {slot: slot ?? null}));
+    await loadMove();
+    status(`Copy created on Move: "${res.name}"${res.slot!=null ? ` · pad ${res.slot+1}` : ""}${schwungNote(res.schwung)}`);
+  }catch(e){ fail(e); }
 }
 async function dropOnMove(id, cell, slot){
   if(!cell || slot==null) return push(id, null);
@@ -1616,11 +1653,12 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
     S.multi = []; select(t.dataset.side, t.dataset.id);
   });
   g.addEventListener("keydown", e => { const t = e.target.closest(".tile"); if(t && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); select(t.dataset.side,t.dataset.id); } });
-  g.addEventListener("dragstart", e => { const t = e.target.closest(".tile"); if(!t) return; drag = {side:t.dataset.side, id:t.dataset.id}; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.id);
+  g.addEventListener("dragstart", e => { const t = e.target.closest(".tile"); if(!t) return; drag = {side:t.dataset.side, id:t.dataset.id}; e.dataTransfer.effectAllowed = "copyMove"; e.dataTransfer.setData("text/plain", t.dataset.id);
     // вместо полноразмерной копии плитки — лёгкая полупрозрачная метка, чтобы сетка пэдов под курсором оставалась видна
     const ghost = $("#dragGhost"); ghost.textContent = t.querySelector(".name")?.textContent || "Project";
     e.dataTransfer.setDragImage(ghost, 12, 12); t.classList.add("dragging"); });
   g.addEventListener("dragover", e => { if(!drag) return; e.preventDefault();
+    e.dataTransfer.dropEffect = e.altKey && drag.side==="move" && g.dataset.side==="move" ? "copy" : "move";   // ⌥ — копия на Move
     document.querySelectorAll(".tile.over").forEach(x=>x.classList.remove("over"));
     document.querySelectorAll(".slot.over, .gsec.over").forEach(x=>x.classList.remove("over"));
     const sl = e.target.closest(".slot"); if(sl){ sl.classList.add("over"); return; }
@@ -1632,6 +1670,7 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
     const side = g.dataset.side, d = drag; drag = null;
     const cell = e.target.closest("[data-slot]"), slot = cell && cell.dataset.slot!=="null" ? +cell.dataset.slot : null;
     if(d.side!==side){ d.side==="move" ? pull(d.id, e.target.closest("[data-group]")?.dataset.group) : dropOnMove(d.id, cell, slot); return; }
+    if(side==="move" && e.altKey){ copyOnMove(d.id, slot); return; }        // сборка 62: ⌥/Alt — копия проекта на Move
     if(side==="move" && padMode()){ if(slot!=null) moveSlot(d.id, slot); return; }
     if(side==="lib"){ const gEl = e.target.closest("[data-group]"), me = S.lib.items.find(x=>x.id===d.id);
       if(gEl && me && (me.group||"")!==gEl.dataset.group){ setGroup(d.id, gEl.dataset.group); return; } }
@@ -2192,6 +2231,7 @@ insp.addEventListener("change", async e => {
   if(e.target.id==="groupSel"){ const it = selItem(); if(!it || S.sel.side!=="lib") return; let g = e.target.value;
     if(g==="__new__"){ g = (await askText("New group name:")||"").trim(); if(!g){ e.target.value = it.group||""; return; } }
     if(g!==(it.group||"")) setGroup(it.id, g); return; }
+  if(e.target.id==="keyCamSel") return setKeyFromCamelot(e.target.value);
   if(e.target.id==="keyRoot" || e.target.id==="keyScale"){ const it = selItem(); if(!it) return;
     S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat($("#keyTempo").value)}; return renderInspector(); }
   if(e.target.id==="withAudio"){ S.withAudio = e.target.checked; try{ localStorage.setItem("mm-with-audio", S.withAudio?"1":"0"); }catch(err){} return renderInspector(); }
@@ -2317,7 +2357,7 @@ async function setMoveAddr(v){                         // адрес Move вру
   catch(e){ fail(e); }
 }
 /* ───────── отчёт о проблеме (сборка 55) ───────── */
-const SUPPORT_URL = "https://paypal.me/krjuk";       // донат разработчику (сборка 61): страница PayPal в браузере
+const SUPPORT_URL = "https://ko-fi.com/krjuk";       // донат разработчику (сборка 62): страница Ko-fi в браузере
 $("#supportBtn").onclick = () => window.open(SUPPORT_URL, "_blank", "noopener");
 $("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#autoRep").checked = S.autoReport === true; $("#report").classList.add("on"); $("#reportText").focus(); };
 $("#reportCancel").onclick = () => $("#report").classList.remove("on");

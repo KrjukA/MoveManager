@@ -291,6 +291,58 @@ class PullNames(Hooks):
         self.assertTrue((self.tmp / "lib" / "Demo 2").exists())
 
 
+class PullChoice(Hooks):
+    """Сборка 62: проект уже есть на компьютере — человек выбирает «Дублировать» или «Заменить»."""
+    def run_pull(self, name, mode):
+        app.MOVE.sets[0]["name"] = name
+        app.ssh_enabled = lambda: False
+        return app.job_pull(OID, False, mode=mode)(lambda *a, **k: None)
+
+    def test_duplicate_same_project_makes_new_folder(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID}))
+        before = (self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes()
+        self.run_pull("Demo", "duplicate")
+        self.assertEqual((self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes(), before)
+        self.assertTrue(list((self.tmp / "lib" / "Demo 2").glob("*.ablbundle")))
+        self.assertEqual(self.lib(), [])                          # старый проект не тронут — версии в историю нет
+
+    def test_replace_same_project(self):
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": OID, "notes": "keep"}))
+        self.run_pull("Demo", "replace")
+        self.assertFalse((self.tmp / "lib" / "Demo 2").exists())
+        self.assertEqual(self.lib()[0]["action"], "Replaced by copy from Move")
+        self.assertEqual(json.loads((self.tmp / "lib" / "Demo" / "meta.json").read_text())["notes"], "keep")
+
+    def test_replace_other_project_with_same_name(self):
+        other = "ffffffff-2222-3333-4444-555555555555"
+        (self.tmp / "lib" / "Demo" / "meta.json").write_text(json.dumps({"sourceId": other, "notes": "other"}))
+        self.run_pull("Demo", "replace")
+        self.assertFalse((self.tmp / "lib" / "Demo 2").exists())
+        meta = json.loads((self.tmp / "lib" / "Demo" / "meta.json").read_text())
+        self.assertEqual(meta["sourceId"], OID)
+        self.assertEqual(meta.get("notes", ""), "")                # заметки чужого проекта не переносятся
+        self.assertEqual(self.lib()[0]["action"], "Replaced by copy from Move")   # старая версия — в истории
+
+    def test_replace_finds_renamed_copy_by_source(self):
+        d = self.tmp / "lib" / "My Demo"
+        d.mkdir()
+        (d / "My Demo.ablbundle").write_bytes((self.tmp / "lib" / "Demo" / "Demo.ablbundle").read_bytes())
+        (d / "meta.json").write_text(json.dumps({"sourceId": OID}))
+        self.run_pull("Demo", "replace")
+        self.assertTrue(list(d.glob("*.ablbundle")))
+        self.assertEqual(json.loads((d / "meta.json").read_text())["sourceId"], OID)
+
+    def test_route_passes_mode(self):
+        seen = []
+        saved = app.job_pull
+        app.job_pull = lambda oid, audio, group=None, mode=None: seen.append(mode) or (lambda stage: {})
+        try:
+            self.req("POST", f"/api/move/sets/{OID}/pull", json.dumps({"audio": False, "mode": "duplicate"}).encode())
+        finally:
+            app.job_pull = saved
+        self.assertEqual(seen, ["duplicate"])
+
+
 class SourceFollows(Hooks):
     """Сборка 55 (рецензия): проект с компьютера после «← To Move» помнит новый сет."""
     def meta(self):
@@ -327,3 +379,61 @@ class SourceFollows(Hooks):
         job = self.wait_job(b)
         self.assertEqual(job["status"], "done", job)
         self.assertNotIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+
+class CopyOnMove(Hooks):
+    """Сборка 62: копия проекта на Move — перетаскивание с ⌥/Alt. Новый сет «Имя copy» на свободном пэде."""
+    def setUp(self):
+        super().setUp()
+        self.slots = {OID: {"slot": 3}}
+        self.placed = []
+        self._sv = {k: getattr(app, k) for k in ("ssh_enabled", "ssh_slots", "ssh_set_slots", "schwung_fetch", "schwung_restore")}
+        app.ssh_enabled = lambda: True
+        app.ssh_slots = lambda: dict(self.slots)
+        app.ssh_set_slots = lambda pairs: self.placed.extend(pairs)
+        app.schwung_fetch = lambda oid: None
+        app.schwung_restore = lambda oid, data: "copied"
+
+    def tearDown(self):
+        for k, v in self._sv.items():
+            setattr(app, k, v)
+        super().tearDown()
+
+    def test_copy_goes_to_requested_free_pad(self):
+        res = app.job_copy_move(OID, 7)(lambda *a, **k: None)
+        self.assertEqual(app.MOVE.uploaded, ["Live Set copy.ablbundle"])
+        self.assertEqual(res["id"], NEW)
+        self.assertEqual(self.placed, [(NEW, 7)])
+        self.assertEqual(res["slot"], 7)
+
+    def test_busy_pad_takes_first_free(self):
+        res = app.job_copy_move(OID, 3)(lambda *a, **k: None)
+        self.assertEqual(self.placed, [(NEW, 0)])
+        self.assertEqual(res["slot"], 0)
+
+    def test_name_not_taken_twice(self):
+        app.MOVE.sets.append({"objectId": "22222222-2222-3333-4444-555555555555", "name": "Live Set copy"})
+        app.job_copy_move(OID, None)(lambda *a, **k: None)
+        self.assertEqual(app.MOVE.uploaded, ["Live Set copy 2.ablbundle"])
+
+    def test_original_untouched(self):
+        app.job_copy_move(OID, None)(lambda *a, **k: None)
+        self.assertIn(OID, [o["objectId"] for o in app.MOVE.list_sets()])
+
+    def test_schwung_state_copied(self):
+        app.schwung_fetch = lambda oid: b"state" if oid == OID else None
+        got = []
+        app.schwung_restore = lambda oid, data: got.append((oid, data)) or "copied"
+        res = app.job_copy_move(OID, None)(lambda *a, **k: None)
+        self.assertEqual(got, [(NEW, b"state")])
+        self.assertEqual(res["schwung"], "copied")
+
+    def test_route(self):
+        seen = []
+        saved = app.job_copy_move
+        app.job_copy_move = lambda oid, slot: seen.append((oid, slot)) or (lambda stage: {})
+        try:
+            st, _, _ = self.req("POST", f"/api/move/sets/{OID}/copy", json.dumps({"slot": 5}).encode())
+        finally:
+            app.job_copy_move = saved
+        self.assertEqual(seen, [(OID, 5)])

@@ -73,7 +73,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "61"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "62"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.5"       # версия для друзей (релиз v1.5); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -362,8 +362,11 @@ def put_clip(song, track, scene, notes, length):
     if template:
         clip = {k: copy.deepcopy(v) for k, v in template.items() if k not in ("notes", "envelopes")}
     else:
-        clip = {"isPlaying": False, "name": "", "color": None, "isEnabled": True,
-                "grooveId": None, "stepEditorScrollPosition": 0}
+        # образца нет (пустой проект): поля как у настоящих клипов Move — с пустыми значениями Move не открывает
+        # проект («Unable to load»). Цвет — цвет дорожки, grooveId у всех клипов Move равен 1.
+        color = tr.get("color")
+        clip = {"isPlaying": False, "name": "", "color": color if isinstance(color, int) and not isinstance(color, bool) else 1,
+                "isEnabled": True, "grooveId": 1, "stepEditorScrollPosition": 0.0}
     clip.update({"isPlaying": False, "name": "", "timeSignature": ts,
                  "region": {"start": 0.0, "end": total, "loop": {"start": 0.0, "end": total, "isEnabled": True}},
                  "notes": list(notes), "envelopes": []})
@@ -1971,16 +1974,33 @@ def render_into(oid, d, stage):
         tmp_a.unlink(missing_ok=True)
 
 
-def job_pull(oid, with_audio, group=None):
+def lib_folder_from(root, oid):
+    """Папка проекта на компьютере, пришедшего с этого сета (meta.json → sourceId), или None."""
+    for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        if any(d.glob("*.ablbundle")) and read_json(d / "meta.json", {}).get("sourceId") == oid:
+            return d
+    return None
+
+
+def job_pull(oid, with_audio, group=None, mode=None):
+    """mode (сборка 62, человек выбрал, когда проект уже есть на компьютере): "replace" — заменить ту копию
+    (с этого сета, иначе папку с тем же именем), "duplicate" — положить рядом новой папкой «Имя 2»."""
     def fn(stage):
         obj = set_by_id(oid)
         name = safe_name(obj["name"])
         root = lib_root()
         d, k = root / name, 2
-        # папка с тем же именем, но от другого проекта (или своя, без sourceId) — не трогаем: «Имя 2», «Имя 3»…
-        while d.exists() and (any(d.glob("*.ablbundle")) or not d.is_dir()) \
-                and read_json(d / "meta.json", {}).get("sourceId") != oid:
-            d, k = root / f"{name} {k}", k + 1
+        busy = lambda p: p.exists() and (any(p.glob("*.ablbundle")) or not p.is_dir())
+        if mode == "replace":
+            d = lib_folder_from(root, oid) or (d if d.is_dir() or not d.exists() else root / f"{name} 2")
+        elif mode == "duplicate":
+            while busy(d):
+                d, k = root / f"{name} {k}", k + 1
+        else:
+            # папка с тем же именем, но от другого проекта (или своя, без sourceId) — не трогаем: «Имя 2», «Имя 3»…
+            while busy(d) and read_json(d / "meta.json", {}).get("sourceId") != oid:
+                d, k = root / f"{name} {k}", k + 1
+        foreign = read_json(d / "meta.json", {}).get("sourceId") not in (None, oid) if d.exists() else False
         name = d.name
         d.mkdir(exist_ok=True)
         stage("Downloading project")
@@ -1998,7 +2018,7 @@ def job_pull(oid, with_audio, group=None):
             tmp.unlink(missing_ok=True)
         cache_info(oid, obj.get("lastModifiedDateTime"), info)
         mm = (CFG.get("move_meta") or {}).get(oid, {})
-        meta = read_json(d / "meta.json", {})
+        meta = {} if foreign else read_json(d / "meta.json", {})       # заменили чужой проект — его заметки не берём
         meta.update({
             "sourceId": oid,
             "savedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -2208,6 +2228,48 @@ def rebuild_bundle(src, dst, song_fn=None, info=None):
                     zo.writestr(item.filename, zi.read(item.filename))
             if info is not None and "BundleInfo.json" not in zi.namelist():
                 zo.writestr("BundleInfo.json", json.dumps(info, indent=2, ensure_ascii=False))
+
+
+def job_copy_move(oid, slot=None):
+    """Сборка 62: копия проекта прямо на Move (перетаскивание с ⌥/Alt). Скачиваем бандл и загружаем под именем
+    «Имя copy» — Move сам ссылается на сэмплы в своей библиотеке (BundleInfo.json), лишних копий нет.
+    Новый сет — на выбранный пэд, если он свободен, иначе на первый свободный; состояние Schwung копируется."""
+    def fn(stage):
+        obj = set_by_id(oid)
+        names = {o["name"] for o in MOVE.list_sets()}
+        base, name, k = obj["name"], f"{obj['name']} copy", 2
+        while name in names:
+            name, k = f"{base} copy {k}", k + 1
+        before = {o["objectId"] for o in MOVE.list_sets()}
+        tmp = tmp_path(".ablbundle")
+        try:
+            stage("Downloading project")
+            MOVE.download(oid, tmp, lambda p: stage("Downloading project", p))
+            stage("Uploading to Move")
+            MOVE.upload(tmp, f"{name}.ablbundle")
+        finally:
+            tmp.unlink(missing_ok=True)
+        created = [o["objectId"] for o in MOVE.list_sets() if o["objectId"] not in before]
+        if len(created) != 1:
+            raise AppError("The copy was uploaded but could not be identified")
+        new = created[0]
+        placed, schwung = None, None
+        if ssh_enabled():
+            taken = {v["slot"] for k2, v in ssh_slots().items() if k2 != new and v.get("slot") is not None}
+            want = int(slot) if slot is not None and 0 <= int(slot) < 32 and int(slot) not in taken else \
+                next((i for i in range(32) if i not in taken), None)
+            if want is not None:
+                ssh_set_slots([(new, want)])
+                placed = want
+            try:                                     # ошибка Schwung не должна выглядеть как провал копии
+                data = schwung_fetch(oid)
+                if data:
+                    stage("Copying Schwung state")
+                    schwung = schwung_restore(new, data)
+            except (SshError, AppError, tarfile.TarError) as e:
+                schwung = f"error: {e}"
+        return {"name": name, "id": new, "slot": placed, "schwung": schwung}
+    return fn
 
 
 def job_edit_move(oid, order, pans, replace, key=None):
@@ -3763,9 +3825,14 @@ class Handler(BaseHTTPRequestHandler):
                                                                       f"Pattern generated {cell_name(t, sc)}")))
             if act == "info" and m == "GET":
                 return self.send_json({"info": analyze_set(oid, (q.get("stamp") or [""])[0])})
+            if act == "copy" and m == "POST":
+                b = self.body()
+                slot = b.get("slot")
+                return self.send_json(start_job("copy", job_copy_move(oid, int(slot) if isinstance(slot, int) else None)))
             if act == "pull" and m == "POST":
                 b = self.body()
-                return self.send_json(start_job("pull", job_pull(oid, b.get("audio", True), b.get("group"))))
+                mode = b.get("mode") if b.get("mode") in ("replace", "duplicate") else None
+                return self.send_json(start_job("pull", job_pull(oid, b.get("audio", True), b.get("group"), mode=mode)))
             if act == "edit" and m == "POST":
                 b = self.body()
                 return self.send_json(start_job("edit", job_edit_move(

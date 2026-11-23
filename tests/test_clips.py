@@ -40,6 +40,26 @@ class ClipTests(unittest.TestCase):
         del info["clips"][0][0]["roll"]
         self.assertTrue(app.stale_info(info))
 
+    def test_put_clip_in_empty_project_is_valid_for_move(self):
+        # пустой проект: образца клипа нет — поля всё равно как у настоящих клипов Move (иначе «Unable to load»)
+        s = song()
+        s["tracks"][0]["clipSlots"][0]["clip"] = None
+        s["tracks"][0]["color"] = 7
+        put_clip(s, 0, 1, copy.deepcopy(NOTES), 4.0)
+        c = s["tracks"][0]["clipSlots"][1]["clip"]
+        self.assertEqual(c["color"], 7)
+        self.assertEqual(c["grooveId"], 1)
+        self.assertIsInstance(c["stepEditorScrollPosition"], float)
+        self.assertIs(c["isEnabled"], True)
+        self.assertNotIn(None, [v for k, v in c.items()])
+
+    def test_put_clip_without_track_color(self):
+        s = song()
+        s["tracks"][0]["clipSlots"][0]["clip"] = None
+        s["tracks"][0].pop("color", None)
+        put_clip(s, 0, 1, copy.deepcopy(NOTES), 4.0)
+        self.assertIsInstance(s["tracks"][0]["clipSlots"][1]["clip"]["color"], int)
+
     def test_put_clip_rounds_to_bar(self):
         s = song()
         put_clip(s, 0, 1, copy.deepcopy(NOTES), 5.1)
