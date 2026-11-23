@@ -537,7 +537,8 @@ async function loadConfig(){
     const c = await api("GET","/api/config");
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
     S.uiStamp = c.uiStamp; S.cfg = c; S.autoReport = c.autoReport ?? null;
-    if(c.autoReport === true) api("POST", "/api/config", {lang: LANG}).catch(() => {});   // язык автоотчётов S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
+    if(c.autoReport === true) api("POST", "/api/config", {lang: LANG}).catch(() => {});   // язык автоотчётов
+    S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
     if(c.stale) status("The app was updated on disk. Restart it in Terminal: Ctrl+C, then python3 app.py again", true);
   }catch(e){}
 }

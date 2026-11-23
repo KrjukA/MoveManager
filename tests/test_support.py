@@ -21,3 +21,12 @@ class Support(unittest.TestCase):
 
     def test_github_sponsor_button(self):
         self.assertIn("ko_fi: krjuk", (ROOT / ".github" / "FUNDING.yml").read_text("utf-8"))
+
+
+class ConfigLine(unittest.TestCase):
+    """Сборка 62: строка в loadConfig, ушедшая в комментарий (сборка 60), — номер сборки и формат звука снова ставятся."""
+    def test_build_label_and_audio_format_not_commented_out(self):
+        html = (ROOT / "static" / "index.html").read_text("utf-8")
+        line = next(l for l in html.splitlines() if '$("#build").textContent = c.build' in l)
+        self.assertNotIn("//", line.split('$("#build")')[0])
+        self.assertTrue(line.strip().startswith("S.audioFormat = c.audioFormat"))
