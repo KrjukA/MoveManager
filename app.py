@@ -341,6 +341,43 @@ def remove_clip(song, track, scene):
     return song
 
 
+def groove_id(song):
+    """Номер грува, на который может сослаться новый клип. В пустом проекте у грува ещё нет id — Move даёт его
+    при первом клипе; без него ссылка grooveId — «Unknown id» (загрузка отклоняется, на девайсе «Unable to load»).
+    Проверено на Move (сборка 62). Даём id сами: следующий свободный номер, первому — 1. Грувов нет — None."""
+    grooves = [g for g in (song.get("grooves") or []) if isinstance(g, dict)]
+    if not grooves:
+        return None
+    used = [g["id"] for g in grooves if isinstance(g.get("id"), int) and not isinstance(g.get("id"), bool)]
+    nxt = max(used, default=0) + 1
+    for g in grooves:
+        if not (isinstance(g.get("id"), int) and not isinstance(g.get("id"), bool)):
+            g["id"] = nxt
+            nxt += 1
+    return grooves[0]["id"]
+
+
+def repair_grooves(song):
+    """Чинит ссылки клипов на грувы (проекты, где прежняя сборка оставила grooveId без грува с таким id).
+    Возвращает True, если что-то поменялось. Проекты без списка грувов не трогает."""
+    if "grooves" not in song:
+        return False
+    before = json.dumps(song.get("grooves"), sort_keys=True)
+    gid = groove_id(song)
+    known = {g.get("id") for g in (song.get("grooves") or []) if isinstance(g, dict)}
+    changed = json.dumps(song.get("grooves"), sort_keys=True) != before
+    for t in song.get("tracks") or []:
+        for sl in t.get("clipSlots") or []:
+            c = (sl or {}).get("clip")
+            if c and "grooveId" in c and c["grooveId"] not in known:
+                if gid is None:
+                    c.pop("grooveId")
+                else:
+                    c["grooveId"] = gid
+                changed = True
+    return changed
+
+
 def put_clip(song, track, scene, notes, length):
     """Ставит клип с нотами в ячейку. Длина — вверх до целого такта, не меньше одного такта."""
     tr, slot = _slot(song, track, scene)
@@ -367,6 +404,12 @@ def put_clip(song, track, scene, notes, length):
         color = tr.get("color")
         clip = {"isPlaying": False, "name": "", "color": color if isinstance(color, int) and not isinstance(color, bool) else 1,
                 "isEnabled": True, "grooveId": 1, "stepEditorScrollPosition": 0.0}
+    if "grooves" in song:                           # у настоящих проектов Move список грувов есть всегда
+        gid, known = groove_id(song), {g.get("id") for g in (song.get("grooves") or []) if isinstance(g, dict)}
+        if gid is None:
+            clip.pop("grooveId", None)              # список пуст — ссылаться не на что
+        elif clip.get("grooveId") not in known:
+            clip["grooveId"] = gid
     clip.update({"isPlaying": False, "name": "", "timeSignature": ts,
                  "region": {"start": 0.0, "end": total, "loop": {"start": 0.0, "end": total, "isEnabled": True}},
                  "notes": list(notes), "envelopes": []})
@@ -2079,7 +2122,9 @@ def job_push(folder, slot=None, replace_id=None):
         if replace_id and replace_id not in before:
             raise AppError("The project to replace is no longer on Move")
         with zipfile.ZipFile(bundle) as zi:
-            nested = unwrap_nested_racks(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")))[1]
+            song0 = json.loads(zi.read(find_song_entry(zi)).decode("utf-8"))
+        broken = repair_grooves(copy.deepcopy(song0))      # сборка 62: ссылки на грув без id Move не примет
+        nested = unwrap_nested_racks(song0)[1]
         info, samples = None, None
         if ssh_enabled():                 # сэмплы проекта ищутся в библиотеке Move по содержимому
             stage("Looking for the project's samples on Move")
@@ -2088,10 +2133,13 @@ def job_push(folder, slot=None, replace_id=None):
             except (SshError, AppError, OSError, ValueError, zipfile.BadZipFile) as e:
                 log_error("relink samples", e)     # не нашли — проект едет как есть, Move оставит копии внутри
         stage("Uploading to Move")
-        if nested or info is not None:   # копия для Move; файл на компьютере не меняется
+        if nested or broken or info is not None:   # копия для Move; файл на компьютере не меняется
             fixed = CACHE_DIR / f"push-{uuid.uuid4().hex}.ablbundle"
             try:
-                rebuild_bundle(bundle, fixed, (lambda song: unwrap_nested_racks(song)[0]) if nested else None, info)
+                def fix_song(song):
+                    repair_grooves(song)
+                    return unwrap_nested_racks(song)[0] if nested else song
+                rebuild_bundle(bundle, fixed, fix_song if (nested or broken) else None, info)
                 MOVE.upload(fixed, f"{d.name}.ablbundle")
             finally:
                 fixed.unlink(missing_ok=True)
@@ -2245,6 +2293,12 @@ def job_copy_move(oid, slot=None):
         try:
             stage("Downloading project")
             MOVE.download(oid, tmp, lambda p: stage("Downloading project", p))
+            with zipfile.ZipFile(tmp) as zi:
+                broken = repair_grooves(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")))
+            if broken:                               # проект с битой ссылкой на грув — копия уходит исправленной
+                fixed = tmp_path(".ablbundle")
+                rebuild_bundle(tmp, fixed, lambda song: (repair_grooves(song), song)[1])
+                fixed.replace(tmp)
             stage("Uploading to Move")
             MOVE.upload(tmp, f"{name}.ablbundle")
         finally:

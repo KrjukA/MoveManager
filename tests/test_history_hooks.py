@@ -428,6 +428,22 @@ class CopyOnMove(Hooks):
         self.assertEqual(got, [(NEW, b"state")])
         self.assertEqual(res["schwung"], "copied")
 
+    def test_broken_groove_repaired_in_copy(self):
+        app.MOVE.song["grooves"] = [{"name": "Swing 16ths"}]
+        for t in app.MOVE.song["tracks"]:
+            for sl in t.get("clipSlots") or []:
+                if (sl or {}).get("clip"):
+                    sl["clip"]["grooveId"] = 1
+        sent = []
+        up = app.MOVE.upload
+        def upload(path, filename):
+            with zipfile.ZipFile(path) as z:
+                sent.append(json.loads(z.read("Song.abl")))
+            up(path, filename)
+        app.MOVE.upload = upload
+        app.job_copy_move(OID, None)(lambda *a, **k: None)
+        self.assertEqual(sent[0]["grooves"][0]["id"], 1)
+
     def test_route(self):
         seen = []
         saved = app.job_copy_move

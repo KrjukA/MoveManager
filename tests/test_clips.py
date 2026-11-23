@@ -53,6 +53,56 @@ class ClipTests(unittest.TestCase):
         self.assertIs(c["isEnabled"], True)
         self.assertNotIn(None, [v for k, v in c.items()])
 
+    def test_empty_project_groove_gets_id(self):
+        # проверено на Move: grooveId 1 при груве без id — «Unknown id» / «Unable to load»; с id 1 — принят
+        s = song()
+        s["tracks"][0]["clipSlots"][0]["clip"] = None
+        s["grooves"] = [{"name": "Swing 16ths", "base": "1/16"}]
+        put_clip(s, 0, 1, copy.deepcopy(NOTES), 4.0)
+        self.assertEqual(s["grooves"][0]["id"], 1)
+        self.assertEqual(s["tracks"][0]["clipSlots"][1]["clip"]["grooveId"], 1)
+
+    def test_existing_groove_id_is_used(self):
+        s = song()
+        s["tracks"][0]["clipSlots"][0]["clip"] = None
+        s["grooves"] = [{"id": 5, "name": "Swing 16ths"}]
+        put_clip(s, 0, 1, copy.deepcopy(NOTES), 4.0)
+        self.assertEqual(s["tracks"][0]["clipSlots"][1]["clip"]["grooveId"], 5)
+        self.assertEqual(s["grooves"], [{"id": 5, "name": "Swing 16ths"}])
+
+    def test_no_grooves_no_dangling_reference(self):
+        s = song()
+        s["tracks"][0]["clipSlots"][0]["clip"] = None
+        s["grooves"] = []
+        put_clip(s, 0, 1, copy.deepcopy(NOTES), 4.0)
+        self.assertNotIn("grooveId", s["tracks"][0]["clipSlots"][1]["clip"])
+
+    def test_template_groove_reference_checked(self):
+        # образец ссылается на грув, которого нет в списке, — ссылку чиним
+        s = song()
+        s["tracks"][0]["clipSlots"][0]["clip"]["grooveId"] = 9
+        s["grooves"] = [{"name": "Swing 16ths"}]
+        put_clip(s, 0, 1, copy.deepcopy(NOTES), 4.0)
+        self.assertEqual(s["tracks"][0]["clipSlots"][1]["clip"]["grooveId"], s["grooves"][0]["id"])
+
+    def test_repair_grooves_fixes_dangling_references(self):
+        # проекты, сломанные прежней сборкой: клип ссылается на грув без id
+        s = song()
+        s["grooves"] = [{"name": "Swing 16ths"}]
+        s["tracks"][0]["clipSlots"][0]["clip"]["grooveId"] = 1
+        self.assertTrue(app.repair_grooves(s))
+        self.assertEqual(s["grooves"][0]["id"], 1)
+        self.assertEqual(s["tracks"][0]["clipSlots"][0]["clip"]["grooveId"], 1)
+        self.assertFalse(app.repair_grooves(s))                       # второй раз чинить нечего
+
+    def test_repair_grooves_leaves_healthy_project(self):
+        s = song()
+        s["grooves"] = [{"id": 1, "name": "Swing 16ths"}]
+        s["tracks"][0]["clipSlots"][0]["clip"]["grooveId"] = 1
+        before = copy.deepcopy(s)
+        self.assertFalse(app.repair_grooves(s))
+        self.assertEqual(s, before)
+
     def test_put_clip_without_track_color(self):
         s = song()
         s["tracks"][0]["clipSlots"][0]["clip"] = None
