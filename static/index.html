@@ -893,8 +893,7 @@ function clipKeys(e){
   if(step){
     e.preventDefault();
     const scenes = Math.max(0, ...grid.map(r=>r.length));
-    S.cell = {t: Math.min(grid.length-1, Math.max(0, t+step[0])), s: Math.min(scenes-1, Math.max(0, s+step[1]))};
-    genStop(); renderInspector();
+    pickCell(Math.min(grid.length-1, Math.max(0, t+step[0])), Math.min(scenes-1, Math.max(0, s+step[1])));
     return true;
   }
   return false;
@@ -1214,6 +1213,14 @@ function genPlay(){
   genStop(); const ctx = genCtx(); ctx.resume();
   g.playing = true; GENA.loopStart = ctx.currentTime + 0.08; window.__genSchedulers = 1;
   genScheduleLoop(++GENA.run); renderInspector();
+}
+/* сборка 66: выбор ячейки. Открытый генератор на той же дорожке переезжает в новую ячейку вместе с рисунком,
+   прослушка не прерывается — до «В ячейку». Другая дорожка — другой кит, там генератор закрывается, как раньше. */
+function pickCell(t, s){
+  const g = S.gen, it = selItem();
+  if(g && it && g.key===S.sel.side+":"+it.id && g.t===t) g.s = s;
+  else genStop();
+  S.cell = {t, s}; renderInspector();
 }
 function genStop(){
   GENA.run++; clearTimeout(GENA.timer); GENA.timer = null; window.__genSchedulers = 0;
@@ -2333,7 +2340,7 @@ insp.addEventListener("click", async e => {
   if(t.id==="recCancel") return recStop(false);
   if(t.id==="actRender") return renderLib(id);
   if(t.dataset.tab){ S.tab = t.dataset.tab; return renderInspector(); }
-  const cc = t.closest(".clipcell"); if(cc){ genStop(); S.cell = {t:+cc.dataset.t, s:+cc.dataset.s}; return renderInspector(); }
+  const cc = t.closest(".clipcell"); if(cc) return pickCell(+cc.dataset.t, +cc.dataset.s);
   if(t.dataset.restore) return restoreVersion(t.dataset.restore);
   if(t.id==="loopAdd"){ $("#loopFile").value = ""; return $("#loopFile").click(); }
   if(t.id==="clipSave") return saveClip();
