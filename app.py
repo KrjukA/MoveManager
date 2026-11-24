@@ -898,7 +898,17 @@ class _SshSession:
                 self.p.kill(); self.p.wait(timeout=2)
             except Exception:  # noqa: BLE001
                 pass
-        self.p = None
+            for f in (self.p.stdin, self.p.stdout):        # сборка 65: трубы и файл ошибок не копятся при переподключении
+                try:
+                    f and f.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        if self.err is not None:
+            try:
+                self.err.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self.p = self.err = None
 
     def _start(self, cmd):
         import tempfile
@@ -2916,7 +2926,11 @@ def scan_mine():
     try:
         if not MINE_CACHE:
             MINE_CACHE.update(read_json(_mine_cache_file(), {}))
-        root = lib_root()
+        try:
+            root = lib_root()
+        except LibraryMissing:                   # диск с проектами отключён: кэш не трогаем, генератор работает без них
+            MINE_STATE["ready"] = True
+            return
         dirs = [d for d in sorted(root.iterdir(), key=lambda p: p.name.lower())
                 if d.is_dir() and not d.name.startswith((".", "_"))]
         MINE_STATE.update(total=len(dirs), done=0)
@@ -2950,7 +2964,10 @@ def start_mine_scan():
 def my_patterns():
     """Рисунки из уже разобранных проектов (без чтения бандлов). Жанр — текущая группа проекта."""
     out = []
-    root = lib_root()
+    try:
+        root = lib_root()
+    except LibraryMissing:
+        return out
     for entry in list(MINE_CACHE.values()):
         group = read_json(root / entry["folder"] / "meta.json", {}).get("group") or "My clips"
         for p in entry["pats"]:
@@ -3675,7 +3692,7 @@ def remap_library_source(old, new):
         for d in lib_root().iterdir():
             if d.is_dir() and not d.name.startswith((".", "_")) and read_json(d / "meta.json", {}).get("sourceId") == old:
                 update_meta(d, sourceId=new)
-    except OSError:
+    except (OSError, AppError):
         pass
 
 

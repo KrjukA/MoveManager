@@ -50,8 +50,11 @@ jobs:
         run: |
           "dist/KRJUK Move Manager.app/Contents/MacOS/KRJUK Move Manager" & PID=$!
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8791/ | grep -qi "move manager" && OK=1 && break; sleep 1; done
+          # рисунки генератора (patterns/) попали внутрь: встроенные жанры отдаются
+          curl -sf http://127.0.0.1:8791/api/drumgen/patterns | grep -q '"pocket:0"' && PAT=1
           kill $PID || true
           test "$OK" = 1
+          test "$PAT" = 1
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -60,8 +63,11 @@ jobs:
           $p = Start-Process -FilePath "dist\KRJUK Move Manager.exe" -PassThru
           $ok = $false
           for ($i = 0; $i -lt 30; $i++) { try { if ((Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8791/).Content -match "move manager") { $ok = $true; break } } catch {} ; Start-Sleep 1 }
+          $pat = $false
+          if ($ok) { try { $pat = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8791/api/drumgen/patterns).Content -match '"pocket:0"' } catch {} }
           Stop-Process -Id $p.Id -Force
           if (-not $ok) { throw "the app did not answer" }
+          if (-not $pat) { throw "drum patterns are missing from the build" }
 
       - name: Package (Mac)
         if: runner.os == 'macOS'

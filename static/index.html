@@ -828,7 +828,13 @@ function clipRuleError(it, from, to){
   if(a && b && a!==b) return `A clip from ${KIND_TEXT[a]} can only go to ${KIND_TEXT[a]}`;
   return "";
 }
+/* сборка 65: одна правка клипов за раз — быстрый двойной ⌘V раньше слал вторую, пока первая ещё писалась на Move, и получал ошибку */
 async function clipOp(op, from, to){
+  if(S.clipBusy){ status("Wait: the previous clip change is still being saved", true); return false; }
+  S.clipBusy = true;
+  try{ return await clipOpNow(op, from, to); } finally { S.clipBusy = false; }
+}
+async function clipOpNow(op, from, to){
   const it = selItem(); if(!it) return false; const {side, id} = S.sel;
   if(from.t===to.t && from.s===to.s) return false;
   const bad = clipRuleError(it, from, to); if(bad){ status(bad, true); return false; }
@@ -859,6 +865,7 @@ function clipKeys(e){
   if(S.view!=="projects" || S.tab!=="clips" || !S.sel || !S.cell || S.multi.length>1) return false;   // несколько проектов — сетка скрыта
   const a = document.activeElement;
   if(a && (["INPUT","TEXTAREA","SELECT"].includes(a.tagName) || a.isContentEditable)) return false;
+  if(document.querySelector(".modal.on")) return false;              // открыто окно вопроса: клавиши — ему, не клипам за ним
   const it = selItem(); if(!it?.info?.clips) return false;
   const grid = it.info.clips, {t, s} = S.cell, cl = (grid[t]||[])[s], mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
   const key = S.sel.side+":"+it.id;
@@ -881,6 +888,8 @@ function clipKeys(e){
   if(e.key==="Backspace" || e.key==="Delete"){ e.preventDefault(); if(cl) deleteClip(); return true; }   // клип, а не проект
   if(e.key==="Escape" && S.clipBuf){ e.preventDefault(); S.clipBuf = null; renderInspector(); status(""); return true; }
   const step = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]}[e.key];
+  // сборка 65: стрелки двигают ячейку, только если фокус в правой панели (или нигде) — не на плитке слева, не на кнопках шапки
+  if(step && a && a !== document.body && !a.closest("#insp")) return false;
   if(step){
     e.preventDefault();
     const scenes = Math.max(0, ...grid.map(r=>r.length));
@@ -1430,6 +1439,7 @@ async function deleteSelected(){
 document.addEventListener("keydown", e => {
   if(clipKeys(e)) return;                       // вкладка Clips с выбранной ячейкой: Delete — это клип, не проект
   if(e.key!=="Backspace" && e.key!=="Delete") return;
+  if(document.querySelector(".modal.on")) return;          // сборка 65: при открытом окне вопроса ничего не удаляем
   const a = document.activeElement;
   if(a && (["INPUT","TEXTAREA","SELECT"].includes(a.tagName) || a.isContentEditable)) return;   // в полях клавиша стирает текст
   if(isCmd()){ e.preventDefault(); if((S.picks||[]).length > 1 || S.pick?.type==="folder") ulDeleteMany((S.picks||[]).filter(x => x.kind==="move").map(x => x.path)); else if(S.pick?.kind==="move" && S.pick.type==="file") ulDelete(S.pick.path); return; }
@@ -2234,8 +2244,11 @@ $("#ulFile").onchange = e => ulUpload(e.target.files, pdir(S.uploadPanel||"L"));
   document.addEventListener("dragend", () => { cdrag = null; clearOver(); });
   // файлы из Finder: на панель Move — загрузка в открытую папку
   for(const grid of [$("#moveGrid"), $("#libGrid")]){
-    grid.addEventListener("dragover", e => { if(isCmd() && !cdrag && e.dataTransfer.types.includes("Files") && panelKind(panelOf(grid))==="move"){ e.preventDefault(); } });
-    grid.addEventListener("drop", e => { if(isCmd() && !cdrag && e.dataTransfer.files.length && panelKind(panelOf(grid))==="move"){ e.preventDefault(); e.stopPropagation(); const row = e.target.closest("[data-ulfolder]"); ulUpload(e.dataTransfer.files, row ? row.dataset.ulfolder : pdir(panelOf(grid))); } }, true);
+    grid.addEventListener("dragover", e => { if(isCmd() && !cdrag && e.dataTransfer.types.includes("Files") && panelKind(panelOf(grid))==="move"){ e.preventDefault();
+      // сборка 65: видно, куда лягут файлы — строка папки под курсором, иначе открытая папка
+      const row = e.target.closest("[data-ulfolder]"); clearOver(); (row || grid).classList.add(row ? "over" : "drop"); } });
+    grid.addEventListener("dragleave", e => { if(!cdrag && !grid.contains(e.relatedTarget)) clearOver(); });
+    grid.addEventListener("drop", e => { if(isCmd() && !cdrag && e.dataTransfer.files.length && panelKind(panelOf(grid))==="move"){ e.preventDefault(); e.stopPropagation(); clearOver(); const row = e.target.closest("[data-ulfolder]"); ulUpload(e.dataTransfer.files, row ? row.dataset.ulfolder : pdir(panelOf(grid))); } }, true);
   }
 }
 insp.addEventListener("click", e => {

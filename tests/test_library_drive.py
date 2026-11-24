@@ -92,3 +92,14 @@ class ParallelMetaWrite(RouteBase):
             st, _, b = self.req("GET", "/api/library")
         self.assertEqual(st, 200)
         self.assertTrue(json.loads(b)["items"])
+
+
+class GeneratorWithoutDrive(DriveMissing):
+    def test_drum_patterns_open_without_the_drive(self):
+        app.MINE_CACHE["x"] = {"sig": [1, 1], "folder": "Gone", "pats": [{"id": "mine:x"}]}
+        app.scan_mine()
+        self.assertTrue(app.MINE_STATE["ready"])
+        self.assertIn("x", app.MINE_CACHE, "кэш своих рисунков не стирается, пока диск отключён")
+        st, d = self.js("GET", "/api/drumgen/patterns")
+        self.assertEqual(st, 200)
+        self.assertTrue(any(p["source"] == "pocket" for p in d["patterns"]))

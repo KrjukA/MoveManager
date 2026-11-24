@@ -99,3 +99,16 @@ class Session(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Reconnect(unittest.TestCase):
+    """Сборка 65: при переподключении старый файл ошибок и трубы закрываются, а не копятся."""
+    def test_restart_closes_old_files(self):
+        s = app._SshSession()
+        s._start(["sh", "-c"])
+        old_err, old_p = s.err, s.p
+        s._start(["sh", "-c"])
+        self.assertTrue(old_err.closed)
+        self.assertTrue(old_p.stdin.closed and old_p.stdout.closed)
+        s.close()
+        self.assertIsNone(s.err)

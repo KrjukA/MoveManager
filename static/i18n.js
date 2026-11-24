@@ -55,6 +55,7 @@ exact: {
   "The group is removed; its projects move to Ungrouped": "Группа удаляется, её проекты переходят в «Без группы»", "New group name": "Название новой группы",
   "Looking for Move on the network…": "Ищу Move в сети…", "No projects on Move.": "На Move нет проектов.",
   "Folder is empty. Drag a project here from Move.": "Папка пуста. Перетащите сюда проект с Move.",
+  "Wait: the previous clip change is still being saved": "Подождите: предыдущая правка Clip ещё сохраняется",
   "Connect it and press Refresh, or choose another folder.": "Подключите его и обновите список или выберите другую папку.",
   "move.local or 192.168.1.23": "move.local или 192.168.1.23",
   "A newer version is available — click to install it": "Вышла новая версия — нажмите, чтобы установить",
