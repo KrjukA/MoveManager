@@ -314,6 +314,7 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
 header button#updBtn{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
 header button#updBtn:hover{filter:brightness(1.1);color:var(--on-accent)}
 #updBtn::before{content:"\2191";font-size:12px;line-height:1}
+header button#updBtn[hidden]{display:none}
 #themeBtn::before,#monBtn::before{content:"";width:8px;height:8px;border-radius:50%;flex:none}
 #themeBtn[data-to="light"]::before{background:#ededea;border:1px solid #cfcfca}
 #themeBtn[data-to="dark"]::before{background:#262624;border:1px solid #5a5a55}

@@ -178,3 +178,11 @@ class Install(unittest.TestCase):
         self.assertFalse(res["installed"])
         self.assertTrue((home / "Downloads/KRJUK Move Manager.exe").exists())
         launch.assert_not_called(); ex.assert_not_called(); rev.assert_called_once()
+
+
+class UpdateButton(unittest.TestCase):
+    def test_hidden_button_really_hides(self):
+        # .hb задаёт display:inline-flex и перебивает атрибут hidden — без своего правила кнопка видна всегда
+        html = (Path(app.STATIC_DIR) / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="updBtn" class="hb" hidden', html)
+        self.assertRegex(html, r"header button#updBtn\[hidden\]\{display:none")
