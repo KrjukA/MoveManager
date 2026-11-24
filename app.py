@@ -75,7 +75,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "62"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "63"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.6"       # версия для друзей (релиз v1.6); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -1677,6 +1677,9 @@ def copy_to_pc(mode, rels, folder, stage):
         tmp.mkdir()
         try:
             with tarfile.open(fileobj=io.BytesIO(data)) as t:
+                if win_names():                          # имена с Move вроде «Kit: A?» Windows не создаст
+                    for mem in t.getmembers():
+                        mem.name = "/".join(win_name(x) if x not in ("", ".", "..") else x for x in mem.name.split("/"))
                 if hasattr(tarfile, "data_filter"):
                     t.extractall(tmp, filter="data")
                 else:                                    # старый Python: только обычные файлы и папки внутри tmp
@@ -1684,6 +1687,8 @@ def copy_to_pc(mode, rels, folder, stage):
                         if not (mem.isfile() or mem.isdir()) or mem.name.startswith("/") or ".." in Path(mem.name).parts:
                             raise AppError("Unexpected entry in the copy from Move: " + mem.name)
                     t.extractall(tmp)
+            if win_names():
+                base = win_name(base)
             got = tmp / base
             copied += sum(1 for x in got.rglob("*") if x.is_file()) if got.is_dir() else 1
             got.rename(dest / unique_name(base, set(os.listdir(dest))))
@@ -1809,12 +1814,30 @@ def lib_root():
     return p
 
 
-def safe_name(name):
+WIN_BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+WIN_RESERVED = re.compile(r"(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$", re.I)
+
+
+def win_names():
+    """Сохранять имена файлов по правилам Windows (сборка 63). Отдельная функция — чтобы тесты на Mac могли её подменить."""
+    return sys.platform == "win32"
+
+
+def win_name(name):
+    """Имя, которое Windows примет: : ? * < > | " → «_», без точки и пробела в конце, CON/NUL/COM1… → «_CON»."""
+    name = WIN_BAD.sub("_", name).rstrip(" .")
+    if WIN_RESERVED.match(name):
+        name = "_" + name
+    return name or "_"
+
+
+def safe_name(name, local=True):
+    """local=False — имя для самого Move (переименование сета): правила Windows к нему не применяются."""
     name = re.sub(r'[/\\:\x00-\x1f]', " ", name or "").strip().strip(".")
     name = re.sub(r"\s+", " ", name)
     if not name:
         raise AppError("Empty name")
-    return name[:120]
+    return win_name(name[:120]) if local and win_names() else name[:120]
 
 
 def lib_dir(folder):
@@ -2199,6 +2222,11 @@ def job_update(stage, get=None):
     updater.launch_script(script, plat)
     _exit_soon()
     return {"installed": True, "version": d["latest"]}
+
+
+def running_jobs():
+    """Названия операций, которые ещё идут (сборка 63: Quit в окне запуска спрашивает, если список не пуст)."""
+    return [j["title"] for j in list(JOBS.values()) if j.get("status") == "running"]
 
 
 def start_job(title, fn):
@@ -4203,7 +4231,7 @@ class Handler(BaseHTTPRequestHandler):
                 save_config()
                 return self.send_json({"ok": True})
             if act is None and m == "PATCH":
-                MOVE.rename(oid, safe_name(self.body().get("name")))
+                MOVE.rename(oid, safe_name(self.body().get("name"), local=False))
                 return self.send_json({"ok": True})
             if act is None and m == "DELETE":
                 def fn(stage):                               # задача: скачивание копии бывает долгим

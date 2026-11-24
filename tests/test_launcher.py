@@ -45,3 +45,58 @@ class Launcher(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuitWhileBusy(unittest.TestCase):
+    """Сборка 63: Quit спрашивает, если копирование или другая операция ещё идёт."""
+    def setUp(self):
+        self._jobs = dict(app.JOBS); app.JOBS.clear()
+
+    def tearDown(self):
+        app.JOBS.clear(); app.JOBS.update(self._jobs)
+
+    def test_running_jobs(self):
+        app.JOBS.update({"a": {"title": "copy to computer", "status": "running"},
+                         "b": {"title": "pull", "status": "done"}, "c": {"title": "pull", "status": "error"}})
+        self.assertEqual(app.running_jobs(), ["copy to computer"])
+
+    def test_quit_asks_only_when_busy(self):
+        ask = mock.Mock(return_value=False)
+        self.assertTrue(launcher.may_quit(ask, "en"))
+        ask.assert_not_called()
+        app.JOBS["a"] = {"title": "copy to computer", "status": "running"}
+        self.assertFalse(launcher.may_quit(ask, "en"))
+        title, msg = ask.call_args.args
+        self.assertIn("copy to computer", msg)
+        ask.return_value = True
+        self.assertTrue(launcher.may_quit(ask, "ru"))
+        self.assertIn("Выйти", ask.call_args.args[0] + ask.call_args.args[1])
+
+
+class MacReopen(unittest.TestCase):
+    """Сборка 63: повторный запуск через Finder открывает браузер (событие ReopenApplication)."""
+    def test_reopen_opens_browser(self):
+        try:
+            import tkinter  # noqa: F401
+        except ImportError:
+            self.skipTest("no tkinter")
+        calls = {}
+        real = __import__("tkinter").Tk
+        class FakeTk(real):
+            def createcommand(self, name, fn):
+                calls[name] = fn
+                return self.tk.createcommand(name, fn)
+        try:
+            with mock.patch("tkinter.Tk", FakeTk):
+                w = launcher._window("http://127.0.0.1:1", lambda: None)
+        except Exception as e:  # noqa: BLE001  нет экрана (CI на Linux)
+            self.skipTest(f"no display: {e}")
+        if w is None:
+            self.skipTest("no display")
+        try:
+            with mock.patch.object(launcher.webbrowser, "open") as op:
+                calls["::tk::mac::ReopenApplication"]()
+            op.assert_called_once_with("http://127.0.0.1:1")
+            self.assertIn("::tk::mac::Quit", calls)
+        finally:
+            w.destroy()

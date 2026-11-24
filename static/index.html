@@ -417,6 +417,10 @@ header button#updBtn[hidden]{display:none}
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
+// сборка 63: на Windows вместо Finder — File Explorer (перевод «Проводник» — в i18n.js)
+const IS_WIN = /Win/.test(navigator.platform);
+const fm = s => IS_WIN ? s.replace(/Finder/g, "File Explorer") : s;
+if(IS_WIN) document.querySelectorAll('[title*="Finder"]').forEach(e => e.title = fm(e.title));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 /* своё окно вместо confirm/prompt браузера (сборка 59): без «127.0.0.1:8765» в заголовке, в стиле программы.
    Первый абзац — заголовок, остальное — текст. ask → true/false, askText → строка или null */
@@ -805,6 +809,15 @@ async function moveFailed(side, id, e){
 /* ───────── копия, перенос, обмен клипов (сборка 51) ───────── */
 let clipDrag = null;                                   // {t, s} клипа, который сейчас тащат
 function clipBufHere(side, it){ const b = S.clipBuf; return b && b.key===side+":"+it.id ? b : null; }
+/* сборка 63: буфер помнит клип, а не ячейку — перенос и обмен ведут его за клипом, удаление и замена клипа его очищают */
+function clipBufFollow(op, from, to){
+  const it = selItem(), b = it && S.sel && clipBufHere(S.sel.side, it); if(!b) return;
+  const at = c => c && b.t===c.t && b.s===c.s;
+  if(op==="delete"){ if(at(from)) S.clipBuf = null; return; }
+  if(op==="swap"){ if(at(from)) Object.assign(b, {t:to.t, s:to.s}); else if(at(to)) Object.assign(b, {t:from.t, s:from.s}); return; }
+  if(at(to)) S.clipBuf = null;                         // клип из буфера затёрт другим
+  else if(op==="move" && at(from)) Object.assign(b, {t:to.t, s:to.s});
+}
 const KIND_TEXT = {drums:"a Drum Rack track", melodic:"a melodic track", audio:"an audio track"};
 function clipRuleError(it, from, to){
   const tr = it.info?.tracks || [], a = (tr[from.t]||{}).clipKind, b = (tr[to.t]||{}).clipKind;
@@ -826,6 +839,7 @@ async function clipOp(op, from, to){
     const d = await r.json().catch(()=>({}));
     if(r.status===401){ showAuth(); return false; }
     if(!r.ok) throw new Error(d.message || "Could not change the clips");
+    clipBufFollow(op, from, to);
     genStop();
     const verb = {copy:"Clip copied", move:"Clip moved", swap:"Clips swapped"}[op];
     status(`${verb}…`);
@@ -962,6 +976,7 @@ async function deleteClip(){
     const d = await r.json().catch(()=>({}));
     if(r.status===401){ showAuth(); return; }
     if(!r.ok) throw new Error(d.message || "Could not delete the clip");
+    clipBufFollow("delete", {t, s:sc});
     genStop();
     if(side==="move"){ await runJob("move:"+id, async () => d); const x = S.move.sets.find(z=>z.id===id); if(x){ x.info = null; x.failed = false; } await loadMove(); }
     else await loadLib();
@@ -1250,7 +1265,7 @@ function renderInspectorNow(){
     </div>
     <div class="acts">
       ${side==="move" ? `<button class="primary" id="actPull" title="Copy this project from Move to the computer">To computer →</button><span id="pullBox" class="pullbox"><label class="chk" style="margin:0" title="Move exports the project audio; if the export fails, the longest recording of this set from Recordings is used"><input type="checkbox" id="withAudio" ${S.withAudio?"checked":""}> with audio</label>${S.withAudio?`<select id="fmt" aria-label="Audio format">${["wav","mp3"].map(f=>`<option value="${f}" ${S.audioFormat===f?"selected":""}>${f.toUpperCase()}</option>`).join("")}</select>`:""}</span>` : `<button class="primary" id="actPush" title="Upload this project to a free pad on Move">← To Move</button>`}
-      ${side==="lib" ? `<button id="actReveal" title="Open the project folder in Finder">Show in Finder</button>` : ""}
+      ${side==="lib" ? `<button id="actReveal" title="${fm("Open the project folder in Finder")}">${fm("Show in Finder")}</button>` : ""}
       <button class="danger" id="actDel" title="${side==='move'?'Delete this project from Move; a copy is saved on the computer first':'Move the project to the _Deleted folder'}">Delete</button>
     </div>
     ${soundHTML(side, it)}
@@ -1294,7 +1309,7 @@ async function chooseLibFirst(){
   if(r === null) return false;                                   // Esc — ничего не переносим
   try{
     if(r){
-      status("Choose a folder in the Finder window…");
+      status(fm("Choose a folder in the Finder window…"));
       let c;
       try{ c = await api("POST", "/api/choose-folder"); }
       catch(e){                                                   // нет системного окна выбора — путь вручную
@@ -1846,7 +1861,7 @@ function renderPanel(k){
         return `<div class="ulrow ${on("file",f.rel)}" draggable="true" data-ulfile="${esc(f.rel)}" title="${esc(n ? "Used in: " + f.used.map(u => u.name).join(", ") : "Nothing uses this file")}">
           <span class="ic">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚" : icon}</span><span class="nm">${esc(ulBase(f.rel))}${q?`<div class="sub">${esc(ulDir(f.rel))}</div>`:""}</span>
           <span class="uluse ${n?(proj>1?"many":""):"free"}">${n ? `used in ${n}` : "unused"}</span><span class="sz">${ulSize(f.size)}</span></div>`; }).join("");
-      html = html || `<div class="empty">${q ? "Nothing found." : P.unused ? "No unused files here." : "Empty folder. Drag files here from the other panel or from Finder."}</div>`;
+      html = html || `<div class="empty">${q ? "Nothing found." : P.unused ? "No unused files here." : fm("Empty folder. Drag files here from the other panel or from Finder.")}</div>`;
       if(st.loading) html = `<div class="hint" style="padding:0 14px">Reading…</div>` + html;
     }
   } else {
@@ -1880,7 +1895,7 @@ function cmdIsBusy(){ return !!(S.cmdBusy || S.jobs.userlib || S.jobs.xfer); }
 function cmdBusyNote(){ status("Wait — the previous operation is still running", true); }
 // сборка 62: удаление на компьютере — только в Корзину, оттуда всё можно вернуть
 async function pcTrash(pk){
-  const win = /Win/.test(navigator.platform), n = pcName(pk.path);
+  const win = IS_WIN, n = pcName(pk.path);
   const q = pk.type==="folder" ? (win ? `Move the folder “${n}” to the Recycle Bin?` : `Move the folder “${n}” to the Trash?`)
                                : (win ? `Move the file “${n}” to the Recycle Bin?` : `Move the file “${n}” to the Trash?`);
   if(!await ask(q + "\n\n" + (win ? "You can restore it from the Recycle Bin." : "You can restore it from the Trash."), {ok:"Delete", danger:true})) return;
@@ -1901,7 +1916,7 @@ function cmdInspector(){
     ${f ? `<div class="facts"><span class="fact">${ulSize(f.size)}</span></div>` : ""}
     ${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<canvas class="wave" data-wave="${esc("pc:"+pk.path)}" title="Click to jump to this place" hidden></canvas>` : ""}
     <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay" class="icon" title="Play" aria-label="Play">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
-      ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">Show in Finder</button><button class="danger" id="pcTrash" title="Move to the Trash — you can restore it from there">Delete</button></div>
+      ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">${fm("Show in Finder")}</button><button class="danger" id="pcTrash" title="Move to the Trash — you can restore it from there">Delete</button></div>
     <div class="acts"><button class="primary" id="toMove" ${mvData()?"":"disabled"} title="Copy into the folder open on the left">← Copy to Move</button></div>
     <div class="hint">Copies into ${esc(pdir("L"))} on Move. Nothing on Move is overwritten: a file with the same name gets “2” added.</div>`;
   waveDraw();
@@ -2430,7 +2445,7 @@ $("#refresh").onclick = async () => {
 };
 $("#chooseFolder").onclick = async () => {
   try{
-    status("Choose a folder in the Finder window…");
+    status(fm("Choose a folder in the Finder window…"));
     const r = await api("POST","/api/choose-folder"); status(r.chosen ? "Folder: "+r.library : ""); await loadLib();
   }catch(e){
     const p = await askText("Path to the projects folder:", S.lib.path);

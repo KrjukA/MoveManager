@@ -12,9 +12,11 @@ import app
 
 TEXTS = {
     "en": {"running": "Move Manager is running", "keep": "Keep this window open while you use the manager.",
-           "open": "Open in browser", "quit": "Quit"},
+           "open": "Open in browser", "quit": "Quit",
+           "busy": "An operation is still running: {what}.\n\nIf you quit now, it will be interrupted. Quit anyway?"},
     "ru": {"running": "Move Manager работает", "keep": "Не закрывайте это окно, пока пользуетесь программой.",
-           "open": "Открыть в браузере", "quit": "Выйти"},
+           "open": "Открыть в браузере", "quit": "Выйти",
+           "busy": "Ещё идёт операция: {what}.\n\nЕсли выйти сейчас, она прервётся. Выйти всё равно?"},
 }
 
 
@@ -54,6 +56,15 @@ def port_busy(port):
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+def may_quit(ask, lang):
+    """Можно ли выходить: операций нет — да; есть (копирование, перенос…) — спросить ask(заголовок, текст)."""
+    busy = app.running_jobs()
+    if not busy:
+        return True
+    tx = TEXTS[lang]
+    return bool(ask(tx["quit"], tx["busy"].format(what=", ".join(dict.fromkeys(busy)))))
+
+
 def _window(url, quit_cb):
     """Окно управления на tkinter. Без tkinter или без экрана — None, и программа работает без окна."""
     try:
@@ -70,16 +81,27 @@ def _window(url, quit_cb):
         root._logo = logo                          # иначе картинку соберёт сборщик мусора
     except Exception:  # noqa: BLE001
         pass
-    tx = TEXTS[system_lang()]
+    lang = system_lang()
+    tx = TEXTS[lang]
     tk.Label(root, text=tx["running"], font=("Helvetica", 14, "bold")).pack(padx=24, pady=(10, 2))
     tk.Label(root, text=f"{app.VERSION} · build {app.BUILD} · {url}", fg="#777").pack(padx=24)
     tk.Label(root, text=tx["keep"], fg="#777").pack(padx=24, pady=(6, 0))
     row = tk.Frame(root); row.pack(pady=16)
     tk.Button(row, text=tx["open"], width=18, command=lambda: webbrowser.open(url)).pack(side="left", padx=6)
     def quit_():
+        from tkinter import messagebox
+        if not may_quit(lambda t, m: messagebox.askyesno(t, m, icon="warning", parent=root), lang):
+            return
         quit_cb(); root.destroy()
     tk.Button(row, text=tx["quit"], width=10, command=quit_).pack(side="left", padx=6)
     root.protocol("WM_DELETE_WINDOW", quit_)
+    try:                                           # Mac: ⌘Q и «Завершить» в Dock — тоже через проверку
+        root.createcommand("::tk::mac::Quit", quit_)
+        # повторный двойной щелчок по приложению в Finder (или по значку в Dock): macOS не запускает вторую копию,
+        # а шлёт работающей «открыть снова» — открываем браузер (сборка 63)
+        root.createcommand("::tk::mac::ReopenApplication", lambda *a: webbrowser.open(url))
+    except Exception:  # noqa: BLE001
+        pass
     return root
 
 

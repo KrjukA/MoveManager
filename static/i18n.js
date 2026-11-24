@@ -280,6 +280,10 @@ exact: {
   "Something inside is used — delete works only when nothing inside is used": "Что-то внутри используется — удалить можно, только если внутри ничего не используется",
   // правая панель: кнопки и заголовки (17.11: переводить; кроме .mid и Generate)
   "on computer": "на компьютере", "on Move": "на Move", "To computer →": "На компьютер →", "← To Move": "← На Move", "with audio": "со звуком",
+  "Show in File Explorer": "Показать в Проводнике", "Open the project folder in File Explorer": "Открыть папку проекта в Проводнике",
+  "Choose a folder in the File Explorer window…": "Выберите папку в окне Проводника…",
+  "Upload files from this computer into this folder on Move (or drag them here from File Explorer)": "Загрузить файлы с этого компьютера в эту папку на Move (или перетащите их сюда из Проводника)",
+  "Empty folder. Drag files here from the other panel or from File Explorer.": "Пустая папка. Перетащите сюда файлы из другой панели или из Проводника.",
   "Show in Finder": "Показать в Finder", "Move to the Trash — you can restore it from there": "Переместить в Корзину — оттуда можно вернуть",
   "This folder can't be deleted here": "Эту папку здесь удалить нельзя", "Couldn't move it to the Recycle Bin": "Не удалось переместить в Корзину", "Delete": "Удалить", "Group": "Группа", "Description": "Описание", "Notes": "Заметки",
   "Tracks": "Треки", "Clips": "Клипы", "History": "История", "Apply changes": "Применить", "Reset": "Сбросить", "Restore": "Вернуть", "Add loops…": "Добавить Loops…", "Export from Move": "Экспорт с Move", "Record input": "Записать вход",
