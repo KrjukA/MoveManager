@@ -556,7 +556,9 @@ async function loadConfig(){
     if(S.uiStamp && c.uiStamp!==S.uiStamp){ location.reload(); return; }
     S.uiStamp = c.uiStamp; S.cfg = c; S.autoReport = c.autoReport ?? null;
     if(c.autoReport === true) api("POST", "/api/config", {lang: LANG}).catch(() => {});   // язык автоотчётов
-    S.audioFormat = c.audioFormat || "mp3"; $("#build").textContent = c.build ? "build "+c.build : "";
+    S.audioFormat = c.audioFormat || "mp3"; { const b = $("#build");                          // сборка 64: у собранной программы — версия, из исходников — номер сборки
+      b.textContent = c.frozen ? "v"+c.version : c.build ? "build "+c.build : "";
+      b.title = c.frozen ? "App version" : "App build number"; }
     if(c.stale) status("The app was updated on disk. Restart it in Terminal: Ctrl+C, then python3 app.py again", true);
   }catch(e){}
 }

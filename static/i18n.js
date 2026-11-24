@@ -46,7 +46,7 @@ exact: {
   // шапка и разделы
   "Switch theme": "Сменить тему",
   "Show all inputs… (allow access)": "Показать все входы… (разрешить доступ)", "Input to monitor (e.g. Move over USB)": "Какой вход слушать (например, Move по USB)",
-  "Listen to the chosen input through the computer — independent of recording": "Слушать выбранный вход через компьютер — независимо от записи", "App build number": "Номер сборки программы",
+  "Listen to the chosen input through the computer — independent of recording": "Слушать выбранный вход через компьютер — независимо от записи", "App build number": "Номер сборки программы", "App version": "Версия программы",
   "Something went wrong? Send a short report to the developer": "Что-то не так? Отправьте короткий отчёт разработчику",
   // колонки
   "Add .ablbundle projects that are already on this computer": "Добавить проекты .ablbundle, которые уже есть на этом компьютере",

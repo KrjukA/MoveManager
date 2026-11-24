@@ -75,7 +75,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "63"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "64"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.7"       # версия для друзей (релиз v1.7); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -3970,7 +3970,7 @@ class Handler(BaseHTTPRequestHandler):
         if seg == ["config"] and m == "GET":
             return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),
-                                   "build": BUILD, "autoReport": CFG.get("auto_report"),
+                                   "build": BUILD, "version": VERSION, "frozen": FROZEN, "autoReport": CFG.get("auto_report"),
                                    "uiStamp": int((STATIC_DIR / "index.html").stat().st_mtime),
                                    "stale": _code_changed()})
         if seg == ["config"] and m == "POST":

@@ -84,7 +84,7 @@ def _window(url, quit_cb):
     lang = system_lang()
     tx = TEXTS[lang]
     tk.Label(root, text=tx["running"], font=("Helvetica", 14, "bold")).pack(padx=24, pady=(10, 2))
-    tk.Label(root, text=f"{app.VERSION} · build {app.BUILD} · {url}", fg="#777").pack(padx=24)
+    tk.Label(root, text=f"v{app.VERSION} · {url}", fg="#777").pack(padx=24)
     tk.Label(root, text=tx["keep"], fg="#777").pack(padx=24, pady=(6, 0))
     row = tk.Frame(root); row.pack(pady=16)
     tk.Button(row, text=tx["open"], width=18, command=lambda: webbrowser.open(url)).pack(side="left", padx=6)

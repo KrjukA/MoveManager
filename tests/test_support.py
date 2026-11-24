@@ -27,6 +27,8 @@ class ConfigLine(unittest.TestCase):
     """Сборка 62: строка в loadConfig, ушедшая в комментарий (сборка 60), — номер сборки и формат звука снова ставятся."""
     def test_build_label_and_audio_format_not_commented_out(self):
         html = (ROOT / "static" / "index.html").read_text("utf-8")
-        line = next(l for l in html.splitlines() if '$("#build").textContent = c.build' in l)
-        self.assertNotIn("//", line.split('$("#build")')[0])
+        line = next(l for l in html.splitlines() if 'S.audioFormat = c.audioFormat' in l)   # сборка 64: подпись — версия или сборка
         self.assertTrue(line.strip().startswith("S.audioFormat = c.audioFormat"))
+        self.assertNotIn("//", line.split('$("#build")')[0])
+        label = next(l for l in html.splitlines() if 'b.textContent = c.frozen' in l)
+        self.assertFalse(label.strip().startswith("//"))
