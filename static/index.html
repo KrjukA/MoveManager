@@ -33,6 +33,12 @@ button:disabled:hover{border-color:var(--line2)}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
 button.primary:hover{border-color:var(--text)}
 button.danger:hover{border-color:var(--bad);color:var(--bad)}
+/* сборка 62: есть несохранённые изменения проекта — «Применить» яркая, чтобы было видно, что её надо нажать */
+button.applyon{background:#ff9f1a;border-color:#ff9f1a;color:#111;font-weight:600;box-shadow:0 0 0 3px rgba(255,159,26,.28);animation:applypulse 1.6s ease-in-out 3}
+button.applyon:hover{background:#ffb347;border-color:#ffb347}
+@keyframes applypulse{50%{box-shadow:0 0 0 6px rgba(255,159,26,.12)}}
+.unsaved{align-self:center;font-size:11px;color:#ff9f1a}
+.unsaved[hidden]{display:none}
 button.ghost{background:none;border-color:transparent;color:var(--dim)}
 button.ghost:hover{color:var(--text);border-color:var(--line2)}
 input[type=text],input[type=number],textarea,select{background:var(--field);border:1px solid var(--line);border-radius:4px;padding:6px 8px;width:100%;color:var(--text)}
@@ -97,7 +103,7 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 330
 .bar i{display:block;height:100%;background:var(--accent);width:30%}
 .bar.ind i{animation:ind 1.1s infinite linear}
 @keyframes ind{from{margin-left:-30%}to{margin-left:100%}}
-@media (prefers-reduced-motion:reduce){.bar.ind i{animation:none;width:100%;opacity:.5}}
+@media (prefers-reduced-motion:reduce){.bar.ind i{animation:none;width:100%;opacity:.5}button.applyon{animation:none}}
 .shim{color:var(--faint);font-size:11px}
 
 /* Move: сетка пэдов в тёмном корпусе прибора */
@@ -1246,7 +1252,7 @@ function renderInspectorNow(){
     ${side==="move" ? `<div class="hint">Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.</div>` : ""}
     <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks" title="Tracks: instruments, presets, pan and order">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips" title="Clips: copy, move, load .mid, generate drums">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history" title="Saved versions of the project — restore an earlier one">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
-    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" title="Write the track changes into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button></div>
+    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" class="${changed?"applyon":""}" title="Save the changes (tracks, key, tempo) into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button><span class="unsaved" id="unsaved" ${changed?"":"hidden"}>Not saved yet</span></div>
       ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <h3>Camelot</h3>
     ${wheelSVG(cam)}
@@ -2254,7 +2260,7 @@ insp.addEventListener("toggle", e => { if(e.target.id==="genMore" && S.gen) S.ge
 insp.addEventListener("input", e => {
   if(e.target.type==="range" && e.target.id && e.target.id.startsWith("gen")){ const v = e.target.nextElementSibling; if(v) v.textContent = e.target.value; return; }
   if(e.target.id==="keyTempo"){ const it = selItem(); if(!it) return;
-    S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat(e.target.value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#resetOrder").hidden = !ch; return; }
+    S.key = {rootNote:+$("#keyRoot").value, scale:$("#keyScale").value, tempo:parseFloat(e.target.value)}; const ch = isChanged(it); $("#applyOrder").disabled = !ch; $("#applyOrder").classList.toggle("applyon", ch); $("#resetOrder").hidden = !ch; $("#unsaved").hidden = !ch; return; }
   if(e.target.id!=="descIn" && e.target.id!=="notesIn") return;
   const it = selItem(); if(!it) return; const {side,id} = S.sel;
   const field = e.target.id==="descIn" ? "description" : "notes"; it[field] = e.target.value;

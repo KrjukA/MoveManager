@@ -6,6 +6,8 @@
 "use strict";
 const I18N = {ru: {
 exact: {
+  "Save the changes (tracks, key, tempo) into the project": "Записать изменения (треки, тональность, темп) в проект",
+  "Not saved yet": "Ещё не сохранено",
   "Copying on Move": "Копирую на Move",
   "The copy was uploaded but could not be identified": "Копия загружена, но её не удалось опознать",
   "Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.":
