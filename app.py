@@ -1473,6 +1473,74 @@ def fs_move(src, dst_dir):
     return target.as_posix()
 
 
+TRASH_DIR = Path.home() / ".local/share/Trash/files"      # Linux; Mac и Windows — средствами системы
+
+
+def _mac_trash(p):
+    """Mac: NSFileManager trashItemAtURL — как «Переместить в Корзину» в Finder (в ~/.Trash напрямую писать нельзя)."""
+    import ctypes
+    import ctypes.util
+    objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+    ctypes.cdll.LoadLibrary(ctypes.util.find_library("Foundation"))
+    objc.objc_getClass.restype = objc.sel_registerName.restype = ctypes.c_void_p
+    objc.objc_getClass.argtypes = objc.sel_registerName.argtypes = [ctypes.c_char_p]
+    V, C, S = ctypes.c_void_p, objc.objc_getClass, objc.sel_registerName
+    send = lambda res, *at: ctypes.cast(objc.objc_msgSend, ctypes.CFUNCTYPE(res, V, V, *at))
+    pool = send(V)(C(b"NSAutoreleasePool"), S(b"new"))
+    try:
+        s = send(V, ctypes.c_char_p)(C(b"NSString"), S(b"stringWithUTF8String:"), str(p).encode("utf-8"))
+        url = send(V, V)(C(b"NSURL"), S(b"fileURLWithPath:"), s)
+        fm = send(V)(C(b"NSFileManager"), S(b"defaultManager"))
+        err = V()
+        if not send(ctypes.c_bool, V, V, ctypes.POINTER(V))(fm, S(b"trashItemAtURL:resultingItemURL:error:"), url, None, ctypes.byref(err)):
+            why = ""
+            if err.value:
+                d = send(V)(err.value, S(b"localizedDescription"))
+                why = (send(ctypes.c_char_p)(d, S(b"UTF8String")) or b"").decode("utf-8", "replace")
+            raise AppError("Couldn't move it to the Trash" + (": " + why if why else ""))
+    finally:
+        send(None)(pool, S(b"drain"))
+
+
+def _send_to_trash(p):
+    """Mac и Windows — в Корзину средствами системы; Linux — в папку Корзины (одинаковые имена не затираются)."""
+    if sys.platform == "darwin":
+        return _mac_trash(p)
+    if sys.platform.startswith("win"):
+        import ctypes
+        from ctypes import wintypes
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR),
+                        ("pTo", wintypes.LPCWSTR), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                        ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+        # FO_DELETE = 3; FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
+        op = SHFILEOPSTRUCTW(None, 3, str(p) + "\0\0", None, 0x40 | 0x10 | 0x04 | 0x400, False, None, None)
+        if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) or op.fAnyOperationsAborted:
+            raise AppError("Couldn't move it to the Recycle Bin")
+        return
+    TRASH_DIR.mkdir(parents=True, exist_ok=True)
+    taken = {x.name for x in TRASH_DIR.iterdir()}
+    shutil.move(str(p), str(TRASH_DIR / unique_name(p.name, taken)))
+
+
+def fs_trash(path):
+    """Удаление на компьютере — только в Корзину. Корни, домашняя папка и папка проектов не удаляются."""
+    p = fs_check(path)
+    protected = [Path.home().resolve()]
+    try:
+        protected.append(lib_root().resolve())
+    except (AppError, OSError, KeyError):
+        pass
+    if _fs_root_of(p) or any(p == x or p in x.parents for x in protected):
+        raise AppError("This folder can't be deleted here")
+    try:
+        _send_to_trash(p)
+    except OSError as e:
+        raise AppError(f"Couldn't move it to the Trash: {e.strerror or e}")
+    return {"ok": True}
+
+
 def copy_to_move(mode, paths, folder, stage):
     """Копирует файлы и папки с компьютера в папку библиотеки на Move. Существующее не трогается: занятые имена получают « 2»."""
     folder = _check_rel(mode, folder)
@@ -3554,6 +3622,8 @@ class Handler(BaseHTTPRequestHandler):
         if seg == ["fs", "rename"] and m == "POST":
             b = self.body()
             return self.send_json({"path": fs_rename(b.get("path") or "", b.get("name") or "")})
+        if seg == ["fs", "trash"] and m == "POST":
+            return self.send_json(fs_trash(self.body().get("path") or ""))
         if seg == ["fs", "reveal"] and m == "POST":
             p = fs_check(self.body().get("path") or "")
             reveal(p, select=True)

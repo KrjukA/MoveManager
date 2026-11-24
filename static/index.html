@@ -190,6 +190,8 @@ aside h3:first-child{margin-top:0}
 .facts .keyb{background:var(--text)!important;color:var(--bg);font-size:13px;padding:2px 6px}
 .fact{font:500 13px var(--mono);border:1px solid var(--line2);border-radius:3px;padding:1px 6px;color:var(--text);text-transform:uppercase}
 .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+canvas.wave{display:block;width:100%;height:56px;margin-top:10px;border:1px solid var(--line);border-radius:4px;background:var(--field);cursor:pointer}
+canvas.wave[hidden]{display:none}
 .keyrow{display:flex;gap:6px}
 .keyrow select,.keyrow input{height:26px;padding:2px 6px!important;font-size:12px}
 .keyrow select{padding-right:22px!important;background-position:right 7px center}
@@ -1423,6 +1425,7 @@ async function pushMany(){
 async function applyOrder(){
   const it = selItem(); if(!it) return;
   const {side,id} = S.sel, order = S.order, pans = S.pans;
+  if(S.keyEdit){ S.keyEdit = false; renderInspector(); }     // сборка 62: «Apply changes» заодно закрывает правку тональности, как «Done»
   try{
     if(side==="move"){
       if(S.replace && !padMode() && !await ask(`Replace “${it.name}” on Move with the edited version?\n\nThe old version is deleted and the project lands on another pad.`, {ok:"Replace", danger:true})) return;
@@ -1870,6 +1873,16 @@ function cmdBusyText(){
 }
 function cmdIsBusy(){ return !!(S.cmdBusy || S.jobs.userlib || S.jobs.xfer); }
 function cmdBusyNote(){ status("Wait — the previous operation is still running", true); }
+// сборка 62: удаление на компьютере — только в Корзину, оттуда всё можно вернуть
+async function pcTrash(pk){
+  const win = /Win/.test(navigator.platform), n = pcName(pk.path);
+  const q = pk.type==="folder" ? (win ? `Move the folder “${n}” to the Recycle Bin?` : `Move the folder “${n}” to the Trash?`)
+                               : (win ? `Move the file “${n}” to the Recycle Bin?` : `Move the file “${n}” to the Trash?`);
+  if(!await ask(q + "\n\n" + (win ? "You can restore it from the Recycle Bin." : "You can restore it from the Trash."), {ok:"Delete", danger:true})) return;
+  if((S.playing||"").startsWith("pc:"+pk.path)) stopLibAudio();
+  try{ await api("POST", "/api/fs/trash", {path:pk.path}); pickNone(); await pcLoad(S.P.R.pc.data.path); status((win ? "Moved to the Recycle Bin: " : "Moved to the Trash: ") + n); }
+  catch(e){ fail(e); }
+}
 function cmdInspector(){
   const pk = S.pick, el = $("#insp");
   if(!pk){ el.dataset.key = ""; el.innerHTML = `<h3>${cmode()==="presets"?"Presets":"Samples"}</h3><div class="hint">Left: the library on Move. Right: a folder on this computer, or a second view of Move.<br><br>Drag between computer and Move to copy. Drag inside Move to move — every project, preset and Schwung slot that uses the file is updated, and you see the list first. Inside the computer, dragging moves the file.<br><br>Click a file or folder for details, double-click to open or play.</div>`; return; }
@@ -1881,10 +1894,12 @@ function cmdInspector(){
     <div class="where">on this computer · ${esc(pcDir(pk.path))}</div>
     <div class="ulname" data-ren="1" title="Double-click to rename">${pk.type==="folder"?"▸ ":""}${esc(pcName(pk.path))}</div>
     ${f ? `<div class="facts"><span class="fact">${ulSize(f.size)}</span></div>` : ""}
+    ${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<canvas class="wave" data-wave="${esc("pc:"+pk.path)}" title="Click to jump to this place" hidden></canvas>` : ""}
     <div class="acts">${pk.type==="file" && UL_AUDIO.test(pk.path) ? `<button id="pcPlay" class="icon" title="Play" aria-label="Play">${S.playing==="pc:"+pk.path && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
-      ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">Show in Finder</button></div>
+      ${pk.type==="folder" ? `<button id="pcOpen">Open</button>` : ""}<button id="pcReveal">Show in Finder</button><button class="danger" id="pcTrash" title="Move to the Trash — you can restore it from there">Delete</button></div>
     <div class="acts"><button class="primary" id="toMove" ${mvData()?"":"disabled"} title="Copy into the folder open on the left">← Copy to Move</button></div>
     <div class="hint">Copies into ${esc(pdir("L"))} on Move. Nothing on Move is overwritten: a file with the same name gets “2” added.</div>`;
+  waveDraw();
 }
 function multiInspector(){
   const el = $("#insp"), list = S.picks, kind = list[0].kind, key = "multi:" + list.map(x => x.path).join("|");
@@ -1915,6 +1930,7 @@ function ulInspector(rel){
     <div class="where">on Move · ${esc(here)}</div>
     <div class="ulname" data-ren="1" title="Double-click to rename">${esc(base)}</div>
     <div class="facts"><span class="fact">${ulSize(f.size)}</span></div>
+    ${UL_AUDIO.test(base) ? `<canvas class="wave" data-wave="${esc("ul:"+f.rel)}" title="Click to jump to this place" hidden></canvas>` : ""}
     <div class="acts">${UL_AUDIO.test(base) ? `<button id="ulPlay" class="icon" title="Play" aria-label="Play">${S.playing==="ul:"+f.rel && !audio.paused ? "❚❚" : "▶"}</button>` : ""}
       ${pcOk ? `<button class="primary" id="toPc" title="Copy into the folder open on the right">Copy to computer →</button>` : ""}
       <button class="danger" id="ulDelete" ${f.used.length?"disabled":""} title="${f.used.length?"Used — delete is only for files nothing uses":"Delete this file from Move"}">Delete</button></div>
@@ -1923,6 +1939,7 @@ function ulInspector(rel){
     ${sugg.length ? `<h3>Name by project</h3>${projects.length>1 ? `<div class="hint">Used in ${projects.length} projects — pick the one this sample belongs to.</div>` : ""}
       <div class="sugg">${sugg.map(x => `<button data-ulsuggest="${esc(x.name)}" title="From project “${esc(x.project)}”">${esc(x.name)}</button>`).join("")}</div>` : ""}
     <div class="hint">Double-click the name to rename. To move, drag the file onto a folder. Either way every project, preset and Schwung slot that uses it is updated; you see the list first, and a backup of each changed file is saved on the computer.</div>`;
+  waveDraw();
 }
 function ulFolderInspector(rel){
   const el = $("#insp"), d = mvData(), key = "ulf:"+rel;
@@ -2039,9 +2056,76 @@ async function transfer(srcs, dest){
     }
   }catch(e){ fail(e); }
 }
-function playLib(kind, path){
-  playSrc(kind+":"+path, kind==="ul" ? `/api/userlib/file?mode=${cmode()}&rel=${encodeURIComponent(path)}` : `/api/fs/file?path=${encodeURIComponent(path)}`, kind==="ul" ? ulBase(path) : pcName(path));
+// сборка 62: при прослушивании сэмпла файл скачивается один раз — из него и звук, и волна
+const WAVE = {key:null, url:null, peaks:null, loading:false};
+const WAVE_MAX = 150*1024*1024;        // волну для больших файлов не считаем, звук играет как раньше
+async function playLib(kind, path){
+  const key = kind+":"+path, title = kind==="ul" ? ulBase(path) : pcName(path);
+  const src = kind==="ul" ? `/api/userlib/file?mode=${cmode()}&rel=${encodeURIComponent(path)}` : `/api/fs/file?path=${encodeURIComponent(path)}`;
+  if(S.playing===key || (WAVE.key===key && WAVE.url)) return playSrc(key, WAVE.key===key && WAVE.url || src, title);
+  if(WAVE.key===key && WAVE.loading) return;
+  if(WAVE.url) URL.revokeObjectURL(WAVE.url);
+  Object.assign(WAVE, {key, url:null, peaks:null, loading:true}); waveDraw();
+  if(S.playing){ audio.pause(); }
+  try{
+    const r = await fetch(src);
+    if(!r.ok) throw new Error("Error " + r.status);
+    const buf = await r.arrayBuffer();
+    if(WAVE.key!==key) return;
+    WAVE.url = URL.createObjectURL(new Blob([buf], {type: r.headers.get("Content-Type") || ""}));
+    WAVE.loading = false;
+    playSrc(key, WAVE.url, title);
+    if(buf.byteLength <= WAVE_MAX) wavePeaks(key, buf);
+  }catch(e){
+    if(WAVE.key===key){ WAVE.key = null; WAVE.loading = false; }
+    playSrc(key, src, title);
+  }
 }
+async function wavePeaks(key, buf){
+  try{
+    const ab = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(buf);
+    const N = 480, peaks = new Float32Array(N), len = ab.length, step = Math.max(1, Math.floor(len / N));
+    for(let c = 0; c < ab.numberOfChannels; c++){
+      const d = ab.getChannelData(c);
+      for(let i = 0; i < N; i++){
+        let m = 0; const a = Math.floor(i * len / N), b = Math.min(len, a + step);
+        for(let j = a; j < b; j += 4){ const v = d[j] < 0 ? -d[j] : d[j]; if(v > m) m = v; }
+        if(m > peaks[i]) peaks[i] = m;
+      }
+    }
+    let top = 0; for(const v of peaks) if(v > top) top = v;
+    if(top > 0) for(let i = 0; i < N; i++) peaks[i] /= top;
+    if(WAVE.key===key){ WAVE.peaks = peaks; waveDraw(); }
+  }catch(e){ /* формат, который браузер не разбирает (например AIFF в Chrome), — без волны */ }
+}
+function waveDraw(){
+  const cv = document.querySelector("#insp canvas.wave"); if(!cv) return;
+  const mine = cv.dataset.wave===WAVE.key && (WAVE.peaks || WAVE.loading);
+  cv.hidden = !mine; if(!mine) return;
+  const dpr = window.devicePixelRatio || 1, w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+  if(!w || !h) return;
+  if(cv.width!==w || cv.height!==h){ cv.width = w; cv.height = h; }
+  const g = cv.getContext("2d"), css = getComputedStyle(document.documentElement);
+  const acc = css.getPropertyValue("--accent").trim() || "#2f5d86", dim = css.getPropertyValue("--line2").trim() || "#999";
+  g.clearRect(0, 0, w, h);
+  const mid = h / 2;
+  if(!WAVE.peaks){ g.fillStyle = dim; g.fillRect(0, mid - dpr/2, w, dpr); return; }
+  const P = WAVE.peaks, here = S.playing===WAVE.key && audio.duration ? audio.currentTime / audio.duration : 0, bw = w / P.length;
+  for(let i = 0; i < P.length; i++){
+    const y = Math.max(dpr, P[i] * (mid - 2*dpr));
+    g.fillStyle = (i + 0.5) / P.length <= here ? acc : dim;
+    g.fillRect(i * bw, mid - y, Math.max(dpr, bw - dpr * 0.5), y * 2);
+  }
+  if(here > 0){ g.fillStyle = acc; g.fillRect(Math.round(here * w) - dpr/2, 0, dpr, h); }
+}
+(function waveLoop(){ if(!audio.paused && WAVE.peaks && S.playing===WAVE.key) waveDraw(); requestAnimationFrame(waveLoop); })();
+document.addEventListener("click", e => {
+  const cv = e.target.closest?.("#insp canvas.wave"); if(!cv || cv.dataset.wave!==WAVE.key || !WAVE.url) return;
+  const r = cv.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  if(S.playing!==WAVE.key){ S.playing = WAVE.key; audio.src = WAVE.url; }
+  const go = () => { audio.currentTime = x * audio.duration; audio.play().catch(() => {}); waveDraw(); };
+  audio.readyState >= 1 ? go() : audio.addEventListener("loadedmetadata", go, {once:true});
+});
 /* шапка разделов и панели инструментов */
 document.querySelectorAll("header [data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
 document.querySelectorAll("[data-rkind]").forEach(b => b.onclick = () => setRKind(b.dataset.rkind));
@@ -2140,6 +2224,7 @@ insp.addEventListener("click", e => {
     if(t.id==="pcPlay") return playLib("pc", pk.path);
     if(t.id==="pcOpen"){ pickNone(); return pcLoad(pk.path); }
     if(t.id==="pcReveal") return api("POST", "/api/fs/reveal", {path:pk.path}).catch(fail);
+    if(t.id==="pcTrash") return pcTrash(pk);
     return;
   }
   if(pk.type==="folder"){

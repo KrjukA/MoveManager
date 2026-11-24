@@ -268,11 +268,13 @@ exact: {
   "Something inside is used — delete works only when nothing inside is used": "Что-то внутри используется — удалить можно, только если внутри ничего не используется",
   // правая панель: кнопки и заголовки (17.11: переводить; кроме .mid и Generate)
   "on computer": "на компьютере", "on Move": "на Move", "To computer →": "На компьютер →", "← To Move": "← На Move", "with audio": "со звуком",
-  "Show in Finder": "Показать в Finder", "Delete": "Удалить", "Group": "Группа", "Description": "Описание", "Notes": "Заметки",
+  "Show in Finder": "Показать в Finder", "Move to the Trash — you can restore it from there": "Переместить в Корзину — оттуда можно вернуть",
+  "This folder can't be deleted here": "Эту папку здесь удалить нельзя", "Couldn't move it to the Recycle Bin": "Не удалось переместить в Корзину", "Delete": "Удалить", "Group": "Группа", "Description": "Описание", "Notes": "Заметки",
   "Tracks": "Треки", "Clips": "Клипы", "History": "История", "Apply changes": "Применить", "Reset": "Сбросить", "Restore": "Вернуть", "Add loops…": "Добавить Loops…", "Export from Move": "Экспорт с Move", "Record input": "Записать вход",
   "● Record input": "● Записать вход", "File…": "Файл…", "Sound": "Звук", "Project": "Проект", "Open": "Открыть",
   "Copy to computer →": "Копировать на компьютер →", "← Copy to Move": "← Копировать на Move", "Copy to Move": "Копировать на Move",
   "Name by project": "Назвать по проекту", "Used in": "Где используется", "Root": "Тоника", "Scale": "Лад", "Done": "Готово",
+  "Click to jump to this place": "Нажмите, чтобы перейти к этому месту",
   "Tempo, bpm": "Темп, bpm", "▶ Play": "▶ Слушать", "❚❚ Pause": "❚❚ Пауза", "Play": "Слушать", "No audio": "Без звука",
   "● Start recording": "● Начать запись", "Start recording": "Начать запись", "■ Stop and save": "■ Остановить и сохранить", "Stop": "Стоп",
   "Cancel": "Отмена", "Clear selection": "Снять выделение", "Choose…": "Выбрать…", "Change…": "Изменить…",
@@ -283,6 +285,10 @@ exact: {
   "Empty folder. Drag files here from the other panel or from Finder.": "Пустая папка. Перетащите сюда файлы из другой панели или из Finder."
 },
 patterns: [
+  [/^Move the (folder|file) “(.+)” to the (Trash|Recycle Bin)\?$/, (m, k, n, b) => `Переместить ${k==="folder" ? "папку" : "файл"} «${n}» в Корзину?`],
+  [/^You can restore it from the (Trash|Recycle Bin)\.$/, "Вернуть можно будет из Корзины."],
+  [/^Moved to the (Trash|Recycle Bin): (.+)$/, "Перемещено в Корзину: $2"],
+  [/^Couldn't move it to the Trash: (.+)$/s, "Не удалось переместить в Корзину: $1"],
   [/^Copying "(.+)" on Move…$/, "Копирую «$1» на Move…"],
   [/^Copy created on Move: "(.+)"( · pad (\d+))?(.*)$/s, (m, n, p, pad, rest) => `Копия создана на Move: «${n}»${pad ? " · Pad " + pad : ""}${rest}`],
   [/^“(.+)” is already on the computer\.$/, "«$1» уже есть на компьютере."],
