@@ -56,6 +56,7 @@ exact: {
   "Looking for Move on the network…": "Ищу Move в сети…", "No projects on Move.": "На Move нет проектов.",
   "Folder is empty. Drag a project here from Move.": "Папка пуста. Перетащите сюда проект с Move.",
   "move.local or 192.168.1.23": "move.local или 192.168.1.23",
+  "Connect to Move at this address": "Подключиться к Move по этому адресу", "Connect": "Подключить",
   "If Move isn't found by name, type its IP address — on Move: Settings → Wi-Fi.": "Если Move не находится по имени, введите его IP-адрес — на Move: Settings → Wi-Fi.",
   "On a Mac also allow the app in System Settings → Privacy & Security → Local Network.": "На Mac также разрешите программе доступ: Системные настройки → Конфиденциальность и безопасность → Локальная сеть.",
   "Move is unreachable. Check that it is on and on the same Wi-Fi network.": "Move недоступен. Проверьте, что он включён и в той же сети Wi-Fi.",

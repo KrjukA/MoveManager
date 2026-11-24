@@ -7,6 +7,7 @@
 import copy
 import hashlib
 import io
+import ipaddress
 import json
 import math
 import mimetypes
@@ -530,7 +531,30 @@ def edit_bundle(src, dst, order=None, pans=None, key=None):
 
 # ───────────────────────── клиент Move ─────────────────────────
 
+# Сборка 62: имя move.local (Bonjour) иногда перестаёт находиться, хотя Move в сети и отвечает по IP.
+# Последний IP запоминается (CFG["move_ip"]); если имя не находится — программа сама идёт по IP, и SSH туда же.
+MOVE_ALT = {"url": None}
+
+
+def _is_ip(host):
+    try:
+        ipaddress.ip_address(host or "")
+        return True
+    except ValueError:
+        return False
+
+
+def move_base():
+    return (MOVE_ALT["url"] or CFG["move_url"]).rstrip("/")
+
+
+def move_host():
+    return urlparse(move_base()).hostname or "move.local"
+
+
 class Move:
+    _ip_checked = False
+
     def __init__(self):
         self.s = requests.Session()
         for k, v in (CFG.get("cookies") or {}).items():
@@ -538,18 +562,63 @@ class Move:
 
     @property
     def base(self):
-        return CFG["move_url"].rstrip("/")
+        return move_base()
+
+    def _send(self, base, method, path, timeout, headers, kw):
+        if os.environ.get("MOVE_MANAGER_TESTING") and urlparse(base).hostname not in ("127.0.0.1", "localhost"):
+            raise MoveOffline("Tests must not reach a real Move over HTTP")
+        h = dict(headers)
+        h.setdefault("Referer", base + "/data/Sets")
+        return self.s.request(method, urljoin(base + "/", path.lstrip("/")), timeout=timeout, headers=h, **kw)
+
+    def _other_base(self):
+        """Куда ещё можно постучаться: по имени не нашли — последний IP; IP не отвечает — снова имя."""
+        named = CFG["move_url"].rstrip("/")
+        if MOVE_ALT["url"]:
+            return named
+        ip = CFG.get("move_ip")
+        if ip and _is_ip(ip) and not _is_ip(urlparse(named).hostname):
+            return "http://" + ip
+        return None
+
+    def _note_ip(self, base):
+        host = urlparse(base).hostname
+        if Move._ip_checked or _is_ip(host):
+            return
+        Move._ip_checked = True
+        try:
+            ip = socket.gethostbyname(host)
+        except OSError:
+            return
+        if _is_ip(ip) and CFG.get("move_ip") != ip:
+            CFG["move_ip"] = ip
+            save_config()
 
     def req(self, method, path, timeout=20, **kw):
-        if os.environ.get("MOVE_MANAGER_TESTING") and urlparse(self.base).hostname not in ("127.0.0.1", "localhost"):
-            raise MoveOffline("Tests must not reach a real Move over HTTP")
         headers = kw.pop("headers", {})
-        headers.setdefault("Referer", self.base + "/data/Sets")
+        base = self.base
         try:
-            r = self.s.request(method, urljoin(self.base + "/", path.lstrip("/")),
-                               timeout=timeout, headers=headers, **kw)
+            r = self._send(base, method, path, timeout, headers, kw)
         except requests.exceptions.RequestException as e:
-            raise MoveOffline(str(e))
+            other = self._other_base()
+            body = kw.get("data")
+            if (not other or not isinstance(e, requests.exceptions.ConnectionError)
+                    or "files" in kw or not (body is None or isinstance(body, (bytes, str, dict)))):
+                raise MoveOffline(str(e))
+            jar = requests.utils.dict_from_cookiejar(self.s.cookies)   # куки входа — без привязки к имени хоста
+            self.s.cookies.clear()
+            for k, v in jar.items():
+                self.s.cookies.set(k, v)
+            try:
+                r = self._send(other, method, path, timeout, headers, kw)
+            except requests.exceptions.RequestException:
+                raise MoveOffline(str(e))
+            MOVE_ALT["url"] = None if other == CFG["move_url"].rstrip("/") else other
+            Move._ip_checked = False
+            ssh_session_reset()                              # SSH было к старому адресу
+            base = other
+        if not MOVE_ALT["url"]:
+            self._note_ip(base)
         if r.status_code == 401:
             raise AuthRequired()
         return r
@@ -795,7 +864,7 @@ def ssh_safe_path(path, platform=None, short=None):
 def ssh_cmd():
     if os.environ.get("MOVE_SSH_CMD"):
         return shlex.split(os.environ["MOVE_SSH_CMD"])
-    host = urlparse(CFG["move_url"]).hostname or "move.local"
+    host = move_host()
     known = Path(ssh_safe_path(KNOWN_HOSTS)).as_posix()
     return ["ssh", "-i", ssh_safe_path(SSH_KEY), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
             "-o", "StrictHostKeyChecking=accept-new", "-o", f'UserKnownHostsFile="{known}"',
@@ -3812,6 +3881,7 @@ class Handler(BaseHTTPRequestHandler):
                 new_url = normalize_move_url(b["moveUrl"])
                 if new_url != CFG.get("move_url"):
                     CFG["move_url"] = new_url
+                    MOVE_ALT["url"] = None
                     ssh_session_reset()                  # SSH-соединение было к старому адресу
             if "midiFolder" in b:
                 mf = str(b["midiFolder"] or "").strip()

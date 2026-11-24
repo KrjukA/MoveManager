@@ -634,9 +634,9 @@ function renderPane(side){
     if(side==="move" && S.move.state!=="ok"){
       html = S.move.state==="loading" ? `<div class="empty">Looking for Move on the network…</div>`
         : S.move.state==="auth" ? `<div class="empty">${esc(S.move.msg)}<br><button id="retry">Enter code</button></div>`
-        : `<div class="empty">${esc(S.move.msg)}<br><button id="retry">Retry</button>
+        : `<div class="empty">${esc(S.move.msg)}
             <div class="addr"><input id="moveAddr" type="text" spellcheck="false" placeholder="move.local or 192.168.1.23" value="${esc(S.moveAddrDraft ?? (S.cfg?.moveUrl||"").replace(/^https?:\/\//,""))}" aria-label="Move address">
-            <button id="moveAddrSet">Connect</button></div>
+            <button id="moveAddrSet" class="primary" title="Connect to Move at this address">Connect</button></div>
             <div class="hint">If Move isn't found by name, type its IP address — on Move: Settings → Wi-Fi.${/Mac/.test(navigator.platform) ? " On a Mac also allow the app in System Settings → Privacy & Security → Local Network." : ""}</div></div>`;
     } else if(!list.length){
       html = `<div class="empty">${side==="move" ? "No projects on Move." : "Folder is empty. Drag a project here from Move."}</div>`;
