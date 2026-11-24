@@ -387,7 +387,9 @@ class CopyOnMove(Hooks):
         super().setUp()
         self.slots = {OID: {"slot": 3}}
         self.placed = []
-        self._sv = {k: getattr(app, k) for k in ("ssh_enabled", "ssh_slots", "ssh_set_slots", "schwung_fetch", "schwung_restore")}
+        self._sv = {k: getattr(app, k) for k in ("ssh_enabled", "ssh_slots", "ssh_set_slots", "schwung_fetch", "schwung_restore",
+                                                 "copy_on_device")}
+        app.copy_on_device = lambda oid, name: False          # по умолчанию — запасной путь через компьютер
         app.ssh_enabled = lambda: True
         app.ssh_slots = lambda: dict(self.slots)
         app.ssh_set_slots = lambda pairs: self.placed.extend(pairs)
@@ -443,6 +445,50 @@ class CopyOnMove(Hooks):
         app.MOVE.upload = upload
         app.job_copy_move(OID, None)(lambda *a, **k: None)
         self.assertEqual(sent[0]["grooves"][0]["id"], 1)
+
+    def test_fast_copy_on_device(self):
+        # сборка 62: при SSH Move копирует проект сам у себя — без скачивания на компьютер
+        calls = []
+        def on_device(oid, name):
+            calls.append((oid, name))
+            app.MOVE.sets.append({"objectId": NEW, "name": name, "lastModifiedDateTime": "2"})
+            return True
+        app.copy_on_device = on_device
+        res = app.job_copy_move(OID, 7)(lambda *a, **k: None)
+        self.assertEqual(calls, [(OID, "Live Set copy")])
+        self.assertEqual(app.MOVE.uploaded, [])                    # через компьютер ничего не шло
+        self.assertEqual(res["id"], NEW)
+        self.assertEqual(self.placed, [(NEW, 7)])
+
+    def test_device_refusal_falls_back_with_repair(self):
+        app.copy_on_device = lambda oid, name: False
+        app.job_copy_move(OID, None)(lambda *a, **k: None)
+        self.assertEqual(app.MOVE.uploaded, ["Live Set copy.ablbundle"])
+
+    def test_no_ssh_uses_computer_path(self):
+        app.ssh_enabled = lambda: False
+        app.copy_on_device = lambda oid, name: (_ for _ in ()).throw(AssertionError("no SSH — no device copy"))
+        app.job_copy_move(OID, None)(lambda *a, **k: None)
+        self.assertEqual(app.MOVE.uploaded, ["Live Set copy.ablbundle"])
+
+    def test_device_script_keeps_cookie_off_command_line(self):
+        seen = {}
+        saved_run, saved_cfg = app.ssh_run, dict(app.CFG.get("cookies") or {})
+        app.CFG["cookies"] = {"Ableton-Challenge-Response-Token": "SECRET-TOKEN-123"}
+        def fake(script, data=None, timeout=40):
+            seen["script"], seen["data"] = script, data
+            return b'{"status": 200, "body": "{\\"files\\":[{\\"error\\":null}]}"}'
+        app.ssh_run = fake
+        try:
+            self.assertTrue(app.__dict__["copy_on_device"] is not None)
+            ok = self._sv["copy_on_device"](OID, "Live Set copy")
+        finally:
+            app.ssh_run, app.CFG["cookies"] = saved_run, saved_cfg
+        self.assertTrue(ok)
+        self.assertNotIn("\n", seen["script"])                      # перенос в команде ломал python3 -c на Move
+        self.assertNotIn("SECRET-TOKEN-123", seen["script"])
+        self.assertIn(b"SECRET-TOKEN-123", seen["data"])
+        self.assertIn(OID.encode(), seen["data"])
 
     def test_route(self):
         seen = []

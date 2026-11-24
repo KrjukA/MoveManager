@@ -6,6 +6,7 @@
 "use strict";
 const I18N = {ru: {
 exact: {
+  "Copying on Move": "Копирую на Move",
   "The copy was uploaded but could not be identified": "Копия загружена, но её не удалось опознать",
   "Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.":
     "Перетащите пэд на другой пэд, чтобы перенести проект; удерживайте ⌥ Option (Alt на Windows), когда отпускаете, — получится копия.",

@@ -2306,10 +2306,71 @@ def rebuild_bundle(src, dst, song_fn=None, info=None):
                 zo.writestr("BundleInfo.json", json.dumps(info, indent=2, ensure_ascii=False))
 
 
+# Скрипт для Move (сборка 62): Move сам скачивает проект через свой API и тут же загружает копию — без передачи
+# по Wi-Fi. Проверено на Move: проект 33 МБ — 3,3 с вместо ~14 с. Скрипт и куки входа идут через stdin ssh,
+# а не в командной строке. Копирование папки сета мимо API Move не видит (у него свой список проектов).
+DEVICE_COPY_PY = r"""
+import json, sys, urllib.request, urllib.error, uuid
+a = json.loads(A)   # first stdin line: parameters (split off by the python3 -c wrapper)
+B = "http://127.0.0.1"; H = {"Referer": B + "/data/Sets", "Cookie": a["cookie"]}
+try:
+    data = urllib.request.urlopen(urllib.request.Request(B + "/api/v1/data/Sets/" + a["oid"], headers=H), timeout=300).read()
+    bd = uuid.uuid4().hex
+    name = a["name"].replace('"', "'")
+    head = ("--" + bd + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + name + ".ablbundle\"\r\n"
+            "Content-Type: application/zip\r\n\r\n").encode("utf-8")
+    body = head + data + ("\r\n--" + bd + "--\r\n").encode()
+    hdr = dict(H); hdr["Content-Type"] = "multipart/form-data; boundary=" + bd
+    r = urllib.request.urlopen(urllib.request.Request(B + "/api/v1/data/Sets", data=body, headers=hdr, method="POST"), timeout=600)
+    print(json.dumps({"status": r.status, "body": r.read()[:2000].decode("utf-8", "replace")}))
+except urllib.error.HTTPError as e:
+    print(json.dumps({"status": e.code, "body": e.read()[:2000].decode("utf-8", "replace")}))
+except Exception as e:
+    print(json.dumps({"status": 0, "body": str(e)[:300]}))
+"""
+
+
+def copy_on_device(oid, name):
+    """Копия сета силами самого Move. True — Move принял копию; False — не вышло (тогда копируем через компьютер)."""
+    cookie = "; ".join(f"{k}={v}" for k, v in (CFG.get("cookies") or {}).items())
+    args = json.dumps({"oid": oid, "name": name, "cookie": cookie})
+    script = "python3 -c " + shlex.quote("import sys; A, S = sys.stdin.read().split(chr(10), 1); exec(S)")   # без переносов
+    try:
+        out = ssh_run(script, data=(args + "\n" + DEVICE_COPY_PY).encode("utf-8"), timeout=900)
+        res = json.loads(out.decode("utf-8", "replace").strip().splitlines()[-1])
+    except (SshError, ValueError, IndexError):
+        return False
+    if res.get("status") not in (200, 201, 204):
+        return False
+    try:
+        return not any(f.get("error") for f in (json.loads(res.get("body") or "{}").get("files") or []))
+    except ValueError:
+        return True
+
+
+def copy_via_computer(oid, name, stage):
+    """Запасной путь копии: скачать бандл на компьютер, починить ссылки на грув, загрузить на Move."""
+    tmp = tmp_path(".ablbundle")
+    try:
+        stage("Downloading project")
+        MOVE.download(oid, tmp, lambda p: stage("Downloading project", p))
+        with zipfile.ZipFile(tmp) as zi:
+            broken = repair_grooves(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")))
+        if broken:                                   # проект с битой ссылкой на грув — копия уходит исправленной
+            fixed = tmp_path(".ablbundle")
+            rebuild_bundle(tmp, fixed, lambda song: (repair_grooves(song), song)[1])
+            fixed.replace(tmp)
+        stage("Uploading to Move")
+        MOVE.upload(tmp, f"{name}.ablbundle")
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def job_copy_move(oid, slot=None):
-    """Сборка 62: копия проекта прямо на Move (перетаскивание с ⌥/Alt). Скачиваем бандл и загружаем под именем
-    «Имя copy» — Move сам ссылается на сэмплы в своей библиотеке (BundleInfo.json), лишних копий нет.
-    Новый сет — на выбранный пэд, если он свободен, иначе на первый свободный; состояние Schwung копируется."""
+    """Сборка 62: копия проекта прямо на Move (перетаскивание с ⌥/Alt) под именем «Имя copy».
+    С SSH Move копирует сам у себя (copy_on_device, быстро); иначе — или если Move отказал — через компьютер
+    (copy_via_computer). Сэмплы не дублируются. Новый сет — на выбранный пэд, если он свободен, иначе на первый
+    свободный; состояние Schwung копируется."""
     def fn(stage):
         obj = set_by_id(oid)
         names = {o["name"] for o in MOVE.list_sets()}
@@ -2317,20 +2378,9 @@ def job_copy_move(oid, slot=None):
         while name in names:
             name, k = f"{base} copy {k}", k + 1
         before = {o["objectId"] for o in MOVE.list_sets()}
-        tmp = tmp_path(".ablbundle")
-        try:
-            stage("Downloading project")
-            MOVE.download(oid, tmp, lambda p: stage("Downloading project", p))
-            with zipfile.ZipFile(tmp) as zi:
-                broken = repair_grooves(json.loads(zi.read(find_song_entry(zi)).decode("utf-8")))
-            if broken:                               # проект с битой ссылкой на грув — копия уходит исправленной
-                fixed = tmp_path(".ablbundle")
-                rebuild_bundle(tmp, fixed, lambda song: (repair_grooves(song), song)[1])
-                fixed.replace(tmp)
-            stage("Uploading to Move")
-            MOVE.upload(tmp, f"{name}.ablbundle")
-        finally:
-            tmp.unlink(missing_ok=True)
+        stage("Copying on Move")
+        if not (ssh_enabled() and copy_on_device(oid, name)):
+            copy_via_computer(oid, name, stage)      # без SSH или Move отказал — через компьютер, с починкой
         created = [o["objectId"] for o in MOVE.list_sets() if o["objectId"] not in before]
         if len(created) != 1:
             raise AppError("The copy was uploaded but could not be identified")
