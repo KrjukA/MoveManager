@@ -311,6 +311,9 @@ footer .status.err{color:var(--bad)}
 header button.hb{height:26px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:none;border-color:var(--line2);color:var(--dim)}
 header button.hb:hover{color:var(--text);border-color:var(--text)}
 #supportBtn::before{content:"\2665";color:#e5484d;font-size:12px;line-height:1}
+header button#updBtn{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
+header button#updBtn:hover{filter:brightness(1.1);color:var(--on-accent)}
+#updBtn::before{content:"\2191";font-size:12px;line-height:1}
 #themeBtn::before,#monBtn::before{content:"";width:8px;height:8px;border-radius:50%;flex:none}
 #themeBtn[data-to="light"]::before{background:#ededea;border:1px solid #cfcfca}
 #themeBtn[data-to="dark"]::before{background:#262624;border:1px solid #5a5a55}
@@ -345,6 +348,7 @@ header button.hb:hover{color:var(--text);border-color:var(--text)}
   <nav class="views" role="tablist" aria-label="Section"><button class="ghost on" data-view="projects" title="Projects on Move and on this computer">Projects</button><button class="ghost" data-view="samples" title="Samples: Move library and folders on this computer">Samples</button><button class="ghost" data-view="presets" title="Track presets: Move library and folders on this computer">Presets</button></nav>
   <div class="spacer"></div>
   <span class="monbar" id="monBar"><select id="monInput" aria-label="Monitor input" title="Input to monitor (e.g. Move over USB)"><option value="">Default input</option></select><button id="monBtn" class="hb" title="Listen to the chosen input through the computer — independent of recording">Monitor</button><canvas id="monMeter" width="90" height="8" aria-label="Monitor level" hidden></canvas></span>
+  <button id="updBtn" class="hb" hidden title="A newer version is available — click to install it">Update</button>
   <button id="langBtn" class="hb" title="Language">RU</button>
   <button id="themeBtn" class="hb" title="Switch theme">Dark</button>
   <button id="supportBtn" class="hb" title="Support the project — opens Ko-fi in your browser">Support</button>
@@ -2452,6 +2456,37 @@ async function setMoveAddr(v){                         // адрес Move вру
 /* ───────── отчёт о проблеме (сборка 55) ───────── */
 const SUPPORT_URL = "https://ko-fi.com/krjuk";       // донат разработчику (сборка 62): страница Ko-fi в браузере
 $("#supportBtn").onclick = () => window.open(SUPPORT_URL, "_blank", "noopener");
+/* ───────── новая версия на GitHub (сборка 62) ───────── */
+async function checkUpdate(){
+  let u; try{ u = await api("GET", "/api/update"); }catch(e){ return; }
+  S.update = u;
+  const b = $("#updBtn"); b.hidden = !u.newer; if(!u.newer) return;
+  b.textContent = `Update to ${u.latest}`;
+  let shown = null; try{ shown = sessionStorage.getItem("updShown"); }catch(e){}
+  if(shown !== u.latest) offerUpdate();             // само предлагает один раз за запуск; потом — кнопка в шапке
+}
+async function offerUpdate(){
+  const u = S.update; if(!u?.newer) return;
+  try{ sessionStorage.setItem("updShown", u.latest); }catch(e){}
+  const how = u.canInstall ? "The app downloads it, closes, replaces itself and opens again. Your projects and settings stay."
+    : u.frozen ? "The app downloads it to your Downloads folder. Then quit this app and replace it with the new one."
+    : "You run the app from source code. The download page opens in your browser.";
+  const ok = await ask(`Version ${u.latest} is available\n\nYou have ${u.current}.\n\n${how}` + (u.notes ? `\n\nWhat's new:\n${u.notes}` : ""),
+                       {ok: u.canInstall ? "Install" : u.frozen ? "Download" : "Open page", no: "Later"});
+  if(ok) installUpdate();
+}
+async function installUpdate(){
+  const u = S.update;
+  if(!u.frozen || !u.asset){ window.open(u.page, "_blank", "noopener"); return; }
+  const tick = setInterval(() => { const j = S.jobs.update; if(j && j.stage && j.stage!=="…") status(j.stage + (typeof j.progress==="number" ? ` ${Math.round(j.progress*100)}%` : "")); }, 300);
+  try{
+    const r = await runJob("update", () => api("POST", "/api/update/install"));
+    clearInterval(tick); status("");
+    if(r.installed) await ask(`Version ${r.version} is installed\n\nThe app is restarting. The new version opens in a new browser tab — you can close this one.`, {ok:"OK", cancel:false});
+    else await ask(`Version ${r.version} is downloaded\n\nIt is in your Downloads folder. Quit this app and replace it with the new one.`, {ok:"OK", cancel:false});
+  }catch(e){ clearInterval(tick); fail(e); }
+}
+$("#updBtn").onclick = offerUpdate;
 $("#reportBtn").onclick = () => { $("#reportErr").textContent = ""; $("#autoRep").checked = S.autoReport === true; $("#report").classList.add("on"); $("#reportText").focus(); };
 $("#reportCancel").onclick = () => $("#report").classList.remove("on");
 $("#autoRep").onchange = e => setAutoReport(e.target.checked);
@@ -2501,7 +2536,7 @@ $("#authOk").onclick = submitCode;
 $("#authCancel").onclick = hideAuth;
 $("#code").addEventListener("keydown", e => { if(e.key==="Enter") submitCode(); if(e.key==="Escape") hideAuth(); });
 
-render(); loadConfig(); loadLib(); loadMove();
+render(); loadConfig(); loadLib(); loadMove(); setTimeout(checkUpdate, 2500);
 try{ localStorage.removeItem("mm-view"); }catch(e){}   // программа всегда открывается в Projects
 try{   // …кроме перезагрузки после смены языка
   const back = JSON.parse(sessionStorage.getItem("mm-return") || "null"); sessionStorage.removeItem("mm-return");

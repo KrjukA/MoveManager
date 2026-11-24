@@ -36,6 +36,7 @@ import drumgen
 import history
 import loops
 import report_labels
+import updater
 import samplelib
 from midi import MidiError, _no_overlaps, clip_to_midi, midi_to_notes
 
@@ -2121,6 +2122,85 @@ def log_line(name, text):
         pass
 
 
+# ───────────────────────── новая версия (сборка 62) ─────────────────────────
+
+UPDATE = {"at": 0.0, "data": None}
+
+
+def update_info(force=False, get=None):
+    """Есть ли на GitHub версия новее. Раз в 6 часов; без интернета — тихо «нет»."""
+    if get is None and os.environ.get("MOVE_MANAGER_TESTING"):
+        return {"current": VERSION, "newer": False, "offline": True}
+    if not force and UPDATE["data"] and time.time() - UPDATE["at"] < 6 * 3600:
+        d = UPDATE["data"]
+    else:
+        arm = updater.is_arm_mac() if sys.platform == "darwin" else False
+        try:
+            d = updater.fetch_latest(get or requests.get, VERSION, updater.asset_suffix(sys.platform, arm))
+        except (requests.exceptions.RequestException, OSError, ValueError, KeyError, TypeError):
+            return {"current": VERSION, "newer": False, "offline": True}
+        UPDATE.update(at=time.time(), data=d)
+    return dict(d, frozen=FROZEN,
+                canInstall=bool(d.get("asset") and updater.install_target(FROZEN, sys.platform, sys.executable)))
+
+
+def _exit_soon(delay=2.5):
+    """Выход после установки: странице хватает времени узнать, что всё готово, потом скрипт меняет приложение."""
+    threading.Timer(delay, lambda: os._exit(0)).start()
+
+
+def job_update(stage, get=None):
+    d = update_info(get=get)
+    if not d.get("newer") or not d.get("asset"):
+        raise AppError("There is no newer version for this computer")
+    a, plat = d["asset"], sys.platform
+    work = CACHE_DIR / "update"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    zp = work / a["name"]
+    stage(f"Downloading {d['latest']}…", 0.0)
+    try:
+        r = (get or requests.get)(a["url"], stream=True, timeout=(10, 120), headers={"User-Agent": f"KRJUK-Move-Manager/{VERSION}"})
+        if r.status_code != 200:
+            raise AppError(f"Download failed ({r.status_code})")
+        total, done = int(r.headers.get("content-length") or a.get("size") or 0), 0
+        with open(zp, "wb") as f:
+            for chunk in r.iter_content(1 << 16):
+                f.write(chunk)
+                done += len(chunk)
+                if total:
+                    stage(f"Downloading {d['latest']}…", min(done / total, 1.0))
+    except requests.exceptions.RequestException as e:
+        raise AppError(f"Download failed: {e}")
+    if a.get("size") and zp.stat().st_size != a["size"]:
+        raise AppError("The download is incomplete — try again")
+    stage("Unpacking…", None)
+    try:
+        new = updater.find_new(updater.unpack(zp, work / "new", plat), plat)
+    except (OSError, zipfile.BadZipFile) as e:
+        raise AppError(f"Couldn't unpack the update: {e}")
+    if not new:
+        raise AppError("The update archive has no app inside")
+    target = updater.install_target(FROZEN, plat, sys.executable)
+    if target is None:                        # заменить нельзя — новая версия ждёт в «Загрузках»
+        dl = Path.home() / "Downloads"
+        dl.mkdir(exist_ok=True)
+        dst = dl / unique_name(new.name, {x.name for x in dl.iterdir()})
+        shutil.move(str(new), str(dst))
+        reveal(dst, select=True)
+        return {"installed": False, "path": dst.as_posix(), "version": d["latest"]}
+    script = work / ("install.bat" if plat.startswith("win") else "KRJUK-update-install.sh")
+    try:
+        text = (updater.win_script if plat.startswith("win") else updater.mac_script)(target, new, os.getpid())
+    except ValueError:
+        raise AppError("The app's folder name has symbols the installer can't handle — install it by hand")
+    script.write_text(text, encoding="utf-8", newline="\r\n" if plat.startswith("win") else "\n")
+    save_config()
+    updater.launch_script(script, plat)
+    _exit_soon()
+    return {"installed": True, "version": d["latest"]}
+
+
 def start_job(title, fn):
     jid = uuid.uuid4().hex[:10]
     job = {"id": jid, "title": title, "status": "running", "stage": "", "progress": None, "error": None,
@@ -3855,6 +3935,10 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:  # noqa: BLE001  — открыть папку не вышло: файл всё равно сохранён
                     pass
             return self.send_json({"ok": True, "sent": False, "path": str(path), "name": path.name})
+        if seg == ["update"] and m == "GET":
+            return self.send_json(update_info(force=bool(q.get("force"))))
+        if seg == ["update", "install"] and m == "POST":
+            return self.send_json(start_job("update", job_update))
         if seg == ["config"] and m == "GET":
             return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),
