@@ -7,7 +7,7 @@
 <meta name="description" content="A free app for managing Ableton Move projects, samples and presets from your computer. Mac and Windows.">
 <meta property="og:title" content="KRJUK Move Manager">
 <meta property="og:description" content="Manage Ableton Move projects, samples and presets from your computer. Free, for Mac and Windows.">
-<meta property="og:image" content="https://krjuka.github.io/MoveManager/assets/projects.jpg">
+<meta property="og:image" content="https://krjuka.github.io/MoveManager/assets/projects-dark.jpg">
 <meta property="og:type" content="website">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="assets/favicon.png">
@@ -30,7 +30,7 @@
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
 a{color:inherit}
-img{max-width:100%;display:block}
+img{max-width:100%;height:auto;display:block}
 .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
 .mono{font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--dim)}
 
@@ -86,7 +86,9 @@ h2{font-size:clamp(26px,3.4vw,36px);letter-spacing:-.015em;margin:10px 0 14px;fo
 .shot img{border-radius:10px;border:1px solid var(--line2);box-shadow:0 20px 60px rgba(0,0,0,.3);cursor:zoom-in}
 .shot figcaption{margin-top:12px;color:var(--dim);font-size:14px}
 .shot figcaption b{color:var(--text);font-weight:500}
-.shots .pair{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.trio{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;max-width:900px;margin:0 auto;width:100%}
+.stack{display:grid;gap:28px}
+.shot.tall img{width:100%}
 
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .card{background:var(--bg);padding:24px 24px 26px}
@@ -128,7 +130,7 @@ footer a{color:var(--dim)}
 @media (max-width:900px){
   .hero .wrap{grid-template-columns:1fr;gap:40px}
   .grid,.dl,.steps{grid-template-columns:1fr}
-  .shots .pair{grid-template-columns:1fr}
+  .trio{grid-template-columns:1fr;max-width:440px}
   nav{display:none}
   .support{flex-direction:column;align-items:flex-start}
 }
@@ -177,14 +179,20 @@ footer a{color:var(--dim)}
       <h2>Looks like Move. Works like a desk.</h2>
       <p class="sub">Move on the left — the same 4×8 pads, in the same order. Your computer on the right. Drag between them.</p>
       <div class="shots">
-        <figure class="shot"><img src="assets/projects.jpg" alt="Projects on Move as a pad grid and on the computer in groups" loading="lazy" width="1800" height="1013">
-          <figcaption><b>Projects.</b> Pads like on Move, groups on the computer, key, scale and tempo for every project.</figcaption></figure>
-        <div class="pair">
-          <figure class="shot"><img src="assets/clips-generator.jpg" alt="Clips of a project and the drum generator" loading="lazy" width="1800" height="1013">
-            <figcaption><b>Clips and drums.</b> Edit a project's clips and generate drum patterns by genre.</figcaption></figure>
-          <figure class="shot"><img src="assets/samples.jpg" alt="Samples on Move and on the computer" loading="lazy" width="1800" height="1013">
-            <figcaption><b>Samples.</b> Move's library next to a folder on your computer — copy, move, preview.</figcaption></figure>
+        <figure class="shot"><img data-shot="projects" alt="Projects on Move as a 4×8 pad grid, projects on the computer in groups, and the selected project's details" width="2400" height="1410">
+          <figcaption><b>Projects.</b> Pads in the same order as on Move, groups on the computer, key, scale and tempo for every project.</figcaption></figure>
+        <div class="trio">
+          <figure class="shot tall"><img data-shot="clips" alt="Clips of a project and the drum generator with a pattern preview" width="636" height="1206" loading="lazy">
+            <figcaption><b>Clips and drums.</b> Copy, move and swap clips. The generator makes a drum pattern in the style you pick — listen, then put it in a cell.</figcaption></figure>
+          <div class="stack">
+            <figure class="shot"><img data-shot="camelot" alt="Camelot wheel with compatible keys lit up" width="636" height="558" loading="lazy">
+              <figcaption><b>Camelot wheel.</b> Compatible keys light up — plan the order of a live set.</figcaption></figure>
+            <figure class="shot"><img data-shot="wave" alt="A drum loop with its waveform and the projects that use it" width="636" height="498" loading="lazy">
+              <figcaption><b>Preview.</b> Waveform while a sample plays, and every project that uses it.</figcaption></figure>
+          </div>
         </div>
+        <figure class="shot"><img data-shot="samples" alt="Samples on Move next to a folder on the computer" width="2400" height="1410" loading="lazy">
+          <figcaption><b>Samples.</b> Move's library next to a folder on your computer. Copy both ways; rename and move on Move — projects keep their sound.</figcaption></figure>
       </div>
     </div>
   </section>
@@ -278,7 +286,8 @@ footer a{color:var(--dim)}
   const root = document.documentElement, b = document.getElementById("theme");
   let t = null; try{ t = localStorage.getItem("theme"); }catch(e){}
   if(!t) t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-  const set = v => { root.dataset.theme = v; b.textContent = v === "dark" ? "Light" : "Dark"; };
+  const set = v => { root.dataset.theme = v; b.textContent = v === "dark" ? "Light" : "Dark";
+    document.querySelectorAll("img[data-shot]").forEach(i => { i.src = `assets/${i.dataset.shot}-${v}.jpg`; }); };   // снимки в цвет темы
   set(t);
   b.onclick = () => { const v = root.dataset.theme === "dark" ? "light" : "dark"; set(v); try{ localStorage.setItem("theme", v); }catch(e){} };
 })();
