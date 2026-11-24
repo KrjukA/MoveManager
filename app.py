@@ -75,7 +75,7 @@ def backups_dir():
 PORT = int(os.environ.get("MOVE_MANAGER_PORT", "8765"))
 LOCK = threading.RLock()
 STARTED = time.time()
-BUILD = "64"          # номер сборки: виден в шапке программы и в журнале экспорта
+BUILD = "65"          # номер сборки: виден в шапке программы и в журнале экспорта
 VERSION = "1.7.1"     # версия для друзей (релиз v1.7.1); в свойствах Mac-приложения и в отчёте
 RENDER_LOCK = threading.Lock()
 AUDIO_EXTS = {".wav", ".mp3", ".webm", ".m4a", ".mp4", ".ogg"}
@@ -120,9 +120,14 @@ def read_json(path, default):
 
 def write_json(path, obj):
     path = Path(path)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), "utf-8")
-    tmp.replace(path)
+    # своё имя временного файла у каждого потока: два чтения списка проектов одновременно
+    # писали один meta.json.tmp, и второе падало (сборка 65, отчёт друга)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), "utf-8")
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # ───────────────────────── ошибки ─────────────────────────
@@ -1808,10 +1813,58 @@ def analyze_set(oid, stamp):
 
 # ───────────────────────── библиотека на компьютере ─────────────────────────
 
-def lib_root():
-    p = Path(CFG["library"]).expanduser()
-    p.mkdir(parents=True, exist_ok=True)
+VOLUMES_DIR = Path("/Volumes")          # Mac: внешние диски (подменяется в тестах)
+
+
+class LibraryMissing(AppError):
+    pass
+
+
+def drive_missing_msg(name):
+    return f"The drive “{name}” with the projects folder is not connected"
+
+
+def missing_drive(p):
+    """Имя диска, на котором лежит папка, если этого диска сейчас нет (Mac — /Volumes/<имя>, Windows — буква диска)."""
+    p = Path(p)
+    try:
+        rel = p.relative_to(VOLUMES_DIR)
+    except ValueError:
+        rel = None
+    if rel is not None and rel.parts:
+        return None if (VOLUMES_DIR / rel.parts[0]).exists() else rel.parts[0]
+    if sys.platform == "win32" and p.drive and not Path(p.anchor).exists():
+        return p.drive
+    return None
+
+
+def check_library_path(p):
+    """Можно ли держать проекты здесь. Отключённый диск — понятная ошибка, а не папка-заглушка в /Volumes
+    (из-за неё Mac подключил бы диск под другим именем)."""
+    p = Path(p).expanduser()
+    if not p.is_dir():
+        name = missing_drive(p)
+        if name:
+            raise LibraryMissing(drive_missing_msg(name))
     return p
+
+
+def lib_root():
+    p = check_library_path(CFG["library"])
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise LibraryMissing(f"Cannot open the projects folder: {e.strerror or e}")
+    return p
+
+
+def library_missing():
+    """Текст ошибки, если папку проектов сейчас открыть нельзя (для /api/config), иначе None."""
+    try:
+        lib_root()
+    except LibraryMissing as e:
+        return str(e)
+    return None
 
 
 WIN_BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -1869,7 +1922,10 @@ def lib_item(d):
             meta["info"] = {"error": str(e), "tracks": []}
         meta["bundleStamp"] = stamp
         meta.setdefault("savedAt", time.strftime("%Y-%m-%dT%H:%M:%S"))
-        write_json(meta_path, meta)
+        try:
+            write_json(meta_path, meta)              # это только кэш разбора: не записался — список всё равно показываем
+        except OSError:
+            pass
     audio = find_file(d, AUDIO_EXTS)
     return {
         "id": d.name,
@@ -3968,7 +4024,8 @@ class Handler(BaseHTTPRequestHandler):
         if seg == ["update", "install"] and m == "POST":
             return self.send_json(start_job("update", job_update))
         if seg == ["config"] and m == "GET":
-            return self.send_json({"library": str(lib_root()), "moveUrl": CFG["move_url"],
+            return self.send_json({"library": str(Path(CFG["library"]).expanduser()), "libraryMissing": library_missing(),
+                                   "moveUrl": CFG["move_url"],
                                    "audioFormat": CFG.get("audio_format", "wav"),
                                    "build": BUILD, "version": VERSION, "frozen": FROZEN, "autoReport": CFG.get("auto_report"),
                                    "uiStamp": int((STATIC_DIR / "index.html").stat().st_mtime),
@@ -3976,7 +4033,7 @@ class Handler(BaseHTTPRequestHandler):
         if seg == ["config"] and m == "POST":
             b = self.body()
             if "library" in b:
-                p = Path(str(b["library"])).expanduser()
+                p = check_library_path(str(b["library"]))
                 try:
                     p.mkdir(parents=True, exist_ok=True)
                 except OSError as e:
@@ -4253,7 +4310,11 @@ class Handler(BaseHTTPRequestHandler):
                                   (q.get("group") or [None])[0])
             return self.send_json({"ok": True, "id": final})
         if seg == ["library"] and m == "GET":
-            items = list_library()
+            try:
+                items = list_library()
+            except LibraryMissing as e:              # диск с папкой проектов отключён (сборка 65)
+                return self.send_json({"items": [], "path": str(Path(CFG["library"]).expanduser()),
+                                       "chosen": True, "missing": str(e)})
             # папка «выбрана»: человек сам выбрал/подтвердил её или в ней уже есть проекты (сборка 60)
             return self.send_json({"items": items, "path": str(lib_root()),
                                    "chosen": bool(CFG.get("library_chosen") or items)})

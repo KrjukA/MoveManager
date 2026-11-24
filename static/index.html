@@ -546,7 +546,7 @@ async function analyzeQueue(){
   }finally{ analyzing = false; }
 }
 async function loadLib(){
-  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path, chosen:d.chosen !== false}; S.hist = null; }
+  try{ const d = await api("GET","/api/library"); S.lib = {items:d.items, path:d.path, chosen:d.chosen !== false, missing:d.missing||""}; S.hist = null; }
   catch(e){ fail(e); }
   render();
 }
@@ -649,6 +649,8 @@ function renderPane(side){
             <div class="addr"><input id="moveAddr" type="text" spellcheck="false" placeholder="move.local or 192.168.1.23" value="${esc(S.moveAddrDraft ?? (S.cfg?.moveUrl||"").replace(/^https?:\/\//,""))}" aria-label="Move address">
             <button id="moveAddrSet" class="primary" title="Connect to Move at this address">Connect</button></div>
             <div class="hint">If Move isn't found by name, type its IP address — on Move: Settings → Wi-Fi.${/Mac/.test(navigator.platform) ? " On a Mac also allow the app in System Settings → Privacy & Security → Local Network." : ""}</div></div>`;
+    } else if(side==="lib" && S.lib.missing){            // сборка 65: диск с папкой проектов отключён
+      html = `<div class="empty">${esc(S.lib.missing)}<div class="hint">Connect it and press Refresh, or choose another folder.</div><button id="libChoose">Choose folder…</button></div>`;
     } else if(!list.length){
       html = `<div class="empty">${side==="move" ? "No projects on Move." : "Folder is empty. Drag a project here from Move."}</div>`;
     }
@@ -1675,6 +1677,7 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
     if(gh){ const g = gh.dataset.g; S.collapsed[g] = !S.collapsed[g]; saveGroups(); render(); return; }
     if(e.target.id==="retry"){ S.move.state==="auth" ? showAuth() : (S.move.state="loading", render(), loadMove()); return; }
     if(e.target.id==="moveAddrSet"){ setMoveAddr($("#moveAddr").value); return; }
+    if(e.target.id==="libChoose"){ $("#chooseFolder").click(); return; }
     const p = e.target.closest("[data-play]"); if(p){ e.stopPropagation(); play(p.dataset.play); return; }
     const t = e.target.closest(".tile"); if(!t) return;
     if(t.dataset.side==="lib" && (e.metaKey || e.ctrlKey)){
