@@ -4,6 +4,8 @@
 
 An app for managing Ableton Move projects, samples and presets right from your computer. It opens in your browser and connects to Move over Wi-Fi.
 
+**Website:** https://krjuka.github.io/MoveManager/
+
 **Download:** [latest version](https://github.com/KrjukA/MoveManager/releases/latest) — at the bottom of the page, under Assets. How to install — [at the end of this page](#installation).
 
 **Like it?** The app is free. You can support it here: https://ko-fi.com/krjuk — or with the Support button in the app.
@@ -67,6 +69,7 @@ An app for managing Ableton Move projects, samples and presets right from your c
 - Dark and light themes.
 - English and Russian interface.
 - Works on Mac and Windows.
+- Tells you when a new version is out and installs it for you.
 
 ## Installation
 
