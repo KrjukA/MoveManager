@@ -159,3 +159,36 @@ class SchwungJobs(Schwung):
         res = app.job_push("Acid Set")(self.stage)
         self.assertEqual(res["schwung"], "needs pad control")
         self.assertFalse((self.root / NEW).exists())
+
+
+class SchwungUsedOnComputer(unittest.TestCase):
+    """Сборка 62: значок S у проекта на компьютере — только если в слотах Schwung есть модуль (как на Move),
+    а не просто потому, что сохранены пустые заготовки «{}», которые Schwung создаёт в любом сете."""
+    def tar(self, files):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as t:
+            for name, body in files.items():
+                info = tarfile.TarInfo("./" + name); info.size = len(body)
+                t.addfile(info, io.BytesIO(body))
+        return buf.getvalue()
+
+    def test_seeded_state_is_not_use(self):
+        data = self.tar({"slot_0.json": b"{}\n", "slot_1.json": b"{}\n", "master_fx_0.json": b"x" * 543})
+        self.assertFalse(app.schwung_tar_used(data))
+
+    def test_module_in_slot_is_use(self):
+        data = self.tar({"slot_0.json": b'{"module": "obxd", "module_path": "/data/x"}', "slot_1.json": b"{}\n"})
+        self.assertTrue(app.schwung_tar_used(data))
+
+    def test_broken_data(self):
+        self.assertFalse(app.schwung_tar_used(b"not a tar"))
+
+    def test_library_flag_follows_state_content(self):
+        d = Path(tempfile.mkdtemp()) / "P"
+        d.mkdir()
+        (d / app.SCHWUNG_FILE).write_bytes(self.tar({"slot_0.json": b"{}\n"}))
+        self.assertFalse(app.lib_schwung(d, {"schwung": True}))            # старая пометка от прежней сборки — не в счёт
+        (d / app.SCHWUNG_FILE).write_bytes(self.tar({"slot_2.json": b'{"module": "dexed"}' + b" " * 20}))
+        self.assertTrue(app.lib_schwung(d, {}))
+        (d / app.SCHWUNG_FILE).unlink()
+        self.assertFalse(app.lib_schwung(d, {}))

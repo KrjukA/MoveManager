@@ -1014,6 +1014,34 @@ def schwung_fetch(oid):
 SCHWUNG_USED = 'used() {{ [ -n "$(find "$1" -maxdepth 1 -name "slot_*.json" -size +10c 2>/dev/null)" ]; }}; '
 
 
+def schwung_tar_used(data):
+    """Сохранённое состояние Schwung (tar.gz) — с модулем хотя бы в одном слоте? Правило как у SCHWUNG_USED на Move:
+    slot_N.json длиннее 10 байт. Пустые заготовки «{}» и master_fx_* — не в счёт."""
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as t:
+            return any(m.isfile() and re.fullmatch(r"slot_\d+\.json", m.name.rsplit("/", 1)[-1]) and m.size > 10
+                       for m in t.getmembers())
+    except (tarfile.TarError, OSError, EOFError):
+        return False
+
+
+_SCHWUNG_LIB_CACHE = {}
+
+
+def lib_schwung(d, meta):
+    """Значок S у проекта на компьютере (сборка 62): только если в сохранённом состоянии Schwung есть модуль.
+    Старая пометка meta["schwung"] (прежние сборки ставили её любому проекту) не используется."""
+    f = d / SCHWUNG_FILE
+    try:
+        st = f.stat()
+    except OSError:
+        return False
+    key = (str(f), st.st_mtime_ns, st.st_size)
+    if key not in _SCHWUNG_LIB_CACHE:
+        _SCHWUNG_LIB_CACHE[key] = schwung_tar_used(f.read_bytes())
+    return _SCHWUNG_LIB_CACHE[key]
+
+
 def schwung_sets():
     """id сетов, у которых в слотах Schwung загружен модуль."""
     root = shlex.quote(SCHWUNG_DIR)
@@ -1693,7 +1721,7 @@ def lib_item(d):
         "audioSource": meta.get("audioSource"),
         "audioError": meta.get("audioError"),
         "group": meta.get("group") or "",
-        "schwung": bool(meta.get("schwung")) or (d / SCHWUNG_FILE).exists(),
+        "schwung": lib_schwung(d, meta),
         "size": bundle.stat().st_size,
         "info": meta.get("info"),
     }
@@ -2078,8 +2106,8 @@ def job_pull(oid, with_audio, group=None, mode=None):
             except (SshError, AppError, tarfile.TarError):
                 data = None
             if data:
-                (d / SCHWUNG_FILE).write_bytes(data)
-                schwung = True
+                (d / SCHWUNG_FILE).write_bytes(data)      # состояние храним всегда — его вернёт «← To Move»
+                schwung = schwung_tar_used(data)          # а значок S — только если в слотах есть модуль
             else:
                 (d / SCHWUNG_FILE).unlink(missing_ok=True)
         meta["schwung"] = schwung
