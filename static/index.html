@@ -662,6 +662,7 @@ function renderPane(side){
     const b = $("#moveBanner"), job = S.jobs["ssh"];
     if(S.move.state!=="ok" || pads) b.innerHTML = "";
     else if(job) b.innerHTML = `<div class="banner"><div>${esc(job.stage||"Connecting…")}</div></div>`;
+    else if(S.ssh.enabled && S.ssh.keyChanged) b.innerHTML = `<div class="banner err"><div>${esc(S.ssh.error)}</div><button id="sshTrust">Trust new key</button></div>`;
     else if(S.ssh.enabled && S.ssh.error) b.innerHTML = `<div class="banner err"><div>Could not read pads: ${esc(S.ssh.error)}</div><button id="sshSetup">Reconnect</button></div>`;
     else b.innerHTML = `<div class="banner"><div>Pad layout and editing a project without moving it off its pad need SSH access to Move. The app creates its own key and asks you to confirm it with the wheel on the device.</div><button class="primary" id="sshSetup">Enable</button></div>`;
   }
@@ -1490,6 +1491,12 @@ async function moveSlot(id, slot){
   catch(e){ fail(e); }
   await loadMove();
 }
+/* сборка 66: Move сменил ключ SSH (после обновления) — забыть старый ключ и подключиться заново */
+async function trustSshKey(){
+  if(!await ask("Trust Move's new SSH key?\n\nMove gets a new key after a system update or reset. Do this only if that happened to your Move.", {ok:"Trust"})) return;
+  try{ await api("POST","/api/ssh/trust-key"); await loadMove(); if(isCmd()) await mvLoad(true); status(padMode() ? "Pads connected" : "Could not connect to Move over SSH", !padMode()); }
+  catch(e){ fail(e); }
+}
 async function setupSsh(){
   status("Enabling pad control…");
   try{ await runJob("ssh", () => api("POST","/api/ssh/setup")); await loadMove(); status(padMode() ? "Pads connected" : "Key added, but pads could not be read", !padMode()); }
@@ -1685,6 +1692,7 @@ let drag = null, ghTimer = null;
 for(const g of [$("#moveGrid"), $("#libGrid")]){
   g.addEventListener("click", e => {
     if(e.target.id==="sshSetup") return setupSsh();
+    if(e.target.id==="sshTrust") return trustSshKey();
     if(e.target.dataset.jobcancel){ e.target.disabled = true; api("POST", `/api/jobs/${e.target.dataset.jobcancel}/cancel`).catch(fail); return; }
     const tb = e.target;
     if(tb.dataset.gren) return renameGroup(tb.dataset.gren);
@@ -1733,7 +1741,7 @@ for(const g of [$("#moveGrid"), $("#libGrid")]){
     list.splice(to,0,m); render(); saveOrder(side); });
   g.addEventListener("dragend", () => { drag = null; document.querySelectorAll(".tile.dragging").forEach(x=>x.classList.remove("dragging")); document.querySelectorAll(".over,.drop").forEach(x=>x.classList.remove("over","drop")); });
 }
-$("#moveBanner").addEventListener("click", e => { if(e.target.id==="sshSetup") setupSsh(); });
+$("#moveBanner").addEventListener("click", e => { if(e.target.id==="sshSetup") setupSsh(); if(e.target.id==="sshTrust") trustSshKey(); });
 async function importFiles(files, group){
   const list = [...files].filter(f => /\.(ablbundle|zip)$/i.test(f.name)); if(!list.length){ status(".ablbundle files needed", true); return; }
   let ok = 0;
@@ -1869,7 +1877,7 @@ function renderPanel(k){
   if(kind==="move"){
     const st = mvState(), d = st.data, dir = pdir(k);
     barSet(k, "move", q ? `Search in ${ulRoot()}` : dir, d && dir!==d.root && !q, st.loading, d ? d.files.length : "");
-    if(st.err) html = `<div class="empty">${esc(st.err)}${/SSH/.test(st.err) ? `<br><button class="primary" id="sshSetup">Enable pad control</button>` : `<br><button data-retry="1">Retry</button>`}</div>`;
+    if(st.err) html = `<div class="empty">${esc(st.err)}${/SSH key has changed/.test(st.err) ? `<br><button class="primary" id="sshTrust">Trust new key</button>` : /SSH/.test(st.err) ? `<br><button class="primary" id="sshSetup">Enable pad control</button>` : `<br><button data-retry="1">Retry</button>`}</div>`;
     else if(!d) html = `<div class="empty">Reading the library on Move…</div>`;
     else {
       const keep = f => !P.unused || !f.used.length;

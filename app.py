@@ -877,6 +877,38 @@ def ssh_cmd():
             "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3", f"ableton@{host}"]
 
 
+HOSTKEY_MSG = "Move's SSH key has changed. This happens after a Move update."
+
+
+class SshHostKeyChanged(SshError):
+    """Move сменил свой ключ SSH (после обновления прошивки): ssh из осторожности не подключается (сборка 66)."""
+
+
+def ssh_fail(text, fallback):
+    """Ошибка ssh → понятное исключение. Сменившийся ключ Move — отдельно: его чинит «Trust new key», а не колесо на Move."""
+    if "Host key verification failed" in text or "IDENTIFICATION HAS CHANGED" in text:
+        return SshHostKeyChanged(HOSTKEY_MSG)
+    return SshError("SSH: " + (text or fallback))
+
+
+def forget_move_host():
+    """Убрать из known_hosts программы старые ключи Move (по имени и по IP); новый ключ запишется при следующем подключении."""
+    hosts = {"move.local", move_host(), urlparse(CFG.get("move_url") or "").hostname, CFG.get("move_ip")}
+    hosts = {h for h in hosts if h}
+    names = hosts | {f"[{h}]:22" for h in hosts}
+    try:
+        lines = KNOWN_HOSTS.read_text("utf-8").splitlines(keepends=True)
+    except OSError:
+        lines = []
+    keep = [ln for ln in lines if not (ln.split() and set(ln.split()[0].split(",")) & names)]
+    if len(keep) != len(lines):
+        tmp = KNOWN_HOSTS.with_name(KNOWN_HOSTS.name + ".tmp")
+        tmp.write_text("".join(keep), "utf-8")
+        tmp.replace(KNOWN_HOSTS)
+    ssh_session_reset()
+    return len(lines) - len(keep)
+
+
 NO_SSH_MSG = ("The ssh command was not found on this computer. On Windows 10/11 turn on "
               "Settings → System → Optional features → OpenSSH Client; on a Mac it is built in.")
 
@@ -943,7 +975,7 @@ class _SshSession:
         except Exception:  # noqa: BLE001
             pass
         self.close()
-        return SshError("SSH: " + (msg or why))
+        return ssh_fail(msg, why)
 
     def run(self, cmd, script, timeout):
         import queue
@@ -1023,7 +1055,7 @@ def _ssh_run(script, data=None, timeout=40):
     except FileNotFoundError:
         raise SshError(NO_SSH_MSG)
     if r.returncode != 0:
-        raise SshError("SSH: " + (r.stderr.decode("utf-8", "replace").strip()[-300:] or f"code {r.returncode}"))
+        raise ssh_fail(r.stderr.decode("utf-8", "replace").strip()[-300:], f"code {r.returncode}")
     return r.stdout
 
 
@@ -1739,6 +1771,8 @@ def job_ssh_setup(stage):
     pub_path = ensure_ssh_key()
     try:
         ssh_run("echo ok", timeout=15)
+    except SshHostKeyChanged:
+        raise                                    # колесо на Move тут не поможет: нужен «Trust new key»
     except SshError:
         stage("Confirm the key with the wheel on Move")
         r = MOVE.req("POST", "/api/v1/ssh", data=pub_path.read_text().strip().encode(), timeout=(10, 180),
@@ -4143,6 +4177,8 @@ class Handler(BaseHTTPRequestHandler):
                     pass
             r.close()
             return
+        if seg == ["ssh", "trust-key"] and m == "POST":
+            return self.send_json({"ok": True, "removed": forget_move_host()})
         if seg == ["ssh", "setup"] and m == "POST":
             return self.send_json(start_job("ssh", job_ssh_setup))
         if seg == ["move", "slots"] and m == "POST":
@@ -4168,6 +4204,7 @@ class Handler(BaseHTTPRequestHandler):
                     ssh["ok"] = True
                 except SshError as e:
                     ssh["error"] = str(e)
+                    ssh["keyChanged"] = isinstance(e, SshHostKeyChanged)
             sw = set()
             if ssh["ok"]:
                 try:
