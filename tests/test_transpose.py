@@ -137,3 +137,25 @@ class DegreesReview(unittest.TestCase):
     def test_shift_and_degrees_together_refused(self):
         with self.assertRaises(app.AppError):
             app.edit_song(song(), key={"rootNote": 4, "scale": "Minor", "notes": "degrees", "shift": -5})
+
+
+class ShiftChords(unittest.TestCase):
+    """Сдвиг аккорда сохраняет все ноты; перенос на октаву, совпавший с другой нотой, не даёт наложения."""
+    def test_chord_shift_keeps_all_notes(self):
+        s = app.edit_song(song((57, 60, 64)), key={"rootNote": 4, "scale": "Minor", "shift": -5})
+        self.assertEqual(notes(s), [52, 55, 59])
+
+    def test_fold_collision_is_merged(self):
+        s = app.edit_song(song((113, 125)), key={"rootNote": 4, "scale": "Minor", "shift": 7})   # обе → 120
+        self.assertEqual(notes(s), [120])
+
+
+class HistoryLabels(unittest.TestCase):
+    def test_combined_labels_are_russian(self):
+        import shutil
+        if not shutil.which("node"):
+            self.skipTest("нужен Node.js")
+        from tests.test_i18n import KEEP, translate
+        label = app.edit_action([1, 0], {"0": 0.2}, {"rootNote": 9, "scale": "Minor", "notes": "degrees", "tempo": 120})
+        ru = translate(["before: " + label])[0]
+        self.assertNotRegex(KEEP.sub("", ru.replace("Minor", "")), r"[A-Za-z]{4,}", ru)

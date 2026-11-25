@@ -464,15 +464,15 @@ const knownScales = () => [...new Set([...BASE_SCALES, ...[...S.move.sets, ...S.
 const libGroups = () => [...new Set([...S.lib.items.map(x=>x.group).filter(Boolean), ...S.groups])].sort((a,b)=>a.localeCompare(b,"ru"));
 function isChanged(it){ const tr = it.info?.tracks||[], o = S.order || tr.map((_,i)=>i);
   return o.some((x,i)=>x!==i) || tr.some(t => Math.abs(((t.index in S.pans)?S.pans[t.index]:(t.pan||0))-(t.pan||0))>0.001) || !!keyPayload(it); }
-/* сборка 66: на сколько сдвинуть ноты при смене тональности, чтобы они попали в новый звукоряд.
-   Обе тональности приводятся к параллельному мажору (MODES). null — сдвиг не предлагается: тоника та же,
-   лад неизвестен, интервал 0 (Am → C) или в проекте нечего сдвигать (только Drum Rack). */
+/* сборка 66: что предложить при смене тональности. Сдвиг k — чтобы ноты попали в новый звукоряд
+   (обе тональности приводятся к параллельному мажору по MODES); «По ступеням» считает сервер. */
 function keyShift(info, key){
-  // k — сдвиг звукоряда (0 — ноты те же, Am → C); по ступеням можно всегда, когда оба лада известны (их же знает сервер)
+  // k — сдвиг звукоряда (0 — ноты те же, Am → C: тогда только «По ступеням»); по ступеням можно, когда оба лада известны (их же знает сервер).
+  // null — тональность та же, лад неизвестен или сдвигать нечего (только Drum Rack, клипы без нот)
   if(!info || !key || typeof info.rootNote!=="number" || (key.rootNote===info.rootNote && key.scale===info.scale)) return null;
   const a = MODES[info.scale], b = MODES[key.scale]; if(!a || !b) return null;
   const tracks = info.tracks || [], clips = info.clips || [];
-  const pitched = clips.some((row, t) => (tracks[t]||{}).clipKind && tracks[t].clipKind!=="drums" && (row||[]).some(Boolean));
+  const pitched = clips.some((row, t) => (tracks[t]||{}).clipKind && tracks[t].clipKind!=="drums" && (row||[]).some(c => c && (c.audio || c.notes > 0)));
   if(!pitched) return null;
   const k = (((key.rootNote + b[0]) - (info.rootNote + a[0])) % 12 + 12) % 12;
   return {k, up:k, down:12-k, degrees:true};
@@ -1496,7 +1496,8 @@ async function applyOrder(){
     const opts = [{label:"By scale degrees", set:{notes:"degrees"}}];
     if(sh.k) opts.push({label:`Shift only (${sign(small)})`, set:{shift:small}});
     opts.push({label:"Don't move notes", set:{}});
-    const r = await ask("Move the notes into the new key?\n\nBy scale degrees: every note keeps its role against the tonic (the fifth stays the fifth). Shift only: all notes move by the same interval. Drum Rack stays as it is.",
+    const r = await ask(sh.k ? "Move the notes into the new key?\n\nBy scale degrees: every note keeps its role against the tonic (the fifth stays the fifth). Shift only: all notes move by the same interval. Drum Rack stays as it is."
+                             : "Move the notes into the new key?\n\nBy scale degrees: every note keeps its role against the tonic (the fifth stays the fifth). Drum Rack stays as it is.",
                         {ok:opts[0].label, no:opts[1].label, alt:opts[2]?.label});
     if(r === null) return;
     Object.assign(key, opts[r === true ? 0 : r === false ? 1 : 2].set);
@@ -1527,13 +1528,17 @@ async function moveSlot(id, slot){
 /* сборка 66: Move сменил ключ SSH (после обновления) — забыть старый ключ и подключиться заново */
 async function trustSshKey(){
   if(!await ask("Trust Move's new SSH key?\n\nMove gets a new key after a system update or reset. Do this only if that happened to your Move.", {ok:"Trust"})) return;
-  try{ await api("POST","/api/ssh/trust-key"); await loadMove(); if(isCmd()) await mvLoad(true); status(padMode() ? "Pads connected" : "Could not connect to Move over SSH", !padMode()); }
-  catch(e){ fail(e); }
+  try{ await api("POST","/api/ssh/trust-key"); await loadMove(); if(isCmd()) await mvLoad(true);
+       if(S.ssh.enabled) status(padMode() ? "Pads connected" : "Could not connect to Move over SSH", !padMode()); return true; }
+  catch(e){ fail(e); return false; }
 }
 async function setupSsh(){
   status("Enabling pad control…");
   try{ await runJob("ssh", () => api("POST","/api/ssh/setup")); await loadMove(); status(padMode() ? "Pads connected" : "Key added, but pads could not be read", !padMode()); }
-  catch(e){ fail(e); await loadMove(); }
+  catch(e){
+    if(/SSH key has changed/.test(e.message||"")){ status(e.message, true); if(await trustSshKey()) return setupSsh(); return; }   // сборка 66: ключ сменился ещё до включения пэдов
+    fail(e); await loadMove();
+  }
 }
 async function saveOrder(side){ try{ await api("POST","/api/order",{side, ids: items(side).map(x=>x.id)}); }catch(e){ fail(e); } }
 async function autoOrder(side){

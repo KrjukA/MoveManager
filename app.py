@@ -4303,6 +4303,8 @@ class Handler(BaseHTTPRequestHandler):
             r.close()
             return
         if seg == ["ssh", "trust-key"] and m == "POST":
+            if running_jobs():                   # сброс соединения оборвал бы идущую операцию
+                raise AppError("Wait until the current operation finishes")
             return self.send_json({"ok": True, "removed": forget_move_host()})
         if seg == ["ssh", "setup"] and m == "POST":
             return self.send_json(start_job("ssh", job_ssh_setup))
