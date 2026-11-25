@@ -486,6 +486,39 @@ def read_song(bundle_path):
         return json.loads(zf.read(find_song_entry(zf)).decode("utf-8"))
 
 
+def _fold(v, lo, hi):
+    """Значение вне диапазона переносится на октаву внутрь."""
+    while v > hi:
+        v -= 12
+    while v < lo:
+        v += 12
+    return v
+
+
+def transpose_song(song, shift):
+    """Сдвиг на shift полутонов (сборка 66): ноты MIDI-клипов мелодических дорожек и transpose аудиоклипов.
+    Drum Rack не трогается никогда: нота там — пэд, а не высота. Возвращает, сколько нот и аудиоклипов сдвинуто."""
+    n = 0
+    for tr in song.get("tracks") or []:
+        kind = track_clip_kind(tr)
+        if kind == "drums":
+            continue
+        for slot in tr.get("clipSlots") or []:
+            c = (slot or {}).get("clip")
+            if not c:
+                continue
+            if kind == "audio":
+                if c.get("sampleUri") is not None:
+                    c["transpose"] = _fold(int(round(float(c.get("transpose") or 0))) + shift, -48, 48)
+                    n += 1
+                continue
+            for note in c.get("notes") or []:
+                if "noteNumber" in note:
+                    note["noteNumber"] = _fold(int(note["noteNumber"]) + shift, 0, 127)
+                    n += 1
+    return n
+
+
 def edit_song(song, order=None, pans=None, key=None):
     """Меняет тональность сета, панораму и порядок дорожек. pans: {исходный индекс дорожки: -1..1}."""
     tracks = song.get("tracks") or []
@@ -494,6 +527,11 @@ def edit_song(song, order=None, pans=None, key=None):
         if not 0 <= root <= 11 or not scale or len(scale) > 60:
             raise AppError("Invalid key")
         song["rootNote"], song["scale"] = root, scale
+    if key and key.get("shift") not in (None, 0):
+        shift = key["shift"]
+        if not ("rootNote" in key or "scale" in key) or not isinstance(shift, int) or isinstance(shift, bool) or not -11 <= shift <= 11:
+            raise AppError("Invalid key")
+        transpose_song(song, shift)
     if key and key.get("tempo") is not None:
         try:
             tempo = round(float(key["tempo"]), 2)
@@ -3198,7 +3236,8 @@ def edit_action(order, pans, key):
         parts.append("Pan changed")
     if key and ("rootNote" in key or "scale" in key):
         try:
-            parts.append(f"Key changed to {NOTE_NAMES[int(key.get('rootNote')) % 12]} {key.get('scale') or ''}".rstrip())
+            parts.append(f"Key changed to {NOTE_NAMES[int(key.get('rootNote')) % 12]} {key.get('scale') or ''}".rstrip()
+                         + (f", notes {key['shift']:+d}" if isinstance(key.get("shift"), int) and key["shift"] else ""))
         except (TypeError, ValueError):
             parts.append("Key changed")
     if key and key.get("tempo") is not None:
