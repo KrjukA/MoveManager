@@ -442,7 +442,8 @@ function ask(msg, o = {}){
     const done = v => { m.classList.remove("on"); document.removeEventListener("keydown", key, true); res(v); };
     const key = e => {
       if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(dismissed); }
-      else if(e.key === "Enter" && document.activeElement !== no){ e.preventDefault(); e.stopPropagation(); yes.click(); }
+      else if(e.key === "Enter"){ e.preventDefault(); e.stopPropagation();    // Enter — кнопка в фокусе (сборка 66: их бывает три), иначе главная
+        const f = document.activeElement; (f && f.tagName === "BUTTON" && m.contains(f) ? f : yes).click(); }
     };
     yes.onclick = () => done(withInput ? inp.value : true);
     no.onclick = () => done(withInput ? null : false);

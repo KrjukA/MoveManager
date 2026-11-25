@@ -938,7 +938,17 @@ def forget_move_host():
         lines = KNOWN_HOSTS.read_text("utf-8").splitlines(keepends=True)
     except OSError:
         lines = []
-    keep = [ln for ln in lines if not (ln.split() and set(ln.split()[0].split(",")) & names)]
+    def ours(field):
+        if field.startswith("|1|"):              # HashKnownHosts yes: |1|соль|HMAC-SHA1(соль, имя)
+            try:
+                import base64, hmac
+                _, _, salt, digest = field.split("|", 3)
+                salt, digest = base64.b64decode(salt), base64.b64decode(digest)
+            except (ValueError, TypeError):
+                return False
+            return any(hmac.compare_digest(hmac.new(salt, n.encode(), hashlib.sha1).digest(), digest) for n in names)
+        return bool(set(field.split(",")) & names)
+    keep = [ln for ln in lines if not (ln.split() and ours(ln.split()[0]))]
     if len(keep) != len(lines):
         tmp = KNOWN_HOSTS.with_name(KNOWN_HOSTS.name + ".tmp")
         tmp.write_text("".join(keep), "utf-8")
