@@ -72,3 +72,16 @@ class Trust(RouteBase):
     def test_no_file_is_fine(self):
         self.kh.unlink()
         self.assertEqual(app.forget_move_host(), 0)
+
+
+class TrustHashed(Trust):
+    """HashKnownHosts yes: строки вида |1|соль|HMAC-SHA1(соль, имя) — их тоже надо узнавать."""
+    def test_hashed_entries_are_removed(self):
+        import base64, hashlib, hmac, os as _os
+        def hashed(host):
+            salt = _os.urandom(20)
+            h = hmac.new(salt, host.encode(), hashlib.sha1).digest()
+            return f"|1|{base64.b64encode(salt).decode()}|{base64.b64encode(h).decode()} ssh-ed25519 OLD\n"
+        self.kh.write_text(hashed("move.local") + hashed("192.168.31.8") + hashed("github.com"))
+        self.assertEqual(app.forget_move_host(), 2)
+        self.assertEqual(len(self.kh.read_text().splitlines()), 1)
