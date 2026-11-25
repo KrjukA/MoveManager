@@ -410,7 +410,7 @@ header button#updBtn[hidden]{display:none}
   <h4 id="askTitle"></h4>
   <p id="askBody"></p>
   <input type="text" id="askInput" autocomplete="off" hidden>
-  <div class="row"><button id="askNo">Cancel</button><button class="primary" id="askYes">OK</button></div>
+  <div class="row"><button id="askNo">Cancel</button><button id="askAlt" hidden></button><button class="primary" id="askYes">OK</button></div>
 </div></div>
 
 <script src="/static/i18n.js"></script>
@@ -435,6 +435,8 @@ function ask(msg, o = {}){
     yes.classList.toggle("danger", danger);
     no.hidden = o.cancel === false;
     no.textContent = window.tr ? window.tr(o.no || "Cancel") : (o.no || "Cancel");
+    const alt = $("#askAlt"); alt.hidden = !o.alt;                 // сборка 66: третья кнопка — ответ "alt"
+    if(o.alt) alt.textContent = window.tr ? window.tr(o.alt) : o.alt;
     const dismissed = o.no ? null : (withInput ? null : false);     // Esc / щелчок мимо: при своей второй кнопке — null
     inp.hidden = !withInput; inp.value = withInput ? o.input : "";
     const done = v => { m.classList.remove("on"); document.removeEventListener("keydown", key, true); res(v); };
@@ -444,6 +446,7 @@ function ask(msg, o = {}){
     };
     yes.onclick = () => done(withInput ? inp.value : true);
     no.onclick = () => done(withInput ? null : false);
+    $("#askAlt").onclick = () => done("alt");
     m.onclick = e => { if(e.target === m) done(dismissed); };
     document.addEventListener("keydown", key, true);
     m.classList.add("on");
@@ -460,6 +463,18 @@ const knownScales = () => [...new Set([...BASE_SCALES, ...[...S.move.sets, ...S.
 const libGroups = () => [...new Set([...S.lib.items.map(x=>x.group).filter(Boolean), ...S.groups])].sort((a,b)=>a.localeCompare(b,"ru"));
 function isChanged(it){ const tr = it.info?.tracks||[], o = S.order || tr.map((_,i)=>i);
   return o.some((x,i)=>x!==i) || tr.some(t => Math.abs(((t.index in S.pans)?S.pans[t.index]:(t.pan||0))-(t.pan||0))>0.001) || !!keyPayload(it); }
+/* сборка 66: на сколько сдвинуть ноты при смене тональности, чтобы они попали в новый звукоряд.
+   Обе тональности приводятся к параллельному мажору (MODES). null — сдвиг не предлагается: тоника та же,
+   лад неизвестен, интервал 0 (Am → C) или в проекте нечего сдвигать (только Drum Rack). */
+function keyShift(info, key){
+  if(!info || !key || typeof info.rootNote!=="number" || key.rootNote===info.rootNote) return null;
+  const a = MODES[info.scale], b = MODES[key.scale]; if(!a || !b) return null;
+  const tracks = info.tracks || [], clips = info.clips || [];
+  const pitched = clips.some((row, t) => (tracks[t]||{}).clipKind && tracks[t].clipKind!=="drums" && (row||[]).some(Boolean));
+  if(!pitched) return null;
+  const k = (((key.rootNote + b[0]) - (info.rootNote + a[0])) % 12 + 12) % 12;
+  return k ? {up:k, down:12-k} : null;
+}
 function keyPayload(it){ if(!S.key || !it.info) return null; const k = {};
   if(S.key.rootNote!==it.info.rootNote || S.key.scale!==it.info.scale){ k.rootNote = S.key.rootNote; k.scale = S.key.scale; }
   if(isFinite(S.key.tempo) && Math.abs(S.key.tempo-(it.info.tempo||0))>0.004) k.tempo = S.key.tempo;
@@ -1468,15 +1483,23 @@ async function applyOrder(){
   const it = selItem(); if(!it) return;
   const {side,id} = S.sel, order = S.order, pans = S.pans;
   if(S.keyEdit){ S.keyEdit = false; renderInspector(); }     // сборка 62: «Apply changes» заодно закрывает правку тональности, как «Done»
+  const key = keyPayload(it), sh = key && "rootNote" in key ? keyShift(it.info, key) : null;
+  if(sh){                                                     // сборка 66: сдвинуть ноты в новую тональность
+    const small = sh.down <= sh.up ? -sh.down : sh.up, big = small < 0 ? sh.up : -sh.down;
+    const label = v => v < 0 ? `Down ${-v}` : `Up ${v}`;
+    const r = await ask("Move the notes into the new key?\n\nMelodic clips and audio loops shift together. Drum Rack stays as it is.", {ok:label(small), no:label(big), alt:"Don't move notes"});
+    if(r === null) return;
+    if(r !== "alt") key.shift = r === true ? small : big;
+  }
   try{
     if(side==="move"){
       if(S.replace && !padMode() && !await ask(`Replace “${it.name}” on Move with the edited version?\n\nThe old version is deleted and the project lands on another pad.`, {ok:"Replace", danger:true})) return;
       status("Applying changes…");
-      const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/edit`, {order, pans, replace:S.replace, key:keyPayload(it)}));
+      const res = await runJob("move:"+id, () => api("POST", `/api/move/sets/${id}/edit`, {order, pans, replace:S.replace, key}));
       S.order = null; S.pans = {}; S.key = null; await loadMove();
       status(res.inPlace ? "Changes written to the project on Move. Leave the project on Move and open it again to see the changes." : res.replaced ? "Project replaced with the edited version" : `Copy created: "${res.copy}"`);
     } else {
-      await api("POST", `/api/library/${encodeURIComponent(id)}/edit`, {order, pans, key:keyPayload(it)});
+      await api("POST", `/api/library/${encodeURIComponent(id)}/edit`, {order, pans, key});
       S.order = null; S.pans = {}; S.key = null; await loadLib(); status("Changes saved in the project on the computer");
     }
   }catch(e){ fail(e); }
