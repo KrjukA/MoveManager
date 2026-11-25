@@ -517,6 +517,8 @@ def degree_mapper(old_root, old_scale, new_root, new_scale):
         return None
     old_p, new_p = SCALE_DEGREES[old_scale][0], SCALE_DEGREES[new_scale][0]
     own = SCALE_DEGREES[new_scale][1]
+    if len(SCALE_DEGREES[old_scale][1]) == len(own):    # одинаковое число нот (пентатоника ↔ пентатоника) — по своим ступеням
+        old_p, new_p = SCALE_DEGREES[old_scale][1], own
     near = sorted({x + o for x in own for o in (-12, 0, 12)})
     delta = (new_root - old_root + 6) % 12 - 6
 
@@ -535,6 +537,26 @@ def degree_mapper(old_root, old_scale, new_root, new_scale):
 def transpose_song(song, shift):
     """Сдвиг на shift полутонов (сборка 66)."""
     return remap_song(song, lambda v: _fold(v + shift, 0, 127), shift)
+
+
+def _dedupe_notes(notes):
+    """Move не открывает проект, где одна нота наложена сама на себя (см. midi._no_overlaps). После перестройки
+    по ступеням две ноты могут стать одной высотой: почти одновременные сливаются, наезжающая обрезается."""
+    out, drop = [], set()
+    for nt in sorted(notes, key=lambda x: (x.get("noteNumber", 0), float(x.get("startTime", 0)))):
+        prev = out[-1] if out else None
+        if prev and prev.get("noteNumber") == nt.get("noteNumber"):
+            ps, ns = float(prev.get("startTime", 0)), float(nt.get("startTime", 0))
+            if ns - ps < 1 / 32:
+                pe = max(ps + float(prev.get("duration", 0)), ns + float(nt.get("duration", 0)))
+                prev["duration"] = pe - ps
+                prev["velocity"] = max(float(prev.get("velocity", 0)), float(nt.get("velocity", 0)))
+                drop.add(id(nt))
+                continue
+            if ps + float(prev.get("duration", 0)) > ns:
+                prev["duration"] = ns - ps
+        out.append(nt)
+    return [nt for nt in notes if id(nt) not in drop]          # порядок нот как был
 
 
 def remap_song(song, note_fn, audio_shift):
@@ -558,6 +580,8 @@ def remap_song(song, note_fn, audio_shift):
                 if "noteNumber" in note:
                     note["noteNumber"] = note_fn(int(note["noteNumber"]))
                     n += 1
+            if c.get("notes"):
+                c["notes"] = _dedupe_notes(c["notes"])
     return n
 
 
@@ -576,6 +600,8 @@ def edit_song(song, order=None, pans=None, key=None):
             raise AppError("Invalid key")
         transpose_song(song, shift)
     if key and key.get("notes") == "degrees":
+        if key.get("shift") not in (None, 0):
+            raise AppError("Invalid key")
         fn = degree_mapper(old_root, old_scale, song.get("rootNote"), song.get("scale")) \
             if "rootNote" in key and isinstance(old_root, int) else None
         if not fn:

@@ -100,3 +100,40 @@ class Degrees(unittest.TestCase):
     def test_action_name(self):
         self.assertEqual(app.edit_action(None, {}, {"rootNote": 9, "scale": "Minor", "notes": "degrees"}),
                          "Key changed to A Minor, notes by degrees")
+
+
+class DegreesReview(unittest.TestCase):
+    """Замечания рецензента: наложение одинаковых нот (Move не открывает такой проект), пентатоника ↔ пентатоника."""
+    def deg(self, s, root, scale):
+        return app.edit_song(s, key={"rootNote": root, "scale": scale, "notes": "degrees"})
+
+    def test_chord_into_pentatonic_has_no_same_pitch_overlap(self):
+        s = song((57, 60, 64, 59))                                   # аккорд A C E B одновременно, A Minor
+        s = self.deg(s, 9, "Minor Pentatonic")                       # B → C — совпадает с C
+        ns = s["tracks"][0]["clipSlots"][0]["clip"]["notes"]
+        pitches = [n["noteNumber"] for n in ns]
+        self.assertEqual(sorted(pitches), [57, 60, 64])
+
+    def test_overlap_is_trimmed(self):
+        s = song((59, 60))
+        n0, n1 = s["tracks"][0]["clipSlots"][0]["clip"]["notes"]
+        n1["startTime"] = 0.5                                        # B (0–1) наезжает на C (0.5–1.5)
+        s = self.deg(s, 9, "Minor Pentatonic")
+        ns = sorted(s["tracks"][0]["clipSlots"][0]["clip"]["notes"], key=lambda n: n["startTime"])
+        self.assertEqual([(n["noteNumber"], n["startTime"], n["duration"]) for n in ns], [(60, 0.0, 0.5), (60, 0.5, 1.0)])
+
+    def test_pentatonic_to_pentatonic_keeps_five_notes(self):
+        s = song((60, 62, 64, 67, 69))
+        s["rootNote"], s["scale"] = 0, "Major Pentatonic"
+        s = self.deg(s, 0, "Minor Pentatonic")
+        self.assertEqual(notes(s), [60, 63, 65, 67, 70])
+
+    def test_minor_pent_to_relative_major_pent(self):
+        s = song((57, 60, 62, 64, 67))
+        s["scale"] = "Minor Pentatonic"                              # A Minor Pentatonic → C Major Pentatonic
+        s = self.deg(s, 0, "Major Pentatonic")
+        self.assertEqual(notes(s), [60, 62, 64, 67, 69])
+
+    def test_shift_and_degrees_together_refused(self):
+        with self.assertRaises(app.AppError):
+            app.edit_song(song(), key={"rootNote": 4, "scale": "Minor", "notes": "degrees", "shift": -5})
