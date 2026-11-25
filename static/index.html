@@ -468,13 +468,14 @@ function isChanged(it){ const tr = it.info?.tracks||[], o = S.order || tr.map((_
    Обе тональности приводятся к параллельному мажору (MODES). null — сдвиг не предлагается: тоника та же,
    лад неизвестен, интервал 0 (Am → C) или в проекте нечего сдвигать (только Drum Rack). */
 function keyShift(info, key){
-  if(!info || !key || typeof info.rootNote!=="number" || key.rootNote===info.rootNote) return null;
+  // k — сдвиг звукоряда (0 — ноты те же, Am → C); по ступеням можно всегда, когда оба лада известны (их же знает сервер)
+  if(!info || !key || typeof info.rootNote!=="number" || (key.rootNote===info.rootNote && key.scale===info.scale)) return null;
   const a = MODES[info.scale], b = MODES[key.scale]; if(!a || !b) return null;
   const tracks = info.tracks || [], clips = info.clips || [];
   const pitched = clips.some((row, t) => (tracks[t]||{}).clipKind && tracks[t].clipKind!=="drums" && (row||[]).some(Boolean));
   if(!pitched) return null;
   const k = (((key.rootNote + b[0]) - (info.rootNote + a[0])) % 12 + 12) % 12;
-  return k ? {up:k, down:12-k} : null;
+  return {k, up:k, down:12-k, degrees:true};
 }
 function keyPayload(it){ if(!S.key || !it.info) return null; const k = {};
   if(S.key.rootNote!==it.info.rootNote || S.key.scale!==it.info.scale){ k.rootNote = S.key.rootNote; k.scale = S.key.scale; }
@@ -692,10 +693,15 @@ function render(){
   $("#connText").textContent = ok ? "Move connected" : S.move.state==="loading" ? "connecting…" : S.move.state==="auth" ? "code needed" : "Move offline";
 }
 
+// Камелот считает лад по набору нот: 8A в дорийском — это D Dorian, а не A. Поэтому модальные лады при смене буквы
+// становятся Minor/Major (тоника — та, что ждёт музыкант), а семейство сохраняют только пентатоники и гармонические.
+const FAMILY_A = {"Major Pentatonic":"Minor Pentatonic", "Harmonic Major":"Harmonic Minor"};
+const FAMILY_B = {"Minor Pentatonic":"Major Pentatonic", "Minor Blues":"Major Pentatonic", "Harmonic Minor":"Harmonic Major"};
 function keyForCamelot(code, scale){
-  // та же гамма, если её буква совпадает; иначе натуральный минор (A) или мажор (B)
+  // та же гамма, если её буква совпадает; иначе лад того же семейства (сборка 66: пентатоника остаётся пентатоникой)
   const letter = code.slice(-1), want = c => c && c.code===code;
-  const sc = (scale && camelot({rootNote:0, scale})?.letter===letter) ? scale : (letter==="A" ? "Minor" : "Major");
+  const sc = (scale && camelot({rootNote:0, scale})?.letter===letter) ? scale
+    : (letter==="A" ? FAMILY_A : FAMILY_B)[scale] || (letter==="A" ? "Minor" : "Major");
   for(let r=0;r<12;r++) if(want(camelot({rootNote:r, scale:sc}))) return {rootNote:r, scale:sc};
   for(let r=0;r<12;r++) if(want(camelot({rootNote:r, scale:letter==="A"?"Minor":"Major"}))) return {rootNote:r, scale:letter==="A"?"Minor":"Major"};
   return null;
@@ -1485,12 +1491,15 @@ async function applyOrder(){
   const {side,id} = S.sel, order = S.order, pans = S.pans;
   if(S.keyEdit){ S.keyEdit = false; renderInspector(); }     // сборка 62: «Apply changes» заодно закрывает правку тональности, как «Done»
   const key = keyPayload(it), sh = key && "rootNote" in key ? keyShift(it.info, key) : null;
-  if(sh){                                                     // сборка 66: сдвинуть ноты в новую тональность
-    const small = sh.down <= sh.up ? -sh.down : sh.up, big = small < 0 ? sh.up : -sh.down;
-    const label = v => v < 0 ? `Down ${-v}` : `Up ${v}`;
-    const r = await ask("Move the notes into the new key?\n\nMelodic clips and audio loops shift together. Drum Rack stays as it is.", {ok:label(small), no:label(big), alt:"Don't move notes"});
+  if(sh){                                                     // сборка 66: ноты в новую тональность — по ступеням или сдвигом
+    const small = sh.down <= sh.up ? -sh.down : sh.up, sign = v => v < 0 ? "−"+(-v) : "+"+v;
+    const opts = [{label:"By scale degrees", set:{notes:"degrees"}}];
+    if(sh.k) opts.push({label:`Shift only (${sign(small)})`, set:{shift:small}});
+    opts.push({label:"Don't move notes", set:{}});
+    const r = await ask("Move the notes into the new key?\n\nBy scale degrees: every note keeps its role against the tonic (the fifth stays the fifth). Shift only: all notes move by the same interval. Drum Rack stays as it is.",
+                        {ok:opts[0].label, no:opts[1].label, alt:opts[2]?.label});
     if(r === null) return;
-    if(r !== "alt") key.shift = r === true ? small : big;
+    Object.assign(key, opts[r === true ? 0 : r === false ? 1 : 2].set);
   }
   try{
     if(side==="move"){
