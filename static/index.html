@@ -330,7 +330,7 @@ header button#updBtn[hidden]{display:none}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:10}
 .modal.on{display:flex}
 .modal .box{background:var(--bg);border:1px solid var(--line2);border-radius:6px;padding:22px;width:340px}
-.askbox{width:400px;max-width:calc(100vw - 32px)}.askbox h4{white-space:pre-line;line-height:1.35}
+.askbox{width:400px;max-width:calc(100vw - 32px)}.askbox.wide{width:600px}.askbox #askCancel{margin-right:auto}.askbox h4{white-space:pre-line;line-height:1.35}
 .askbox p{white-space:pre-line;max-height:45vh;overflow:auto;line-height:1.45}.askbox p:empty{display:none}
 .askbox button.primary.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .modal h4{margin:0 0 6px;font-size:15px;font-weight:500}
@@ -410,7 +410,7 @@ header button#updBtn[hidden]{display:none}
   <h4 id="askTitle"></h4>
   <p id="askBody"></p>
   <input type="text" id="askInput" autocomplete="off" hidden>
-  <div class="row"><button id="askNo">Cancel</button><button id="askAlt" hidden></button><button class="primary" id="askYes">OK</button></div>
+  <div class="row"><button id="askCancel" class="ghost" hidden>Cancel</button><button id="askNo">Cancel</button><button id="askAlt" hidden></button><button class="primary" id="askYes">OK</button></div>
 </div></div>
 
 <script src="/static/i18n.js"></script>
@@ -438,6 +438,8 @@ function ask(msg, o = {}){
     const alt = $("#askAlt"); alt.hidden = !o.alt;                 // сборка 66: третья кнопка — ответ "alt"
     if(o.alt) alt.textContent = window.tr ? window.tr(o.alt) : o.alt;
     const dismissed = o.no ? null : (withInput ? null : false);     // Esc / щелчок мимо: при своей второй кнопке — null
+    const cancel = $("#askCancel"); cancel.hidden = !o.cancelButton;  // сборка 66: отдельная «Отмена» слева (ответ null), окно шире — кнопки в ряд
+    m.querySelector(".askbox").classList.toggle("wide", !!o.cancelButton);
     inp.hidden = !withInput; inp.value = withInput ? o.input : "";
     const done = v => { m.classList.remove("on"); document.removeEventListener("keydown", key, true); res(v); };
     const key = e => {
@@ -448,6 +450,7 @@ function ask(msg, o = {}){
     yes.onclick = () => done(withInput ? inp.value : true);
     no.onclick = () => done(withInput ? null : false);
     $("#askAlt").onclick = () => done("alt");
+    cancel.onclick = () => done(null);
     m.onclick = e => { if(e.target === m) done(dismissed); };
     document.addEventListener("keydown", key, true);
     m.classList.add("on");
@@ -1315,10 +1318,11 @@ function renderInspectorNow(){
     ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" translate="no" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
     ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
     ${side==="move" ? `<div class="hint">Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.</div>` : ""}
+    <!-- сборка 66: «Apply changes» над вкладками — одно место на Tracks, Clips и History -->
+    ${tracks.length ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" class="${changed?"applyon":""}" title="Save the changes (tracks, key, tempo) into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button><span class="unsaved" id="unsaved" ${changed?"":"hidden"}>Not saved yet</span></div>
+      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks" title="Tracks: instruments, presets, pan and order">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips" title="Clips: copy, move, load .mid, generate drums">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history" title="Saved versions of the project — restore an earlier one">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
-    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" class="${changed?"applyon":""}" title="Save the changes (tracks, key, tempo) into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button><span class="unsaved" id="unsaved" ${changed?"":"hidden"}>Not saved yet</span></div>
-      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <h3>Camelot</h3>
     ${wheelSVG(cam)}
     <div class="legend">Compatible keys light up in their wheel colour — on the wheel and as the mark on each project. Click a sector to set that key.</div>
@@ -1493,12 +1497,11 @@ async function applyOrder(){
   const key = keyPayload(it), sh = key && "rootNote" in key ? keyShift(it.info, key) : null;
   if(sh){                                                     // сборка 66: ноты в новую тональность — по ступеням или сдвигом
     const small = sh.down <= sh.up ? -sh.down : sh.up, sign = v => v < 0 ? "−"+(-v) : "+"+v;
-    const opts = [{label:"By scale degrees", set:{notes:"degrees"}}];
+    const opts = [{label:"By scale degrees", set:{notes:"degrees"}}, {label:"Don't move notes", set:{}}];
     if(sh.k) opts.push({label:`Shift only (${sign(small)})`, set:{shift:small}});
-    opts.push({label:"Don't move notes", set:{}});
     const r = await ask(sh.k ? "Move the notes into the new key?\n\nBy scale degrees: every note keeps its role against the tonic (the fifth stays the fifth). Shift only: all notes move by the same interval. Drum Rack stays as it is."
                              : "Move the notes into the new key?\n\nBy scale degrees: every note keeps its role against the tonic (the fifth stays the fifth). Drum Rack stays as it is.",
-                        {ok:opts[0].label, no:opts[1].label, alt:opts[2]?.label});
+                        {ok:opts[0].label, no:opts[1].label, alt:opts[2]?.label, cancelButton:true});
     if(r === null) return;
     Object.assign(key, opts[r === true ? 0 : r === false ? 1 : 2].set);
   }
