@@ -495,9 +495,51 @@ def _fold(v, lo, hi):
     return v
 
 
+_MAJ, _MIN = [0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10]
+# лад: (7 ступеней «родительского» лада, свои ноты). Пентатоники и блюз — от натурального минора/мажора.
+SCALE_DEGREES = {
+    "Major": (_MAJ, _MAJ), "Minor": (_MIN, _MIN),
+    "Dorian": ([0, 2, 3, 5, 7, 9, 10],) * 2, "Phrygian": ([0, 1, 3, 5, 7, 8, 10],) * 2,
+    "Lydian": ([0, 2, 4, 6, 7, 9, 11],) * 2, "Mixolydian": ([0, 2, 4, 5, 7, 9, 10],) * 2,
+    "Locrian": ([0, 1, 3, 5, 6, 8, 10],) * 2,
+    "Minor Pentatonic": (_MIN, [0, 3, 5, 7, 10]), "Major Pentatonic": (_MAJ, [0, 2, 4, 7, 9]),
+    "Minor Blues": (_MIN, [0, 3, 5, 6, 7, 10]),
+    "Harmonic Minor": ([0, 2, 3, 5, 7, 8, 11],) * 2, "Melodic Minor": ([0, 2, 3, 5, 7, 9, 11],) * 2,
+    "Harmonic Major": ([0, 2, 4, 5, 7, 8, 11],) * 2,
+}
+
+
+def degree_mapper(old_root, old_scale, new_root, new_scale):
+    """«По ступеням» (сборка 66): нота → ступень старого лада + хроматическое смещение → та же ступень нового лада.
+    Тоника двигается кратчайшим путём (−6…+5). Ступени, которых нет в новом ладу (7 ступеней → пентатоника),
+    притягиваются к ближайшей ноте лада, при равном расстоянии — вниз. Лад вне таблицы — None."""
+    if old_scale not in SCALE_DEGREES or new_scale not in SCALE_DEGREES:
+        return None
+    old_p, new_p = SCALE_DEGREES[old_scale][0], SCALE_DEGREES[new_scale][0]
+    own = SCALE_DEGREES[new_scale][1]
+    near = sorted({x + o for x in own for o in (-12, 0, 12)})
+    delta = (new_root - old_root + 6) % 12 - 6
+
+    def fn(n):
+        r = (n - old_root) % 12
+        d = max(i for i, v in enumerate(old_p) if v <= r)
+        off = r - old_p[d]
+        t = new_p[d] + off
+        if not off and t % 12 not in own:        # хроматика сохраняет смещение, к ладу притягиваются только ступени
+            t = min(near, key=lambda x: (abs(x - t), x))
+        return _fold(n - r + delta + t, 0, 127)
+    fn.delta = delta
+    return fn
+
+
 def transpose_song(song, shift):
-    """Сдвиг на shift полутонов (сборка 66): ноты MIDI-клипов мелодических дорожек и transpose аудиоклипов.
-    Drum Rack не трогается никогда: нота там — пэд, а не высота. Возвращает, сколько нот и аудиоклипов сдвинуто."""
+    """Сдвиг на shift полутонов (сборка 66)."""
+    return remap_song(song, lambda v: _fold(v + shift, 0, 127), shift)
+
+
+def remap_song(song, note_fn, audio_shift):
+    """Новая высота нот MIDI-клипов мелодических дорожек (note_fn) и transpose аудиоклипов (+audio_shift).
+    Drum Rack не трогается никогда: нота там — пэд, а не высота. Возвращает, сколько нот и аудиоклипов изменено."""
     n = 0
     for tr in song.get("tracks") or []:
         kind = track_clip_kind(tr)
@@ -509,12 +551,12 @@ def transpose_song(song, shift):
                 continue
             if kind == "audio":
                 if c.get("sampleUri") is not None:
-                    c["transpose"] = _fold(int(round(float(c.get("transpose") or 0))) + shift, -48, 48)
+                    c["transpose"] = _fold(int(round(float(c.get("transpose") or 0))) + audio_shift, -48, 48)
                     n += 1
                 continue
             for note in c.get("notes") or []:
                 if "noteNumber" in note:
-                    note["noteNumber"] = _fold(int(note["noteNumber"]) + shift, 0, 127)
+                    note["noteNumber"] = note_fn(int(note["noteNumber"]))
                     n += 1
     return n
 
@@ -522,6 +564,7 @@ def transpose_song(song, shift):
 def edit_song(song, order=None, pans=None, key=None):
     """Меняет тональность сета, панораму и порядок дорожек. pans: {исходный индекс дорожки: -1..1}."""
     tracks = song.get("tracks") or []
+    old_root, old_scale = song.get("rootNote"), song.get("scale")
     if key and ("rootNote" in key or "scale" in key):
         root, scale = int(key.get("rootNote", -1)), str(key.get("scale") or "").strip()
         if not 0 <= root <= 11 or not scale or len(scale) > 60:
@@ -532,6 +575,12 @@ def edit_song(song, order=None, pans=None, key=None):
         if not ("rootNote" in key or "scale" in key) or not isinstance(shift, int) or isinstance(shift, bool) or not -11 <= shift <= 11:
             raise AppError("Invalid key")
         transpose_song(song, shift)
+    if key and key.get("notes") == "degrees":
+        fn = degree_mapper(old_root, old_scale, song.get("rootNote"), song.get("scale")) \
+            if "rootNote" in key and isinstance(old_root, int) else None
+        if not fn:
+            raise AppError("Invalid key")
+        remap_song(song, fn, fn.delta)
     if key and key.get("tempo") is not None:
         try:
             tempo = round(float(key["tempo"]), 2)
@@ -3247,7 +3296,8 @@ def edit_action(order, pans, key):
     if key and ("rootNote" in key or "scale" in key):
         try:
             parts.append(f"Key changed to {NOTE_NAMES[int(key.get('rootNote')) % 12]} {key.get('scale') or ''}".rstrip()
-                         + (f", notes {key['shift']:+d}" if isinstance(key.get("shift"), int) and key["shift"] else ""))
+                         + (f", notes {key['shift']:+d}" if isinstance(key.get("shift"), int) and key["shift"] else "")
+                         + (", notes by degrees" if key.get("notes") == "degrees" else ""))
         except (TypeError, ValueError):
             parts.append("Key changed")
     if key and key.get("tempo") is not None:

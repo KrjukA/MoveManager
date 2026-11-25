@@ -58,3 +58,45 @@ class Transpose(unittest.TestCase):
     def test_action_name(self):
         self.assertEqual(app.edit_action(None, {}, {"rootNote": 4, "scale": "Minor", "shift": -5}),
                          "Key changed to E Minor, notes -5")
+
+
+def mixo(notes):
+    """Проект в G Mixolydian с одной мелодической дорожкой, Drum Rack и аудиоклипом."""
+    s = song(tuple(notes))
+    s["rootNote"], s["scale"] = 7, "Mixolydian"
+    return s
+
+
+class Degrees(unittest.TestCase):
+    """Сборка 66: «по ступеням» — каждая нота сохраняет роль относительно тоники."""
+    def deg(self, s, root, scale):
+        return app.edit_song(s, key={"rootNote": root, "scale": scale, "notes": "degrees"})
+
+    def test_mixolydian_to_minor(self):
+        s = self.deg(mixo([43, 47, 50, 41, 40]), 9, "Minor")        # G B D F E
+        self.assertEqual(notes(s), [45, 48, 52, 43, 41])             # A C E G F
+        self.assertEqual(notes(s, 1), [36])                          # Drum Rack на месте
+        self.assertEqual(s["tracks"][2]["clipSlots"][0]["clip"]["transpose"], 2)   # тоника G → A: +2
+
+    def test_into_pentatonic_snaps_to_nearest(self):
+        s = self.deg(mixo([45, 40]), 9, "Minor Pentatonic")         # A (→B) и E (→F) — их нет в пентатонике
+        self.assertEqual(notes(s), [48, 40])                         # B → C, F → E
+
+    def test_chromatic_kept_degrees_snapped(self):
+        s = song((63, 65, 59))                                       # A Minor: D♯ (хроматика), F и B (ступени)
+        s = self.deg(s, 9, "Minor Pentatonic")
+        self.assertEqual(notes(s), [63, 64, 60])                     # D♯ остаётся; F → E; B → C
+
+    def test_same_mode_is_plain_transposition(self):
+        s = self.deg(song((45, 52, 58)), 4, "Minor")                 # A Minor → E Minor, A♯ — хроматика
+        self.assertEqual(notes(s), [40, 47, 53])
+
+    def test_unknown_scale_refused(self):
+        s = song()
+        s["scale"] = "Super Locrian"
+        with self.assertRaises(app.AppError):
+            self.deg(s, 4, "Minor")
+
+    def test_action_name(self):
+        self.assertEqual(app.edit_action(None, {}, {"rootNote": 9, "scale": "Minor", "notes": "degrees"}),
+                         "Key changed to A Minor, notes by degrees")
