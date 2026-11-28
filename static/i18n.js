@@ -55,6 +55,8 @@ exact: {
   "The group is removed; its projects move to Ungrouped": "Группа удаляется, её проекты переходят в «Без группы»", "New group name": "Название новой группы",
   "Looking for Move on the network…": "Ищу Move в сети…", "No projects on Move.": "На Move нет проектов.",
   "Folder is empty. Drag a project here from Move.": "Папка пуста. Перетащите сюда проект с Move.",
+  "Wait until the current operation finishes": "Подождите, пока закончится текущая операция",
+  "Tracks reordered": "Tracks переставлены", "Pan changed": "Панорама изменена",
   "Move's SSH key has changed. This happens after a Move update.": "У Move сменился ключ SSH. Так бывает после обновления Move.",
   "Trust new key": "Доверять новому ключу", "Trust": "Доверять",
   "Trust Move's new SSH key?": "Доверять новому ключу SSH у Move?",
@@ -395,7 +397,8 @@ patterns: [
   [/^Restore the project to (.+)\? The current version is saved to History first\.(.*)$/s, "Вернуть проект к версии $1? Текущая версия сначала сохранится в истории.$2"],
   [/^Restored to (\d{1,2} \w{3} [\d:]+)(.*)$/s, (m, w, rest) => "Проект возвращён к версии " + tr(w) + rest],
   [/^Restoring (.+)…$/, "Возвращаю $1…"],
-  [/^before: (.+)$/, (m, a) => "до: " + tr(a)],
+  // запись History из нескольких правок («Tracks reordered, Key changed to …») — по частям
+  [/^before: (.+)$/, (m, a) => { const t = tr(a); return "до: " + (t !== a || !a.includes(", ") ? t : a.split(", ").map(x => tr(x)).join(", ")); }],
   [/^Restore of (.+)$/, (m, a) => "Откат к версии " + tr(a)],
   [/^Clip moved T(\d+) S(\d+) → T(\d+) S(\d+)$/, "Clip перенесён: Track $1, Scene $2 → Track $3, Scene $4"],
   [/^Clip copied T(\d+) S(\d+) → T(\d+) S(\d+)$/, "Clip скопирован: Track $1, Scene $2 → Track $3, Scene $4"],

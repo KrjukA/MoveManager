@@ -85,3 +85,22 @@ class TrustHashed(Trust):
         self.kh.write_text(hashed("move.local") + hashed("192.168.31.8") + hashed("github.com"))
         self.assertEqual(app.forget_move_host(), 2)
         self.assertEqual(len(self.kh.read_text().splitlines()), 1)
+
+
+class TrustBusy(Trust):
+    def test_refused_while_an_operation_runs(self):
+        with mock.patch.object(app, "running_jobs", return_value=["push"]):
+            st, _, b = self.req("POST", "/api/ssh/trust-key", b"{}")
+        self.assertEqual(st, 400)
+        self.assertIn("ssh-ed25519 OLD1", self.kh.read_text(), "старый ключ не трогается, пока идёт операция")
+
+
+class HistoryLabels(RouteBase):
+    def test_combined_labels_are_russian(self):
+        import shutil
+        if not shutil.which("node"):
+            self.skipTest("нужен Node.js")
+        from tests.test_i18n import KEEP, translate
+        label = app.edit_action([1, 0], {"0": 0.2}, {"rootNote": 9, "scale": "Minor", "tempo": 120})
+        ru = translate(["before: " + label])[0]
+        self.assertNotRegex(KEEP.sub("", ru.replace("Minor", "")), r"[A-Za-z]{4,}", ru)

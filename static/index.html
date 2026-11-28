@@ -440,7 +440,7 @@ function ask(msg, o = {}){
     const done = v => { m.classList.remove("on"); document.removeEventListener("keydown", key, true); res(v); };
     const key = e => {
       if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(dismissed); }
-      else if(e.key === "Enter"){ e.preventDefault(); e.stopPropagation();    // Enter — кнопка в фокусе (сборка 66: их бывает три), иначе главная
+      else if(e.key === "Enter"){ e.preventDefault(); e.stopPropagation();    // Enter — кнопка в фокусе (их бывает несколько), иначе главная
         const f = document.activeElement; (f && f.tagName === "BUTTON" && m.contains(f) ? f : yes).click(); }
     };
     yes.onclick = () => done(withInput ? inp.value : true);
@@ -677,10 +677,15 @@ function render(){
   $("#connText").textContent = ok ? "Move connected" : S.move.state==="loading" ? "connecting…" : S.move.state==="auth" ? "code needed" : "Move offline";
 }
 
+// Камелот считает лад по набору нот: 8A в дорийском — это D Dorian, а не A. Поэтому модальные лады при смене буквы
+// становятся Minor/Major (тоника — та, что ждёт музыкант), а семейство сохраняют только пентатоники и гармонические.
+const FAMILY_A = {"Major Pentatonic":"Minor Pentatonic", "Harmonic Major":"Harmonic Minor"};
+const FAMILY_B = {"Minor Pentatonic":"Major Pentatonic", "Minor Blues":"Major Pentatonic", "Harmonic Minor":"Harmonic Major"};
 function keyForCamelot(code, scale){
-  // та же гамма, если её буква совпадает; иначе натуральный минор (A) или мажор (B)
+  // та же гамма, если её буква совпадает; иначе лад того же семейства (пентатоника остаётся пентатоникой)
   const letter = code.slice(-1), want = c => c && c.code===code;
-  const sc = (scale && camelot({rootNote:0, scale})?.letter===letter) ? scale : (letter==="A" ? "Minor" : "Major");
+  const sc = (scale && camelot({rootNote:0, scale})?.letter===letter) ? scale
+    : (letter==="A" ? FAMILY_A : FAMILY_B)[scale] || (letter==="A" ? "Minor" : "Major");
   for(let r=0;r<12;r++) if(want(camelot({rootNote:r, scale:sc}))) return {rootNote:r, scale:sc};
   for(let r=0;r<12;r++) if(want(camelot({rootNote:r, scale:letter==="A"?"Minor":"Major"}))) return {rootNote:r, scale:letter==="A"?"Minor":"Major"};
   return null;
@@ -1294,10 +1299,10 @@ function renderInspectorNow(){
     ${side==="lib" ? `<h3>Group</h3><select id="groupSel" aria-label="Project group"><option value="">Ungrouped</option>${libGroups().map(g=>`<option value="${esc(g)}" translate="no" ${g===(it.group||"")?"selected":""}>${esc(g)}</option>`).join("")}<option value="__new__">New group…</option></select>` : ""}
     ${side==="move" ? `<div class="warnline">Leave this project on Move before sending changes — Move saves the open project on its own and would overwrite them.</div>` : ""}
     ${side==="move" ? `<div class="hint">Drag the pad onto another pad to move the project; hold ⌥ Option (Alt on Windows) while dropping to make a copy.</div>` : ""}
+    ${tracks.length ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" class="${changed?"applyon":""}" title="Save the changes (tracks, key, tempo) into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button><span class="unsaved" id="unsaved" ${changed?"":"hidden"}>Not saved yet</span></div>
+      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <div class="tabs"><button class="tab ${S.tab==="tracks"?"on":""}" data-tab="tracks" title="Tracks: instruments, presets, pan and order">Tracks</button><button class="tab ${S.tab==="clips"?"on":""}" data-tab="clips" title="Clips: copy, move, load .mid, generate drums">Clips</button><button class="tab ${S.tab==="history"?"on":""}" data-tab="history" title="Saved versions of the project — restore an earlier one">History</button></div>
     ${S.tab==="history" ? historyHTML(side, it) : tracks.length ? (S.tab==="clips" ? clipsHTML(side, it) : `<div class="trkpanel">${trk}</div>`) : `<div class="hint">${info?.error?esc(info.error):"Reading project…"}</div>`}
-    ${tracks.length && S.tab!=="history" ? `<div class="acts" style="margin-top:6px"><button id="applyOrder" class="${changed?"applyon":""}" title="Save the changes (tracks, key, tempo) into the project" ${changed?"":"disabled"}>Apply changes</button><button class="ghost" id="resetOrder" ${changed?"":"hidden"}>Reset</button><span class="unsaved" id="unsaved" ${changed?"":"hidden"}>Not saved yet</span></div>
-      ${side==="move" ? `<label class="chk"><input type="checkbox" id="replaceChk" ${S.replace?"checked":""}> ${padMode() ? "edit the project on Move in place — pad and color are kept (otherwise a \"_edit\" copy is made)" : "replace the original — the project moves to another pad (otherwise a \"_edit\" copy is made)"}</label>`:""}` : ""}
     <h3>Camelot</h3>
     ${wheelSVG(cam)}
     <div class="legend">Compatible keys light up in their wheel colour — on the wheel and as the mark on each project. Click a sector to set that key.</div>
@@ -1495,13 +1500,17 @@ async function moveSlot(id, slot){
 /* сборка 66: Move сменил ключ SSH (после обновления) — забыть старый ключ и подключиться заново */
 async function trustSshKey(){
   if(!await ask("Trust Move's new SSH key?\n\nMove gets a new key after a system update or reset. Do this only if that happened to your Move.", {ok:"Trust"})) return;
-  try{ await api("POST","/api/ssh/trust-key"); await loadMove(); if(isCmd()) await mvLoad(true); status(padMode() ? "Pads connected" : "Could not connect to Move over SSH", !padMode()); }
-  catch(e){ fail(e); }
+  try{ await api("POST","/api/ssh/trust-key"); await loadMove(); if(isCmd()) await mvLoad(true);
+       if(S.ssh.enabled) status(padMode() ? "Pads connected" : "Could not connect to Move over SSH", !padMode()); return true; }
+  catch(e){ fail(e); return false; }
 }
 async function setupSsh(){
   status("Enabling pad control…");
   try{ await runJob("ssh", () => api("POST","/api/ssh/setup")); await loadMove(); status(padMode() ? "Pads connected" : "Key added, but pads could not be read", !padMode()); }
-  catch(e){ fail(e); await loadMove(); }
+  catch(e){
+    if(/SSH key has changed/.test(e.message||"")){ status(e.message, true); if(await trustSshKey()) return setupSsh(); return; }   // ключ сменился ещё до включения пэдов
+    fail(e); await loadMove();
+  }
 }
 async function saveOrder(side){ try{ await api("POST","/api/order",{side, ids: items(side).map(x=>x.id)}); }catch(e){ fail(e); } }
 async function autoOrder(side){
